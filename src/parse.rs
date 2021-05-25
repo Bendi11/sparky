@@ -48,21 +48,50 @@
 //! }
 //! ```
 
+use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::Display;
 
 use hashbrown::HashMap;
-use peekmore::PeekMoreIterator;
+use std::iter::Peekable;
 
 use crate::ast::Body;
 use crate::ast::WordDecl;
 use crate::ast::WordProto;
 use crate::types::StackLayout;
 use crate::types::Type;
+use crate::types::Value;
 use crate::{
     ast::{Ast, Decl},
     lex::{Token, TokenType},
 };
+
+/// The `Attr` can struct holds a value given to an attribute and additional attributes for the value
+#[derive(Clone, PartialEq, Debug, Eq)]
+pub struct Attr {
+    pub val: String, 
+    pub attrs: HashMap<String, Attr>,
+}
+
+impl Attr {
+    /// Create a new unnamed attributes
+    pub fn new() -> Self {
+        Self {
+            val: String::new(),
+            attrs: HashMap::new()
+        }
+    }
+
+    /// Insert an attribute into this attribute's attributes
+    pub fn insert(&mut self, into: String, item: Attr) {
+        self.attrs.insert(into, item);
+    }
+
+    pub fn get(&self, key: &str) -> Option<&Attr> {
+        self.attrs.get(key)
+    }
+}
+
 
 /// A struct representing an error that occurred when parsing
 #[derive(Debug)]
@@ -86,7 +115,7 @@ pub enum ParseErr {
     },
 }
 
-/// A trait that throws a `ParseErr` if an Option is None
+/// A trait that throws a `ParseErr::UnexpectedEOF` if an Option is None
 trait NoEof: Sized {
     type Output;
 
@@ -128,9 +157,8 @@ impl Error for ParseErr {}
 /// the [Lexer](struct@crate::lex::Lexer) struct.
 pub struct Parser<T: Iterator<Item = Token>> {
     /// The peekable token stream that we will parse
-    pub tokens: PeekMoreIterator<T>,
+    pub tokens: Peekable<T>,
 }
-
 
 impl<T: Iterator<Item = Token>> Parser<T> {
     /// Parse the token stream into a list of abstract syntax tree nodes
@@ -139,12 +167,12 @@ impl<T: Iterator<Item = Token>> Parser<T> {
         while self.tokens.peek().is_some() {
             exprs.push(self.parse_expr()?);
         }
-        Ok(Body(exprs) )
+        Ok(Body(exprs))
     }
 
-    /// Parse a function prototype, assumed that the `fun` keyword is already consumed from the token stream
+    /// Parse a word prototype, assumed that the `w` keyword is already consumed from the token stream
     fn parse_proto(&mut self) -> Result<WordProto, ParseErr> {
-        let attrs = self.parse_attr(); //Parse all attributes of the function
+        let attrs = self.parse_attr()?; //Parse all attributes of the function
                                        //Get the name of the function
         let name = match self.tokens.next().eof()? {
             Token {
@@ -163,6 +191,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
         let output = self.parse_stack_layout()?; //Parse the output stack layout
         Ok(WordProto {
             name,
+            attrs,
             input,
             output,
         })
@@ -183,7 +212,11 @@ impl<T: Iterator<Item = Token>> Parser<T> {
 
         //Parse typenames until the closing brace is encountered
         while !self.tokens.peek().eof()?.is(TokenType::RightBrace(')')) {
-            lay.push(self.parse_typename()?); //Add a type to the stack layout
+            if let TokenType::Word(word) = self.tokens.next().eof()?.token {
+                let attrs = self.parse_attr()?; //Parse the attributes of the type
+                lay.push(self.parse_typename(word, &attrs)?); //Add a type to the stack layout
+            }
+            
 
             if self.tokens.peek().eof()?.is(TokenType::Comma) {
                 self.tokens.next(); //Consume the comma
@@ -197,20 +230,19 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     /// Parse attributes of a function or type and return them in a hashmap of strings to string values
     /// If the first parameter has no name given, then the hashmap entry at `""` will be filled with the attribute value.
     /// This function doesn't assume that the left square bracket has already been consumed and will consume it
-    fn parse_attr(&mut self) -> Result<HashMap<String, String>, ParseErr> {
-        let next = match self.tokens.peek()  {
-            Some(tok) => tok,
-            None => return Ok(HashMap::new()) //Return a hashmap with no entries because the attributes are empty
-        };
-        if next != &TokenType::LeftBrace('[') {
-            return Err(ParseErr::UnexpectedTok {
-                token: next.clone(),
-                expecting: vec![TokenType::LeftBrace('[')],
-            });
+    fn parse_attr(&mut self) -> Result<HashMap<String, Attr>, ParseErr> {
+        if !matches!(
+            self.tokens.peek(),
+            Some(&Token {
+                line: _,
+                token: TokenType::LeftBrace('[')
+            })
+        ) {
+            return Ok(HashMap::new()); //Return a hashmap with no entries because the attributes are empty
         }
         self.tokens.next(); //Consume the opening brace
 
-        let mut attrs: HashMap<String, String> = HashMap::new();
+        let mut attrs = HashMap::new();
 
         loop {
             //Check the next token in the stream
@@ -240,10 +272,10 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                             }
                         };
 
-                        attrs.insert(ident.clone(), val); //Insert the name and value pair into the attributes
+                        attrs.insert(ident.clone(), Attr { val, attrs: self.parse_attr()?}); //Insert the name and value pair into the attributes
                     }
                     _ => {
-                        attrs.insert("".to_owned(), ident.clone()); //Insert the value with implicit name
+                        attrs.insert("".to_owned(), Attr {val: ident.clone(), attrs: self.parse_attr()?}); //Insert the value with implicit name
                     }
                 },
                 _ => {
@@ -288,9 +320,9 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                 line: _,
                 token: TokenType::Semicolon,
             } => match self.tokens.next().eof()?.token {
-                //Function prototype, parse it
+                //Word prototype, parse it
                 TokenType::Word(word) => match word.as_ref() {
-                    "fun" => self.parse_proto().map(|proto| {
+                    "w" => self.parse_proto().map(|proto| {
                         Ast::Decl(Decl::Word(WordDecl {
                             proto,
                             body: self.parse_body().unwrap(),
@@ -303,21 +335,56 @@ impl<T: Iterator<Item = Token>> Parser<T> {
             //A word call
             Token {
                 line: _,
-                token: TokenType::Word(word) 
+                token: TokenType::Word(word),
+            } => Ok(Ast::Word {
+                path: word,
+                attrs: self.parse_attr()?,
+            }),
+            //Push a number to the stack
+            Token {
+                line: _,
+                token: TokenType::NumLiteral(num),
             } => {
-                Ok(Ast::Word{path: word, attrs: self.parse_attr()?})
-            },
-            what => {
-                return Err(ParseErr::UnexpectedTok {
-                    expecting: vec![TokenType::Word("fun".to_owned())],
-                    token: what,
-                })
+                let attrs = self.parse_attr()?; //Parse the attributes of the number for a type
+                                                //There is an explicit type given
+                if let Some(ty) = attrs.get("type") {
+                    Ok(Ast::Literal {
+                        val: Value::num(num, Type::try_from(ty.val.as_str()).unwrap()),
+                    })
+                } else {
+                    Ok(Ast::Literal {
+                        val: Value::num(
+                            num,
+                            Type::Int {
+                                width: 32,
+                                signed: true,
+                            },
+                        ),
+                    })
+                }
             }
+            what => Err(ParseErr::UnexpectedTok {
+                expecting: vec![TokenType::Word("_".to_owned()), TokenType::NumLiteral(0), TokenType::StrLiteral("_".to_owned())],
+                token: what,
+            }),
         }
     }
 
+
     /// Parse a type name from one or more tokens
-    fn parse_typename(&mut self) -> Result<Type, ParseErr> {
-        Ok(Type::isigned(8))
+    fn parse_typename(&mut self, word: String, attrs: &HashMap<String, Attr>) -> Result<Type, ParseErr> {
+        //Try to parse an integer type from the string
+        if let Ok(ty) = Type::try_from(word.as_str()) {
+            return Ok(ty)
+        }
+        match word.as_str() {
+            "ptr" => {
+                match attrs.get("") {
+                    Some(Attr { val, attrs }) => Ok( Type::Ptr(Box::new(self.parse_typename(val.clone(), attrs)?)) ),
+                    _ => panic!(),
+                }
+            },
+            _ => panic!("")
+        }
     }
 }

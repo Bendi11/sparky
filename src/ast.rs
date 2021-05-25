@@ -1,8 +1,11 @@
 //! The `ast` module provides structs describing abstract syntax tree nodes and
 //! the all important [Ast](enum@Ast) enum representing every type of AST node
+use crate::{
+    lex::{Lexer, Token},
+    parse::{ParseErr, Parser, Attr},
+    types::Value,
+};
 use std::{iter::FromIterator, str::FromStr};
-use crate::{lex::{Lexer, Token}, parse::{ParseErr, Parser}};
-use peekmore::PeekMore;
 
 /// The `Body` struct is not an AST node, but it is used in any AST node that has a list of expressions to execute like a
 /// function declaration
@@ -22,6 +25,9 @@ pub struct WordProto {
 
     /// The stack layout for the output
     pub output: StackLayout,
+
+    /// Attributes for the function
+    pub attrs: HashMap<String, Attr>,
 }
 
 /// The `WordDecl` struct represents one word prototype plus a list of instructions that makes up the word body
@@ -42,18 +48,6 @@ impl fmt::Display for WordDecl {
             self.proto.name, self.proto.input, self.proto.output
         )
     }
-}
-
-/// The `BinExpr` struct represents one binary expression, containing a left hand side and right hand side expression and operator
-/// that was applied
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BinExpr {
-    /// The operator being applied to the two expressions
-    pub op: String,
-    /// The left hand side of the expression
-    pub lhs: Box<Ast>,
-    /// The right hand side of the expression
-    pub rhs: Box<Ast>,
 }
 
 /// The `Decl` enumerates all types of declarations possible
@@ -80,7 +74,13 @@ pub enum Ast {
     /// A word call
     Word {
         path: String,
-        attrs: HashMap<String, String>,
+        attrs: HashMap<String, Attr>,
+    },
+
+    /// A literal value is being pushed to the stack
+    Literal {
+        /// The value being pushed to the stack
+        val: Value,
     },
 }
 
@@ -96,13 +96,16 @@ impl fmt::Display for Ast {
             Self::Word { path, attrs } => {
                 write!(f, "Word call: {}\nAttributes: {:#?}", path, attrs)
             }
+            Self::Literal { val } => write!(f, "Push {}", val),
         }
     }
 }
 
 impl FromIterator<Token> for Body {
     fn from_iter<T: IntoIterator<Item = Token>>(iter: T) -> Self {
-        let parser = Parser {tokens: iter.into_iter().peekmore()}; //Create a new instance of self
+        let parser = Parser {
+            tokens: iter.into_iter().peekable(),
+        }; //Create a new instance of self
         parser.parse().unwrap()
     }
 }
@@ -110,7 +113,9 @@ impl FromIterator<Token> for Body {
 impl FromStr for Body {
     type Err = ParseErr;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let p = Parser{ tokens: Lexer::new(s).peekmore()};
+        let p = Parser {
+            tokens: Lexer::new(s).peekable(),
+        };
         p.parse()
     }
 }

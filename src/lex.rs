@@ -189,7 +189,7 @@ impl<'a> Lexer<'a> {
                     None => {
                         return Some(Token::new(
                             self.line,
-                            TokenType::Error(format!("Expected ")),
+                            TokenType::Error("Expected closing brace, got EOF".to_string()),
                         ))
                     }
                 } {}

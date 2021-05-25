@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{convert::TryFrom, fmt};
 
 /// The `Type` enumeration represents all possible types like integer and user-defined struct types
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -14,6 +14,34 @@ pub enum Type {
 
     /// The `Ptr` variant represents a pointer to a type
     Ptr(Box<Type>),
+}
+
+impl TryFrom<&str> for Type {
+    type Error = &'static str;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if value.len() < 2 {
+            return Err("Integer type string is not long enough, need at least two characters");
+        }
+
+        let signed = match value.chars().next().unwrap() {
+            'i' => true,
+            'u' => false,
+            _ => {
+                return Err(
+                    "First character of integer type must be i or u to specify signededness",
+                )
+            }
+        };
+        let width = value[1..]
+            .parse::<u8>()
+            .map_err(|_| "Number typename must specify a bit width after sign!")?;
+        match width {
+            8 | 16 | 32 | 64 => (),
+            _ => return Err("Accepted bit widths for integer types are: 8, 16, 32, and 64!"),
+        };
+
+        Ok(Self::Int { width, signed })
+    }
 }
 
 impl fmt::Display for Type {
@@ -91,6 +119,67 @@ impl fmt::Display for StackLayout {
             writeln!(f, "{}", ty)?;
         }
         Ok(())
+    }
+}
+
+/// The `Val` enum holds every type of value for the `Value` struct
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Val {
+    /// A number
+    Num(i64),
+    /// A raw string literal
+    String(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Value {
+    /// The type of this value
+    pub ty: Type,
+    /// The values that are being pused to the stack
+    pub val: Val,
+}
+
+impl Value {
+    /// Cast our bytes to an integer
+    pub fn to_int(&self) -> i64 {
+        match (&self.ty, &self.val) {
+            (
+                &Type::Int {
+                    width: _,
+                    signed: _,
+                },
+                &Val::Num(n),
+            ) => n,
+            _ => panic!("Not an integer type!"),
+        }
+    }
+
+    /// Get this value as a pointer to an address with no type info
+    pub fn to_ptr(&self) -> u64 {
+        match (&self.ty, &self.val) {
+            (&Type::Ptr(_), &Val::Num(n)) => n as u64,
+            _ => panic!("Not an integer type!"),
+        }
+    }
+
+    /// Return a number value
+    pub fn num(n: i64, ty: Type) -> Self {
+        Self {
+            ty,
+            val: Val::Num(n),
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.ty {
+            Type::Int {
+                width: _,
+                signed: _,
+            } => write!(f, "Type: {} {}", self.ty, self.to_int()),
+            Type::Ptr(_) => write!(f, "{:#x}, {}", self.to_ptr(), self.ty,),
+        }
     }
 }
 
