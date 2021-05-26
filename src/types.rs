@@ -76,10 +76,14 @@ impl Type {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StackLayout {
     /// The stack layout, with the top of the stack at the last index
-    lay: Vec<Type>,
+    pub lay: Vec<Type>,
 }
 
 impl StackLayout {
+    pub fn len(&self) -> usize {
+        self.lay.len()
+    }
+
     /// Push one type to the stack
     #[inline]
     pub fn push(&mut self, ty: Type) {

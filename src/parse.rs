@@ -69,7 +69,7 @@ use crate::{
 /// The `Attr` can struct holds a value given to an attribute and additional attributes for the value
 #[derive(Clone, PartialEq, Debug, Eq)]
 pub struct Attr {
-    pub val: String, 
+    pub val: String,
     pub attrs: HashMap<String, Attr>,
 }
 
@@ -78,7 +78,7 @@ impl Attr {
     pub fn new() -> Self {
         Self {
             val: String::new(),
-            attrs: HashMap::new()
+            attrs: HashMap::new(),
         }
     }
 
@@ -91,7 +91,6 @@ impl Attr {
         self.attrs.get(key)
     }
 }
-
 
 /// A struct representing an error that occurred when parsing
 #[derive(Debug)]
@@ -173,7 +172,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     /// Parse a word prototype, assumed that the `w` keyword is already consumed from the token stream
     fn parse_proto(&mut self) -> Result<WordProto, ParseErr> {
         let attrs = self.parse_attr()?; //Parse all attributes of the function
-                                       //Get the name of the function
+                                        //Get the name of the function
         let name = match self.tokens.next().eof()? {
             Token {
                 token: TokenType::Word(name),
@@ -216,7 +215,6 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                 let attrs = self.parse_attr()?; //Parse the attributes of the type
                 lay.push(self.parse_typename(word, &attrs)?); //Add a type to the stack layout
             }
-            
 
             if self.tokens.peek().eof()?.is(TokenType::Comma) {
                 self.tokens.next(); //Consume the comma
@@ -272,10 +270,22 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                             }
                         };
 
-                        attrs.insert(ident.clone(), Attr { val, attrs: self.parse_attr()?}); //Insert the name and value pair into the attributes
+                        attrs.insert(
+                            ident.clone(),
+                            Attr {
+                                val,
+                                attrs: self.parse_attr()?,
+                            },
+                        ); //Insert the name and value pair into the attributes
                     }
                     _ => {
-                        attrs.insert("".to_owned(), Attr {val: ident.clone(), attrs: self.parse_attr()?}); //Insert the value with implicit name
+                        attrs.insert(
+                            "".to_owned(),
+                            Attr {
+                                val: ident.clone(),
+                                attrs: self.parse_attr()?,
+                            },
+                        ); //Insert the value with implicit name
                     }
                 },
                 _ => {
@@ -364,27 +374,34 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                 }
             }
             what => Err(ParseErr::UnexpectedTok {
-                expecting: vec![TokenType::Word("_".to_owned()), TokenType::NumLiteral(0), TokenType::StrLiteral("_".to_owned())],
+                expecting: vec![
+                    TokenType::Word("_".to_owned()),
+                    TokenType::NumLiteral(0),
+                    TokenType::StrLiteral("_".to_owned()),
+                ],
                 token: what,
             }),
         }
     }
 
-
-    /// Parse a type name from one or more tokens
-    fn parse_typename(&mut self, word: String, attrs: &HashMap<String, Attr>) -> Result<Type, ParseErr> {
+    /// Parse a type name from a string and attributes
+    fn parse_typename(
+        &mut self,
+        word: String,
+        attrs: &HashMap<String, Attr>,
+    ) -> Result<Type, ParseErr> {
         //Try to parse an integer type from the string
         if let Ok(ty) = Type::try_from(word.as_str()) {
-            return Ok(ty)
+            return Ok(ty);
         }
         match word.as_str() {
-            "ptr" => {
-                match attrs.get("") {
-                    Some(Attr { val, attrs }) => Ok( Type::Ptr(Box::new(self.parse_typename(val.clone(), attrs)?)) ),
-                    _ => panic!(),
-                }
+            "ptr" => match attrs.get("") {
+                Some(Attr { val, attrs }) => Ok(Type::Ptr(Box::new(
+                    self.parse_typename(val.clone(), attrs)?,
+                ))),
+                _ => panic!(),
             },
-            _ => panic!("")
+            _ => panic!(""),
         }
     }
 }

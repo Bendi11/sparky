@@ -7,6 +7,7 @@ edition = "2018"
 
 [dependencies]
 hashbrown = "0.11.2" # For mapping strings to values throughout the compiler
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] } # For actual code generation
 
 [dev-dependencies]
 criterion = {version = "0.3", features = ["html_reports"] } # For benchmarking performance of compiler

@@ -2,7 +2,7 @@
 //! the all important [Ast](enum@Ast) enum representing every type of AST node
 use crate::{
     lex::{Lexer, Token},
-    parse::{ParseErr, Parser, Attr},
+    parse::{Attr, ParseErr, Parser},
     types::Value,
 };
 use std::{iter::FromIterator, str::FromStr};
