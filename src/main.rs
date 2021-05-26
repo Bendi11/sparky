@@ -1,4 +1,5 @@
-use spark::ast::Body;
+use inkwell::context::Context;
+use spark::{ast::Body, parse::SparkParse};
 
 pub mod ast;
 pub mod code;
@@ -7,12 +8,13 @@ pub mod parse;
 pub mod types;
 
 fn main() {
-    let p: Body = ";w Testing (i32, ptr[ptr[u8]]) (i32) {} testword[a; test] 10 add"
-        .parse()
+    let ctx = Context::create();
+    let p: Body = ";w Testing (i32, u8) (i32) {} testword[a test] 10 add"
+        .spark_parse(&ctx)
         .unwrap();
     println!(
         "AST: {:#}",
-        p.0.iter().fold(String::new(), |acc, ast| acc
+        p.iter().fold(String::new(), |acc, ast| acc
             + ast.to_string().as_str()
             + "\n")
     );

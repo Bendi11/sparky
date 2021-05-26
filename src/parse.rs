@@ -48,49 +48,42 @@
 //! }
 //! ```
 
-use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::Display;
 
-use hashbrown::HashMap;
+use hashbrown::HashSet;
+use inkwell::context::Context;
+use inkwell::types::AnyType;
+use inkwell::types::AnyTypeEnum;
+use inkwell::values::BasicValue;
 use std::iter::Peekable;
 
 use crate::ast::Body;
 use crate::ast::WordDecl;
 use crate::ast::WordProto;
+use crate::lex::Lexer;
 use crate::types::StackLayout;
-use crate::types::Type;
-use crate::types::Value;
 use crate::{
     ast::{Ast, Decl},
     lex::{Token, TokenType},
 };
 
-/// The `Attr` can struct holds a value given to an attribute and additional attributes for the value
-#[derive(Clone, PartialEq, Debug, Eq)]
-pub struct Attr {
-    pub val: String,
-    pub attrs: HashMap<String, Attr>,
+/// The `SparkParse` trait provides methods to parse any data into a Vec of Asts
+pub trait SparkParse<'a>{
+    /// Parse this data into an Abstract syntax tree
+    fn spark_parse(&self, ctx: &'a Context) -> Result<Body<'a>, ParseErr>;
 }
 
-impl Attr {
-    /// Create a new unnamed attributes
-    pub fn new() -> Self {
-        Self {
-            val: String::new(),
-            attrs: HashMap::new(),
-        }
-    }
-
-    /// Insert an attribute into this attribute's attributes
-    pub fn insert(&mut self, into: String, item: Attr) {
-        self.attrs.insert(into, item);
-    }
-
-    pub fn get(&self, key: &str) -> Option<&Attr> {
-        self.attrs.get(key)
+impl<'a> SparkParse<'a> for &str {
+    fn spark_parse(&self, ctx: &'a Context) -> Result<Body<'a>, ParseErr> {
+        Parser {
+            tokens: Lexer::new(self).peekable(),
+            ctx,
+        }.parse()
     }
 }
+
+pub type Attr = HashSet<String>;
 
 /// A struct representing an error that occurred when parsing
 #[derive(Debug)]
@@ -112,6 +105,11 @@ pub enum ParseErr {
         /// The tokens that we were expecting
         expecting: Vec<TokenType>,
     },
+    /// A syntax error occurred
+    SyntaxErr {
+        line: usize,
+        msg: String,
+    }
 }
 
 /// A trait that throws a `ParseErr::UnexpectedEOF` if an Option is None
@@ -146,6 +144,7 @@ impl Display for ParseErr {
                 "Line #{}, unexpected token {}, expected one of: {:#?}",
                 token.line, token, expecting
             ),
+            Self::SyntaxErr{line, msg} => write!(f, "Syntax error on line #{}: {}", line, msg),
         }
     }
 }
@@ -154,23 +153,27 @@ impl Error for ParseErr {}
 
 /// The `Parser` struct converts a token stream into an abstract syntax tree representing the program. It takes a token stream from
 /// the [Lexer](struct@crate::lex::Lexer) struct.
-pub struct Parser<T: Iterator<Item = Token>> {
+pub struct Parser<'a, T: Iterator<Item = Token>> {
     /// The peekable token stream that we will parse
     pub tokens: Peekable<T>,
+
+    /// The LLVM compilation context
+    ctx: &'a Context,
+
 }
 
-impl<T: Iterator<Item = Token>> Parser<T> {
+impl<'a, T: Iterator<Item = Token>> Parser<'a, T> {
     /// Parse the token stream into a list of abstract syntax tree nodes
-    pub fn parse(mut self) -> Result<Body, ParseErr> {
+    pub fn parse(mut self) -> Result<Body<'a>, ParseErr> {
         let mut exprs = Vec::new();
         while self.tokens.peek().is_some() {
             exprs.push(self.parse_expr()?);
         }
-        Ok(Body(exprs))
+        Ok(exprs)
     }
 
     /// Parse a word prototype, assumed that the `w` keyword is already consumed from the token stream
-    fn parse_proto(&mut self) -> Result<WordProto, ParseErr> {
+    fn parse_proto(&mut self) -> Result<WordProto<'a>, ParseErr> {
         let attrs = self.parse_attr()?; //Parse all attributes of the function
                                         //Get the name of the function
         let name = match self.tokens.next().eof()? {
@@ -197,7 +200,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     }
 
     /// Parse a stack layout, see the module level [docs](mod@crate::parse) for more information about the grammar
-    fn parse_stack_layout(&mut self) -> Result<StackLayout, ParseErr> {
+    fn parse_stack_layout(&mut self) -> Result<StackLayout<'a>, ParseErr> {
         //Make sure that we get the opening brace
         if !self.tokens.peek().eof()?.is(TokenType::LeftBrace('(')) {
             return Err(ParseErr::UnexpectedTok {
@@ -212,8 +215,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
         //Parse typenames until the closing brace is encountered
         while !self.tokens.peek().eof()?.is(TokenType::RightBrace(')')) {
             if let TokenType::Word(word) = self.tokens.next().eof()?.token {
-                let attrs = self.parse_attr()?; //Parse the attributes of the type
-                lay.push(self.parse_typename(word, &attrs)?); //Add a type to the stack layout
+                lay.push(self.parse_typename(word)?); //Add a type to the stack layout
             }
 
             if self.tokens.peek().eof()?.is(TokenType::Comma) {
@@ -228,7 +230,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     /// Parse attributes of a function or type and return them in a hashmap of strings to string values
     /// If the first parameter has no name given, then the hashmap entry at `""` will be filled with the attribute value.
     /// This function doesn't assume that the left square bracket has already been consumed and will consume it
-    fn parse_attr(&mut self) -> Result<HashMap<String, Attr>, ParseErr> {
+    fn parse_attr(&mut self) -> Result<HashSet<String>, ParseErr> {
         if !matches!(
             self.tokens.peek(),
             Some(&Token {
@@ -236,11 +238,11 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                 token: TokenType::LeftBrace('[')
             })
         ) {
-            return Ok(HashMap::new()); //Return a hashmap with no entries because the attributes are empty
+            return Ok(Attr::new()); //Return a hashmap with no entries because the attributes are empty
         }
         self.tokens.next(); //Consume the opening brace
 
-        let mut attrs = HashMap::new();
+        let mut attrs = Attr::new();
 
         loop {
             //Check the next token in the stream
@@ -250,43 +252,11 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                 TokenType::Comma => (),              //Consume the comma character
                 TokenType::RightBrace(']') => break, //Consume the end space and stop parsing
 
-                //This is either an attribute name or an attribute value with an implicit name
-                TokenType::Word(ref ident) => match self.tokens.peek().eof()?.token {
-                    //This is a attribute name because the semicolon is there
-                    TokenType::Semicolon => {
-                        self.tokens.next(); //Consume the semicolon token
-                        let val = self.tokens.next().eof()?; //Get the value being assigned to the attribute name
-                                                             //Make sure that the value is valid and get the value being assigned
-                        let val = match val {
-                            Token {
-                                line: _,
-                                token: TokenType::Word(id),
-                            } => id,
-                            unexpected => {
-                                return Err(ParseErr::UnexpectedTok {
-                                    expecting: vec![TokenType::Word("".to_owned())],
-                                    token: unexpected,
-                                })
-                            }
-                        };
-
+                //Get the attribute name
+                TokenType::Word(ref ident) => {
                         attrs.insert(
                             ident.clone(),
-                            Attr {
-                                val,
-                                attrs: self.parse_attr()?,
-                            },
-                        ); //Insert the name and value pair into the attributes
-                    }
-                    _ => {
-                        attrs.insert(
-                            "".to_owned(),
-                            Attr {
-                                val: ident.clone(),
-                                attrs: self.parse_attr()?,
-                            },
                         ); //Insert the value with implicit name
-                    }
                 },
                 _ => {
                     return Err(ParseErr::UnexpectedTok {
@@ -305,7 +275,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     }
 
     /// Parse the body of a word, if statement, etc.
-    fn parse_body(&mut self) -> Result<Body, ParseErr> {
+    fn parse_body(&mut self) -> Result<Body<'a>, ParseErr> {
         //Ensure that we get the opening brace
         if !self.tokens.peek().eof()?.is(TokenType::LeftBrace('{')) {
             return Err(ParseErr::UnexpectedTok {
@@ -314,17 +284,17 @@ impl<T: Iterator<Item = Token>> Parser<T> {
             });
         }
         self.tokens.next(); //Consume the opening brace
-        let mut body = Body(Vec::new());
+        let mut body = Body::new();
         //Iterate parsing expressions until we get a closing brace
         while !self.tokens.peek().eof()?.is(TokenType::RightBrace('}')) {
-            body.0.push(self.parse_expr()?);
+            body.push(self.parse_expr()?);
         }
         self.tokens.next(); //Consume the closing brace
         Ok(body)
     }
 
     /// Parse an expression from the token stream
-    pub fn parse_expr(&mut self) -> Result<Ast, ParseErr> {
+    pub fn parse_expr(&mut self) -> Result<Ast<'a>, ParseErr> {
         match self.tokens.next().eof()? {
             Token {
                 line: _,
@@ -355,28 +325,16 @@ impl<T: Iterator<Item = Token>> Parser<T> {
                 line: _,
                 token: TokenType::NumLiteral(num),
             } => {
-                let attrs = self.parse_attr()?; //Parse the attributes of the number for a type
-                                                //There is an explicit type given
-                if let Some(ty) = attrs.get("type") {
-                    Ok(Ast::Literal {
-                        val: Value::num(num, Type::try_from(ty.val.as_str()).unwrap()),
-                    })
-                } else {
-                    Ok(Ast::Literal {
-                        val: Value::num(
-                            num,
-                            Type::Int {
-                                width: 32,
-                                signed: true,
-                            },
-                        ),
-                    })
-                }
+                let ty = match self.tokens.next().eof()? {
+                    Token{ line: _, token: TokenType::Word(ty) } => ty,
+                    Token{line, token: _}=> return Err(ParseErr::SyntaxErr{line, msg: "Expected typename after number literal".to_owned()})
+                };
+                Ok( Ast::Literal{ val: self.parse_typename(ty)?.into_int_type().const_int_from_string(&num, inkwell::types::StringRadix::Decimal).unwrap().as_basic_value_enum()} )
             }
             what => Err(ParseErr::UnexpectedTok {
                 expecting: vec![
                     TokenType::Word("_".to_owned()),
-                    TokenType::NumLiteral(0),
+                    TokenType::NumLiteral("_".to_owned()),
                     TokenType::StrLiteral("_".to_owned()),
                 ],
                 token: what,
@@ -384,24 +342,34 @@ impl<T: Iterator<Item = Token>> Parser<T> {
         }
     }
 
+    fn ptr_types(&mut self, ty_str: &str, ty: AnyTypeEnum<'a>) -> AnyTypeEnum<'a> {
+        if ty_str.len() == 0 {
+            return ty
+        }
+        match &ty_str[0..1] {
+            "*" => self.ptr_types(&ty_str[1..], ty.into_pointer_type().as_any_type_enum()),
+            _ => return ty,
+        } 
+    }
+
     /// Parse a type name from a string and attributes
     fn parse_typename(
         &mut self,
         word: String,
-        attrs: &HashMap<String, Attr>,
-    ) -> Result<Type, ParseErr> {
+    ) -> Result<AnyTypeEnum<'a>, ParseErr> {
         //Try to parse an integer type from the string
-        if let Ok(ty) = Type::try_from(word.as_str()) {
-            return Ok(ty);
-        }
         match word.as_str() {
-            "ptr" => match attrs.get("") {
-                Some(Attr { val, attrs }) => Ok(Type::Ptr(Box::new(
-                    self.parse_typename(val.clone(), attrs)?,
-                ))),
-                _ => panic!(),
+            //Signed integer type
+            int if int.starts_with("i") || int.starts_with("u") => {
+                //Get the integer width from the type string
+                let (bits, mods) = match int[1..].split_once(|c: char| !c.is_numeric()) {
+                    Some((b, m)) => (b, m),
+                    None => return Err(ParseErr::SyntaxErr{line: 0, msg: format!("Expected number after typename {}", word)})
+                };
+                let bits = bits.parse().unwrap();
+                Ok( self.ptr_types(mods, self.ctx.custom_width_int_type(bits).as_any_type_enum() ) )
             },
-            _ => panic!(""),
+            _ => Err(ParseErr::SyntaxErr{line: 0, msg: String::from("Need i or u before integer typename")})
         }
     }
 }

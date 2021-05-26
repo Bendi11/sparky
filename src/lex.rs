@@ -22,7 +22,7 @@ pub enum TokenType {
     /// A string literal enclosed in double quotes
     StrLiteral(String),
     /// A number literal that is not floating point
-    NumLiteral(i64),
+    NumLiteral(String),
 
     /// The literal comma character ','; used to separate arguments; tuple fields, etc.
     Comma,
@@ -120,12 +120,12 @@ impl<'a> Lexer<'a> {
             Some(c) if c.is_alphanumeric() => {
                 ident.push(self.chars.next().unwrap());
                 true
-            }
+            },
             //Push an undersscore
-            Some('_') => {
+            /*Some('_') => {
                 ident.push(self.chars.next().unwrap());
                 true
-            }
+            }*/
             Some(_) => false,
             None => false,
         } {}
@@ -170,7 +170,7 @@ impl<'a> Lexer<'a> {
                 } {}
                 Some(Token::new(
                     self.line,
-                    TokenType::NumLiteral(num.parse::<i64>().unwrap()),
+                    TokenType::NumLiteral(num),
                 )) //Return the number literal that was lexed
             }
 
