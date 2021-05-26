@@ -1,11 +1,15 @@
-//! The `lex` module provides the [Lexer](struct@lex::Lexer) struct; an efficient zero copy lexer that
+//! The `lex` module provides the [Lexer](struct@Lexer) struct; an efficient zero copy lexer that
 //! performs the first pass over a source file; turning the raw text into a token stream
 //!
 
 use std::fmt;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::iter::Iterator;
 use std::iter::Peekable;
-use std::str::Chars;
+
+use utf8_chars::BufReadCharsExt;
+use utf8_chars::Chars;
 
 /// The `TokenType` enumerates every type of token that can be lexed from the input source file
 /// and is parsed into an AST by the parser
@@ -84,29 +88,39 @@ impl PartialEq<TokenType> for Token {
     }
 }
 
-impl AsRef<TokenType> for Token {
+impl Into<TokenType> for Token {
     //Convert a token to a TokenType
-    fn as_ref(&self) -> &TokenType {
-        &self.token
+    fn into(self) -> TokenType {
+        self.token
     }
 }
 
-/// The `Lexer` struct lexes input tokens from the provided source string reference and turns it into a stream of tokens
+/// The `Lexer` struct lexes input tokens from the provided reader and turns it into a stream of tokens
 /// that can then be collected
-pub struct Lexer<'a> {
+pub struct Lexer<'a, R: BufRead + ?Sized + fmt::Debug> {
     /// The current line number that the lexer is on, this is incremented every time a newline is encountered
     line: usize,
     /// The peekable iterator over the characters of the input string
-    chars: Peekable<Chars<'a>>,
+    chars: Peekable<Chars<'a, R>>,
 }
 
-impl<'a> Lexer<'a> {
+impl<'a> Lexer<'a, BufReader<&'a [u8]> > {
     /// Create a new Lexer using the given source string, creating an iterator over the chars of the source string
     #[inline]
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(reader: &'a mut BufReader<&'a [u8]>) -> Self {     
         Self {
             line: 0,
-            chars: source.chars().peekable(),
+            chars: reader.chars().peekable(),
+        }
+    }
+}
+
+impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
+    /// Create a lexer from a buffered reader, this is more memory efficient for larger files
+    pub fn from_reader(reader: &'a mut R) -> Self {
+        Self {
+            line: 0,
+            chars: reader.chars().peekable(),
         }
     }
 
@@ -117,15 +131,10 @@ impl<'a> Lexer<'a> {
         let mut ident = String::from(first); //Create a string from the first char given
         while match self.chars.peek() {
             //Push alphabetic characters to the string
-            Some(c) if c.is_alphanumeric() => {
-                ident.push(self.chars.next().unwrap());
+            Some(Ok(c)) if c.is_alphanumeric() => {
+                ident.push(self.chars.next().unwrap().unwrap());
                 true
             },
-            //Push an undersscore
-            /*Some('_') => {
-                ident.push(self.chars.next().unwrap());
-                true
-            }*/
             Some(_) => false,
             None => false,
         } {}
@@ -137,7 +146,7 @@ impl<'a> Lexer<'a> {
     #[inline]
     fn token(&mut self) -> Option<Token> {
         while match self.chars.peek() {
-            Some(w) if w.is_whitespace() => {
+            Some(Ok(w)) if w.is_whitespace() => {
                 //Increment line number if we encounter a newline
                 if w == &'\n' {
                     self.line += 1;
@@ -149,7 +158,7 @@ impl<'a> Lexer<'a> {
             None => return None, //Stop looping on EOF
         } {}
 
-        let next = self.chars.next()?;
+        let next = self.chars.next().and_then(|o| o.ok())?;
         //We can unwrap the next char because we returned None
         match next {
             '}' | ')' | ']' => Some(Token::new(self.line, TokenType::RightBrace(next))),
@@ -161,22 +170,19 @@ impl<'a> Lexer<'a> {
             c if c.is_numeric() => {
                 let mut num = String::from(c); //Get a string of the number literal
                 while match self.chars.peek() {
-                    Some(n) if n.is_numeric() => {
-                        num.push(self.chars.next().unwrap()); //Consume the number character
+                    Some(Ok(n)) if n.is_numeric() => {
+                        num.push(self.chars.next().unwrap().unwrap()); //Consume the number character
                         true
                     }
                     Some(_) => false, //Stop looping if it isn't numeric
                     None => false,
                 } {}
-                Some(Token::new(
-                    self.line,
-                    TokenType::NumLiteral(num),
-                )) //Return the number literal that was lexed
+                Some(Token::new(self.line, TokenType::NumLiteral(num))) //Return the number literal that was lexed
             }
 
             '\"' => {
                 let mut literal = String::new(); //Make a string for the string literal
-                while match self.chars.next() {
+                while match self.chars.next().and_then(|o| o.ok()) {
                     Some('\"') => false, //Stop looping when we take a double quote from the end
                     Some(c) => {
                         //Increment line number if the char is a newline
@@ -211,7 +217,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
+impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
     type Item = Token;
     ///Lex tokens from the input stream until there are none left
     fn next(&mut self) -> Option<Self::Item> {
@@ -225,8 +231,7 @@ mod tests {
     #[test]
     pub fn lex_correct() {
         let lexed = Lexer::new(
-            ";fn[si] 
-        test()",
+            &mut BufReader::new(b"test")
         )
         .to_vec();
 
