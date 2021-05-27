@@ -1,6 +1,15 @@
 use std::convert::TryInto;
 
-use inkwell::{AddressSpace, builder::Builder, context::Context, module::{Linkage, Module}, types::BasicType, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode}};
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::{Linkage, Module},
+    types::BasicType,
+    values::{
+        AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode,
+    },
+    AddressSpace,
+};
 
 use crate::ast::{Ast, Body, FnProto};
 
@@ -74,8 +83,15 @@ impl<'ctx> Compiler<'ctx> {
                 let string = self.module.add_global(global, None, "global_str");
                 string.set_initializer(&self.ctx.const_string(literal.as_bytes(), true));
 
-                Ok( self.builder.build_cast(InstructionOpcode::BitCast, string, self.ctx.i8_type().ptr_type(AddressSpace::Generic), "string_cast").as_any_value_enum() )
-                
+                Ok(self
+                    .builder
+                    .build_cast(
+                        InstructionOpcode::BitCast,
+                        string,
+                        self.ctx.i8_type().ptr_type(AddressSpace::Generic),
+                        "string_cast",
+                    )
+                    .as_any_value_enum())
             }
             Ast::NumLiteral(literal) => Ok(literal.as_any_value_enum()),
             Ast::Ret(val) => {
@@ -119,19 +135,21 @@ impl<'ctx> Compiler<'ctx> {
 
 #[cfg(test)]
 mod tests {
+    use inkwell::{OptimizationLevel, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple}};
+
     use super::*;
     use crate::{lex::Lexer, parse::Parser};
-    use std::io::BufReader;
+    use std::{io::BufReader, path::Path};
 
     #[test]
     pub fn codegen() {
         let ctx = Context::create();
 
         const SRC: &[u8] = br#"
-        fun ext test(i8 ptr argv) i8;
+        fun ext printf(u8 ptr fmt, i32 arg) i8;
 
         fun testing() i32 {
-            test("testing");
+            printf("testing %d", 100);
             ret 100;
         };
         "#;
@@ -141,5 +159,23 @@ mod tests {
         let gen = Compiler::new(&ctx);
         let module = gen.gen_all(parser.parse().unwrap()).unwrap();
         module.print_to_file("./o.ll").unwrap();
+
+        Target::initialize_all(&InitializationConfig::default());
+
+        let opt = OptimizationLevel::Aggressive;
+        let reloc = RelocMode::Default;
+        let model = CodeModel::Default;
+        let target = Target::from_triple(&TargetMachine::get_default_triple()).unwrap();
+        let machine = target.create_target_machine(
+            &TargetMachine::get_default_triple(),
+            TargetMachine::get_host_cpu_name().to_str().unwrap(),
+            TargetMachine::get_host_cpu_features().to_str().unwrap(),
+            opt,
+            reloc,
+            model,
+        ).unwrap();
+
+        machine.write_to_file(&module, FileType::Assembly, Path::new("./o.s")).unwrap();
+        machine.write_to_file(&module, FileType::Object, Path::new("./o.obj")).unwrap();
     }
 }
