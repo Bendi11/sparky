@@ -1,1 +1,5 @@
 /target
+*.ll
+*.obj
+*.o 
+*.exe

@@ -48,10 +48,10 @@ use crate::{
     ast::{Ast, FnAttrs},
     lex::{Token, TokenType},
 };
-use inkwell::AddressSpace;
 use inkwell::context::Context;
 use inkwell::types::BasicType;
 use inkwell::types::BasicTypeEnum;
+use inkwell::AddressSpace;
 use std::convert::TryFrom;
 
 /// The `Parser` struct contains a reference the the llvm compilation [Context](inkwell::context::Context), used for creating types that LLVM
@@ -74,11 +74,11 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
     }
 
     /// Parse a complete program from the token stream
-    pub fn parse(&mut self) -> Result<Body<'ctx>, ParseErr> { 
+    pub fn parse(&mut self) -> Result<Body<'ctx>, ParseErr> {
         let mut program = Body::new(); //Get a list of all AST nodes
 
         while let Some(_) = self.toks.peek() {
-            program.push( self.parse_complete()? );
+            program.push(self.parse_complete()?);
         }
 
         Ok(program)
@@ -95,7 +95,7 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                 lhs: Box::new(primary),
                 rhs: Box::new(self.parse_expr()?),
                 op,
-            })
+            });
         }
         Ok(primary)
     }
@@ -159,52 +159,67 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
 
         let mut types = Vec::new(); //Create a vec to hold all argument types
         let mut names = Vec::new(); //Create a vec to hold all argument names
-        loop {
-            //Parse a typename from the tokens
-            types.push(self.parse_type().ok_or_else(|| {
-                ParseErr::Syntax(
-                    open.0,
-                    format!("Expected a valid typename in argument list!"),
-                )
-            })?.try_into().unwrap());
-            //Get either an identifier or a comma after the name
-            match self.toks.next().eof()? {
-                Token(_, TokenType::Comma) => {
-                    names.push("".to_owned()); //Push an empty argument name
-                                               //Check if there is an ending brace
-                    if self.toks.peek().eof()?.is(TokenType::RightBrace(')')) {
-                        self.toks.next(); //Consume the closing brace
-                        break;
+
+        if let TokenType::RightBrace(')') = self.toks.peek().eof()?.1 {
+            self.toks.next();
+        } else {
+            loop {
+                //Parse a typename from the tokens
+                types.push(
+                    self.parse_type()
+                        .ok_or_else(|| {
+                            ParseErr::Syntax(
+                                open.0,
+                                format!("Expected a valid typename in argument list!"),
+                            )
+                        })?
+                        .try_into()
+                        .unwrap(),
+                );
+
+                //Get either an identifier or a comma after the name
+                match self.toks.next().eof()? {
+                    Token(_, TokenType::Comma) => {
+                        names.push("".to_owned()); //Push an empty argument name
+                                                   //Check if there is an ending brace
+                        if self.toks.peek().eof()?.is(TokenType::RightBrace(')')) {
+                            self.toks.next(); //Consume the closing brace
+                            break;
+                        }
                     }
-                }
-                //This is an argument name
-                Token(_, TokenType::Ident(ref name)) => {
-                    names.push(name.clone());
-                    match self.toks.next().eof()? {
-                        Token(_, TokenType::Comma) => continue,
-                        Token(_, TokenType::RightBrace(')')) => break,
-                        Token(line, tok) => return Err(ParseErr::Syntax(line, format!("Expected either a closing brace or a comma after argument name {}, got {}", name, tok)))
-                    };
-                }
-                Token(_, TokenType::RightBrace(')')) => break,
-                Token(line, tok) => {
-                    return Err(ParseErr::Syntax(
-                        line,
-                        format!(
-                        "Expected closing brace, comma, or argument name after typename, got {}",
-                        tok
-                    ),
-                    ))
+                    //This is an argument name
+                    Token(_, TokenType::Ident(ref name)) => {
+                        names.push(name.clone());
+                        match self.toks.next().eof()? {
+                            Token(_, TokenType::Comma) => continue,
+                            Token(_, TokenType::RightBrace(')')) => break,
+                            Token(line, tok) => return Err(ParseErr::Syntax(line, format!("Expected either a closing brace or a comma after argument name {}, got {}", name, tok)))
+                        };
+                    }
+                    Token(_, TokenType::RightBrace(')')) => break,
+                    Token(line, tok) => {
+                        return Err(ParseErr::Syntax(
+                            line,
+                            format!(
+                            "Expected closing brace, comma, or argument name after typename, got {}",
+                            tok
+                        ),
+                        ))
+                    }
                 }
             }
         }
 
-        let ret_type = self.parse_type().ok_or_else(|| {
-            ParseErr::Syntax(
-                open.0,
-                format!("Expected a return type after function prototype {}", name),
-            )
-        })?.try_into().unwrap();
+        let ret_type = self
+            .parse_type()
+            .ok_or_else(|| {
+                ParseErr::Syntax(
+                    open.0,
+                    format!("Expected a return type after function prototype {}", name),
+                )
+            })?
+            .try_into()
+            .unwrap();
 
         //Return the function prototype
         Ok(FnProto {
@@ -312,7 +327,7 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                     self.ctx
                         .i32_type()
                         .const_int_from_string(num.as_str(), inkwell::types::StringRadix::Decimal)
-                        .unwrap()
+                        .unwrap(),
                 ))
             }
 
@@ -327,8 +342,10 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                     //Otherwise, this is a variable access
                     _ => Ok(Ast::VarAccess(ident)),
                 }
-            },
-            Token(_, TokenType::Key(crate::lex::Key::Ret)) => return Ok(Ast::Ret(Box::new(self.parse_expr()?))), 
+            }
+            Token(_, TokenType::Key(crate::lex::Key::Ret)) => {
+                return Ok(Ast::Ret(Box::new(self.parse_expr()?)))
+            }
             Token(_, TokenType::Key(crate::lex::Key::Fun)) => return self.parse_fn(),
 
             Token(line, tok) => Err(ParseErr::Syntax(line, format!("Unexpected token {}", tok))),
@@ -356,22 +373,23 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                     "i32" | "u32" => self.ctx.i32_type(),
                     "i64" | "u64" => self.ctx.i64_type(),
                     _ => return None,
-                }.as_basic_type_enum();
+                }
+                .as_basic_type_enum();
 
                 //Apply pointer types
                 while match self.toks.peek() {
                     Some(Token(_, TokenType::Key(crate::lex::Key::Ptr))) => {
                         self.toks.next();
-                        ty = ty.ptr_type(AddressSpace::Local).as_basic_type_enum();
+                        ty = ty.ptr_type(AddressSpace::Generic).as_basic_type_enum();
                         true
                     }
-                    _ => false
+                    _ => false,
                 } {}
 
                 Some(ty)
-                
+
                 //Return the type constructed from the width
-            },
+            }
             _ => None,
         }
     }
@@ -444,14 +462,19 @@ mod tests {
         let mut reader = BufReader::new(SRC);
         let mut parser: Parser<'_, Lexer<_>> = Parser::new(&ctx, Lexer::from_reader(&mut reader));
 
-        assert_eq!(parser.parse().unwrap(), vec![
-            Ast::Fn(FnProto{
-                name: "testing".to_owned(),
-                attrs: FnAttrs::empty(),
-                arg_names: vec!["a".to_owned()],
-                args: vec![ctx.custom_width_int_type(32).as_basic_type_enum()],
-                ret: ctx.custom_width_int_type(32).as_basic_type_enum(),
-            }, vec![])
-        ], "Parsing a function definition and prototype fails")
+        assert_eq!(
+            parser.parse().unwrap(),
+            vec![Ast::Fn(
+                FnProto {
+                    name: "testing".to_owned(),
+                    attrs: FnAttrs::empty(),
+                    arg_names: vec!["a".to_owned()],
+                    args: vec![ctx.custom_width_int_type(32).as_basic_type_enum()],
+                    ret: ctx.custom_width_int_type(32).as_basic_type_enum(),
+                },
+                vec![]
+            )],
+            "Parsing a function definition and prototype fails"
+        )
     }
 }

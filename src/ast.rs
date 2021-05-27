@@ -6,7 +6,10 @@ use crate::lex::Key;
 use std::convert::TryFrom;
 
 use bitflags::bitflags;
-use inkwell::{types::{AnyTypeEnum, BasicTypeEnum}, values::{BasicValueEnum, IntValue}};
+use inkwell::{
+    types::BasicTypeEnum,
+    values::IntValue,
+};
 
 bitflags! {
     /// Attributes that can be given to a function prototype
