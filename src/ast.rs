@@ -2,6 +2,9 @@
 //! [Ast](enum@Ast) enum that represents every possible branch of an abstract syntax tree that has been parsed
 //!
 
+use crate::lex::Key;
+use std::convert::TryFrom;
+
 use bitflags::bitflags;
 use inkwell::{types::BasicTypeEnum, values::BasicValueEnum};
 
@@ -12,6 +15,17 @@ bitflags! {
         const EXTERN = 0b00000010;
         /// This function should be inlined
         const INLINE = 0b00000100;
+    }
+}
+
+impl TryFrom<Key> for FnAttrs {
+    type Error = ();
+    /// Convert a keyword into a function attribute bitflag
+    fn try_from(k: Key) -> Result<Self, Self::Error> {
+        match k {
+            Key::Ext => Ok(Self::EXTERN),
+            _ => Err(()),
+        }
     }
 }
 
@@ -26,12 +40,24 @@ bitflags! {
     }
 }
 
+impl TryFrom<Key> for VarAttrs {
+    type Error = ();
+    /// Convert a keyword into a variable attribute
+    fn try_from(k: Key) -> Result<Self, Self::Error> {
+        match k {
+            Key::Const => Ok(Self::CONST),
+            Key::Ext => Ok(Self::EXTERN),
+            _ => Err(()),
+        }
+    }
+}
+
 /// The `Body` type represents a list of expressions, like in a function body
 pub type Body<'ctx> = Vec<Ast<'ctx>>;
 
 /// The `FnProto` struct holds all information needed to call a function like argument count, argument types, return type, and
 /// function name
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FnProto<'ctx> {
     /// The name of the function
     pub name: String,
@@ -41,12 +67,15 @@ pub struct FnProto<'ctx> {
     /// The expected argument types
     pub args: Vec<BasicTypeEnum<'ctx>>,
 
+    /// A list of argument names that correspond to the argument types
+    pub arg_names: Vec<String>,
+
     /// The attributes that this function prototype has
     pub attrs: FnAttrs,
 }
 
 /// The `Ast` enum represents every type of abstract syntax tree node that the [Parser](struct@crate::parse::Parser) produces
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Ast<'ctx> {
     /// A function prototype with no body
     FnProto(FnProto<'ctx>),

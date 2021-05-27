@@ -41,14 +41,17 @@
 use std::fmt;
 use std::iter::Peekable;
 
+use crate::ast::Body;
+use crate::ast::FnProto;
 use crate::{
-    ast::Ast,
+    ast::{Ast, FnAttrs},
     lex::{Token, TokenType},
 };
 use inkwell::context::Context;
 use inkwell::types::BasicType;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::BasicValue;
+use std::convert::TryFrom;
 
 /// The `Parser` struct contains a reference the the llvm compilation [Context](inkwell::context::Context), used for creating types that LLVM
 /// can understand
@@ -69,21 +72,31 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
         }
     }
 
+    /// Parse a complete program from the token stream
+    pub fn parse(&mut self) -> Result<Body<'ctx>, ParseErr> { 
+        let mut program = Body::new(); //Get a list of all AST nodes
+
+        while let Some(_) = self.toks.peek() {
+            program.push( self.parse_complete()? );
+        }
+
+        Ok(program)
+    }
+
     /// Parse a complete expression from the token stream
     pub fn parse_expr(&mut self) -> Result<Ast<'ctx>, ParseErr> {
         let primary = self.parse_primary()?; //Get the primary expression
                                              //Get the next token, this must be either a semicolon or a binary expression operator
-        match self.toks.next().eof()? {
-            //This is a binary expression
-            Token(_, TokenType::Op(op)) => {
-                return Ok(Ast::Binary {
-                    lhs: Box::new(primary),
-                    rhs: Box::new(self.parse_expr()?),
-                    op,
-                })
-            }
-            _ => Ok(primary),
+
+        if let Token(_, TokenType::Op(op)) = self.toks.peek().eof()? {
+            let op = op.clone();
+            return Ok(Ast::Binary {
+                lhs: Box::new(primary),
+                rhs: Box::new(self.parse_expr()?),
+                op,
+            })
         }
+        Ok(primary)
     }
 
     /// Parse a complete semicolon terminated expression
@@ -96,6 +109,176 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                 "Expected semicolon to terminate complete expression".to_owned(),
             )),
         }
+    }
+
+    /// Parse a function prototype from the token stream, with no extra body attempted to parse.
+    /// Assumes that the `fn` keyword has already been consumed
+    fn parse_proto(&mut self) -> Result<FnProto<'ctx>, ParseErr> {
+        let mut attrs = FnAttrs::empty(); //An empty set of function attributes
+
+        //Get all attributes from the function
+        while match self.toks.peek().eof()? {
+            Token(line, TokenType::Key(key)) => match FnAttrs::try_from(*key) {
+                Ok(attr) => {
+                    self.toks.next(); //Consume the attribute token
+                    attrs.insert(attr);
+                    true
+                }
+                _ => {
+                    return Err(ParseErr::Syntax(
+                        *line,
+                        format!("Expected a function attribute, got {}", key),
+                    ))
+                }
+            },
+            _ => false,
+        } {}
+
+        //Get the function name
+        let name = match self.toks.next().eof()? {
+            Token(_, TokenType::Ident(name)) => name,
+            Token(line, tok) => {
+                return Err(ParseErr::Syntax(
+                    line,
+                    format!(
+                        "Expected a function name in function prototype, got {}",
+                        tok
+                    ),
+                ))
+            }
+        };
+
+        let open = self.toks.next().eof()?; //Get the opening argument types list brace
+        if !open.is(TokenType::LeftBrace('(')) {
+            return Err(ParseErr::Syntax(
+                open.0,
+                format!("Expected an opening brace, but got {}", open.1),
+            ));
+        }
+
+        let mut types = Vec::new(); //Create a vec to hold all argument types
+        let mut names = Vec::new(); //Create a vec to hold all argument names
+        loop {
+            //Parse a typename from the tokens
+            types.push(self.parse_type().ok_or_else(|| {
+                ParseErr::Syntax(
+                    open.0,
+                    format!("Expected a valid typename in argument list!"),
+                )
+            })?);
+            //Get either an identifier or a comma after the name
+            match self.toks.next().eof()? {
+                Token(_, TokenType::Comma) => {
+                    names.push("".to_owned()); //Push an empty argument name
+                                               //Check if there is an ending brace
+                    if self.toks.peek().eof()?.is(TokenType::RightBrace(')')) {
+                        self.toks.next(); //Consume the closing brace
+                        break;
+                    }
+                }
+                //This is an argument name
+                Token(_, TokenType::Ident(ref name)) => {
+                    names.push(name.clone());
+                    match self.toks.next().eof()? {
+                        Token(_, TokenType::Comma) => continue,
+                        Token(_, TokenType::RightBrace(')')) => break,
+                        Token(line, tok) => return Err(ParseErr::Syntax(line, format!("Expected either a closing brace or a comma after argument name {}, got {}", name, tok)))
+                    };
+                }
+                Token(_, TokenType::RightBrace(')')) => break,
+                Token(line, tok) => {
+                    return Err(ParseErr::Syntax(
+                        line,
+                        format!(
+                        "Expected closing brace, comma, or argument name after typename, got {}",
+                        tok
+                    ),
+                    ))
+                }
+            }
+        }
+
+        let ret_type = self.parse_type().ok_or_else(|| {
+            ParseErr::Syntax(
+                open.0,
+                format!("Expected a return type after function prototype {}", name),
+            )
+        })?;
+
+        //Return the function prototype
+        Ok(FnProto {
+            name,
+            attrs,
+            arg_names: names,
+            args: types,
+            ret: ret_type,
+        })
+    }
+
+    /// Parse a function declaration, if the ext attribute is set in the prototype then no body is parsed, and if the prototype ends with a semicolon
+    /// no body is parsed. This assumes that the `fun` keyword is already consumed
+    fn parse_fn(&mut self) -> Result<Ast<'ctx>, ParseErr> {
+        let proto = self.parse_proto()?; //Get the function prototype
+                                         //No body needed, return just the declaration
+        if proto.attrs.contains(FnAttrs::EXTERN) {
+            return Ok(Ast::FnProto(proto));
+        } else {
+            match self.toks.peek().eof()? {
+                Token(_, TokenType::Semicolon) => return Ok(Ast::FnProto(proto)),
+                Token(_, TokenType::LeftBrace('{')) => {
+                    return Ok(Ast::Fn(proto, self.parse_body()?))
+                }
+                Token(line, tok) => {
+                    return Err(ParseErr::Syntax(
+                        *line,
+                        format!(
+                        "Expected a semicolon or function body after function prototype {}, got {}",
+                        proto.name, tok
+                    ),
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Parse a function call, this assumes that the function name has already been consumed
+    fn parse_call(&mut self, name: String) -> Result<Ast<'ctx>, ParseErr> {
+        let _ = self.toks.next(); //Consume the opening brace token
+
+        let mut args = Body::new(); //Create a list of argument expressions
+
+        //Loop and take all expressions from the arguments
+        loop {
+            args.push(self.parse_expr()?); //Parse an argument expression
+                                           //Either there is a comma delimiter or a closing brace
+            match self.toks.next().eof()? {
+                Token(_, TokenType::Comma) => (),
+                Token(_, TokenType::RightBrace(')')) => break,
+                Token(line, tok) => {
+                    return Err(ParseErr::Syntax(
+                        line,
+                        format!("Unexpected token {}, expecting comma or closing brace", tok),
+                    ))
+                }
+            }
+        }
+
+        //Return the function call
+        Ok(Ast::Call { name, args })
+    }
+
+    /// Parse a function, if statement, or other body that is enclosed in curly braces. This assumes that the opening left brace has not been consumed yet
+    fn parse_body(&mut self) -> Result<Body<'ctx>, ParseErr> {
+        let _ = self.toks.next(); //Consume the left brace character from the token stream
+
+        let mut body = Body::new(); //Create a new body to hold the
+                                    //Parse expressions until the closing brace
+        while !self.toks.peek().eof()?.is(TokenType::RightBrace('}')) {
+            body.push(self.parse_complete()?); //Parse a complete expression
+        }
+        self.toks.next(); //Consume the closing brace token
+
+        Ok(body)
     }
 
     /// Parse a primary expression from the input token stream
@@ -133,6 +316,18 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                         .as_basic_value_enum(),
                 ))
             }
+
+            //This is either a variable access or function call
+            Token(_, TokenType::Ident(ident)) => {
+                //Check if it is a function call or a variable access
+                match self.toks.peek().eof()? {
+                    //This is a call because of the braces
+                    Token(_, TokenType::LeftBrace('(')) => return self.parse_call(ident),
+                    //Otherwise, this is a variable access
+                    _ => Ok(Ast::VarAccess(ident)),
+                }
+            },
+            Token(_, TokenType::Key(crate::lex::Key::Fun)) => return self.parse_fn(),
 
             Token(line, tok) => Err(ParseErr::Syntax(line, format!("Unexpected token {}", tok))),
         }
@@ -199,5 +394,38 @@ impl fmt::Display for ParseErr {
             Self::UnexpectedEOF => write!(f, "Unexpected end of file!"),
             Self::Syntax(line, msg) => write!(f, "Syntax error on line #{}: {}", line, msg),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::BufReader;
+
+    use crate::lex::Lexer;
+
+    use super::*;
+
+    #[test]
+    pub fn parse_correct() {
+        let ctx = Context::create();
+
+        const SRC: &[u8] = b"
+        fun testing(i32 a) i32 {
+        
+        };
+        ";
+
+        let mut reader = BufReader::new(SRC);
+        let mut parser: Parser<'_, Lexer<_>> = Parser::new(&ctx, Lexer::from_reader(&mut reader));
+
+        assert_eq!(parser.parse().unwrap(), vec![
+            Ast::Fn(FnProto{
+                name: "testing".to_owned(),
+                attrs: FnAttrs::empty(),
+                arg_names: vec!["a".to_owned()],
+                args: vec![ctx.custom_width_int_type(32).as_basic_type_enum()],
+                ret: ctx.custom_width_int_type(32).as_basic_type_enum(),
+            }, vec![])
+        ], "Parsing a function definition and prototype fails")
     }
 }

@@ -2,14 +2,58 @@
 //! performs the first pass over a source file; turning the raw text into a token stream
 //!
 
-use std::fmt;
+use std::convert::TryInto;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::iter::Iterator;
 use std::iter::Peekable;
+use std::{convert, fmt};
 
 use utf8_chars::BufReadCharsExt;
 use utf8_chars::Chars;
+
+/// The `Key` enum represents every type of keyword that can be lexed from the character stream.
+/// It is contained in the [Key](enum@TokenType::Key) variant of the `Token` enum and is not meant to be constructed directly
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Key {
+    /// The `fun` keyword is used to declare functions
+    Fun,
+
+    /// The `ext` keyword is used to declare items that are defined in other compilation units
+    Ext,
+
+    /// The `const` keyword is used to declare items that are defined as SSA form
+    Const,
+
+    /// The `ptr` keyword is used to declare pointer types
+    Ptr,
+}
+
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Const => write!(f, "const"),
+            Self::Ext => write!(f, "ext"),
+            Self::Fun => write!(f, "fun"),
+            Self::Ptr => write!(f, "ptr"),
+        }
+    }
+}
+
+impl convert::TryFrom<&str> for Key {
+    type Error = ();
+    /// Convert a string to a keyword variant
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "const" => Ok(Self::Const),
+            "ext" => Ok(Self::Ext),
+            "fun" => Ok(Self::Fun),
+            "ptr" => Ok(Self::Ptr),
+            _ => Err(()),
+        }
+    }
+}
 
 /// The `TokenType` enumerates every type of token that can be lexed from the input source file
 /// and is parsed into an AST by the parser
@@ -38,6 +82,9 @@ pub enum TokenType {
 
     /// Any operator token
     Op(String),
+
+    /// Any keyword
+    Key(Key),
 }
 
 impl fmt::Display for TokenType {
@@ -52,6 +99,7 @@ impl fmt::Display for TokenType {
             Self::Semicolon => write!(f, "Semicolon"),
             Self::Error(err) => write!(f, "Error Lexing: {}", err),
             Self::Op(op) => write!(f, "Operator: {}", op),
+            Self::Key(key) => write!(f, "Keyword: {}", key),
         }
     }
 }
@@ -70,7 +118,7 @@ impl Token {
 
     /// Check if this token is the same as another
     pub fn is(&self, is: TokenType) -> bool {
-        std::mem::discriminant(&self.1) == std::mem::discriminant(&is)
+        self.1 == is
     }
 }
 
@@ -138,7 +186,14 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             None => false,
         } {}
 
-        Token::new(self.line, TokenType::Ident(ident))
+        //Create either a keyword or an identifier token
+        Token::new(
+            self.line,
+            match ident.as_str().try_into() {
+                Ok(key) => TokenType::Key(key),
+                _ => TokenType::Ident(ident),
+            },
+        )
     }
 
     /// Lex a new token from the input stream or EOF if there are no tokens left to lex
@@ -247,19 +302,15 @@ mod tests {
     use super::*;
     #[test]
     pub fn lex_correct() {
-        let lexed = Lexer::new(&mut BufReader::new(b"test")).into_vec();
+        let lexed = Lexer::new(&mut BufReader::new(b"fun(i32)")).into_vec();
 
         assert_eq!(
             lexed,
             vec![
-                Token::new(0, TokenType::Semicolon),
-                Token::new(0, TokenType::Ident("fn".into())),
-                Token::new(0, TokenType::LeftBrace('[')),
-                Token::new(0, TokenType::Ident("si".into())),
-                Token::new(0, TokenType::RightBrace(']')),
-                Token::new(1, TokenType::Ident("test".into())),
-                Token::new(1, TokenType::LeftBrace('(')),
-                Token::new(1, TokenType::RightBrace(')')),
+                Token::new(0, TokenType::Key(Key::Fun)),
+                Token::new(0, TokenType::LeftBrace('(')),
+                Token::new(0, TokenType::Ident("i32".into())),
+                Token::new(0, TokenType::RightBrace(')')),
             ],
             "Lexer fails to lex tokens correctly"
         )
