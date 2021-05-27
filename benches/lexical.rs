@@ -1,8 +1,9 @@
 use spark::lex::Lexer;
+use std::io::BufReader;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-const LONG_SOURCE: &'static str = r#"
+const LONG_SOURCE: &[u8] = br#"
 "string literal yayy
 testing newline ayayay
 "
@@ -15,7 +16,7 @@ idenet ewetasfnjaeifunhi ** 2000 20010000 | + +@ @ KAdjwinh190237 W23113.13
 /// Benchmark the lexer's speed on a large input source code string
 pub fn lex(bencher: &mut Criterion) {
     bencher.bench_function("lex_long", |bencher| {
-        bencher.iter(|| black_box(Lexer::new(LONG_SOURCE).last()));
+        bencher.iter(|| black_box(Lexer::new(&mut BufReader::new(LONG_SOURCE)).last()));
     });
 }
 

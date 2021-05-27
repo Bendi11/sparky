@@ -20,8 +20,8 @@ pub enum TokenType {
     /// Any closing right brace like }, ], or )
     RightBrace(char),
 
-    /// Any unknown identifier, the code generator will ensure that this is a valid word at compile time
-    Word(String),
+    /// Any unknown identifier, this could be a keyword or plain identifier
+    Ident(String),
 
     /// A string literal enclosed in double quotes
     StrLiteral(String),
@@ -35,6 +35,9 @@ pub enum TokenType {
 
     /// An internal token used for error messages when lexing
     Error(String),
+
+    /// Any operator token
+    Op(String),
 }
 
 impl fmt::Display for TokenType {
@@ -42,12 +45,13 @@ impl fmt::Display for TokenType {
         match self {
             Self::LeftBrace(left) => write!(f, "Open Brace {}", left),
             Self::RightBrace(right) => write!(f, "Closing Brace {}", right),
-            Self::Word(ident) => write!(f, "Word: {}", ident),
+            Self::Ident(ident) => write!(f, "Identifier: {}", ident),
             Self::StrLiteral(s) => write!(f, "String Literal: \"{}\"", s),
             Self::NumLiteral(num) => write!(f, "Number Literal: {}", num),
             Self::Comma => write!(f, "Comma"),
             Self::Semicolon => write!(f, "Semicolon"),
             Self::Error(err) => write!(f, "Error Lexing: {}", err),
+            Self::Op(op) => write!(f, "Operator: {}", op),
         }
     }
 }
@@ -55,43 +59,38 @@ impl fmt::Display for TokenType {
 /// The `Token` struct stores a [TokenType](enum@TokenType) enumeration representing the type of token,
 /// and metadata like the line of the token
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Token {
-    /// The line number that this token was lexed on
-    pub line: usize,
-    /// The token that was actually lexed
-    pub token: TokenType,
-}
+pub struct Token(pub usize, pub TokenType);
 
 impl Token {
     /// Create a new `Token` using the given line number and token type
     #[inline]
     pub const fn new(line: usize, token: TokenType) -> Self {
-        Self { line, token }
+        Self(line, token)
     }
 
     /// Check if this token is the same as another
     pub fn is(&self, is: TokenType) -> bool {
-        std::mem::discriminant(&self.token) == std::mem::discriminant(&is)
+        std::mem::discriminant(&self.1) == std::mem::discriminant(&is)
     }
 }
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Line #{}: {}", self.line, self.token)
+        write!(f, "Line #{}: {}", self.0, self.1)
     }
 }
 
 impl PartialEq<TokenType> for Token {
     //Implicitly compare a Token and a TokenType
     fn eq(&self, tok: &TokenType) -> bool {
-        self.token.eq(tok)
+        self.1.eq(tok)
     }
 }
 
-impl Into<TokenType> for Token {
-    //Convert a token to a TokenType
-    fn into(self) -> TokenType {
-        self.token
+impl From<Token> for TokenType {
+    /// Convert a token to a TokenType
+    fn from(tok: Token) -> Self {
+        tok.1
     }
 }
 
@@ -104,10 +103,10 @@ pub struct Lexer<'a, R: BufRead + ?Sized + fmt::Debug> {
     chars: Peekable<Chars<'a, R>>,
 }
 
-impl<'a> Lexer<'a, BufReader<&'a [u8]> > {
+impl<'a> Lexer<'a, BufReader<&'a [u8]>> {
     /// Create a new Lexer using the given source string, creating an iterator over the chars of the source string
     #[inline]
-    pub fn new(reader: &'a mut BufReader<&'a [u8]>) -> Self {     
+    pub fn new(reader: &'a mut BufReader<&'a [u8]>) -> Self {
         Self {
             line: 0,
             chars: reader.chars().peekable(),
@@ -131,15 +130,15 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         let mut ident = String::from(first); //Create a string from the first char given
         while match self.chars.peek() {
             //Push alphabetic characters to the string
-            Some(Ok(c)) if c.is_alphanumeric() => {
+            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' => {
                 ident.push(self.chars.next().unwrap().unwrap());
                 true
-            },
+            }
             Some(_) => false,
             None => false,
         } {}
 
-        Token::new(self.line, TokenType::Word(ident))
+        Token::new(self.line, TokenType::Ident(ident))
     }
 
     /// Lex a new token from the input stream or EOF if there are no tokens left to lex
@@ -202,6 +201,24 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
 
                 Some(Token::new(self.line, TokenType::StrLiteral(literal))) //Return the string literal
             }
+            //This is an operator
+            '+' | '/' | '*' | '%' | '^' | '&' | '|' | '=' => {
+                let peek = self.chars.peek();
+                //Check if this is a two character operator
+                if let Some(Ok(peek)) = peek {
+                    match (next, peek) {
+                        ('=', '=') | ('>', '=') | ('<', '=') => {
+                            return Some(Token(
+                                self.line,
+                                TokenType::Op(String::from(next) + String::from(*peek).as_str()),
+                            ))
+                        }
+                        _ => (),
+                    }
+                }
+                Some(Token(self.line, TokenType::Op(String::from(next))))
+                //Return the operator string
+            }
 
             //Parse identifier or keyword
             c => Some(self.ident(c)),
@@ -212,7 +229,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     /// Turning the token iterator into a Vec of Tokens is more memory efficient because we can get rid of the large source file
     /// in memory and only work with tokens.
     #[inline(always)]
-    pub fn to_vec(self) -> Vec<Token> {
+    pub fn into_vec(self) -> Vec<Token> {
         self.collect::<Vec<Token>>()
     }
 }
@@ -230,20 +247,17 @@ mod tests {
     use super::*;
     #[test]
     pub fn lex_correct() {
-        let lexed = Lexer::new(
-            &mut BufReader::new(b"test")
-        )
-        .to_vec();
+        let lexed = Lexer::new(&mut BufReader::new(b"test")).into_vec();
 
         assert_eq!(
             lexed,
             vec![
                 Token::new(0, TokenType::Semicolon),
-                Token::new(0, TokenType::Word("fn".into())),
+                Token::new(0, TokenType::Ident("fn".into())),
                 Token::new(0, TokenType::LeftBrace('[')),
-                Token::new(0, TokenType::Word("si".into())),
+                Token::new(0, TokenType::Ident("si".into())),
                 Token::new(0, TokenType::RightBrace(']')),
-                Token::new(1, TokenType::Word("test".into())),
+                Token::new(1, TokenType::Ident("test".into())),
                 Token::new(1, TokenType::LeftBrace('(')),
                 Token::new(1, TokenType::RightBrace(')')),
             ],

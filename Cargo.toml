@@ -9,6 +9,7 @@ edition = "2018"
 hashbrown = "0.11.2" # For mapping strings to values throughout the compiler
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] } # For actual code generation
 utf8-chars = "1" # For reading a BufReader character by character without reading entire file to string
+bitflags = "1.2" # For function and variable attributes
 
 [dev-dependencies]
 criterion = {version = "0.3", features = ["html_reports"] } # For benchmarking performance of compiler
@@ -18,10 +19,6 @@ name = "lexical"
 path = "benches/lexical.rs"
 harness = false
 
-[[bench]]
-name = "parser"
-path = "benches/parse.rs"
-harness = false
 
 [profile.bench]
 lto = true

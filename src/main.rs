@@ -1,7 +1,5 @@
-use inkwell::context::Context;
-
+pub mod ast;
 pub mod lex;
+pub mod parse;
 
-fn main() {
-    
-}
+fn main() {}
