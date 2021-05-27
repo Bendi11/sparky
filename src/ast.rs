@@ -6,7 +6,7 @@ use crate::lex::Key;
 use std::convert::TryFrom;
 
 use bitflags::bitflags;
-use inkwell::{types::BasicTypeEnum, values::BasicValueEnum};
+use inkwell::{types::{AnyTypeEnum, BasicTypeEnum}, values::{BasicValueEnum, IntValue}};
 
 bitflags! {
     /// Attributes that can be given to a function prototype
@@ -117,6 +117,12 @@ pub enum Ast<'ctx> {
         args: Body<'ctx>,
     },
 
-    /// This is a literal of any type
-    Literal(BasicValueEnum<'ctx>),
+    /// This is a string literal
+    StrLiteral(String),
+
+    /// This is a number literal
+    NumLiteral(IntValue<'ctx>),
+
+    /// Return an expression
+    Ret(Box<Ast<'ctx>>),
 }

@@ -19,6 +19,11 @@ name = "lexical"
 path = "benches/lexical.rs"
 harness = false
 
+[[bench]]
+name = "parse"
+path = "benches/parse.rs"
+harness = false
+
 
 [profile.bench]
 lto = true

@@ -38,6 +38,7 @@
 //! body = "{" , { expression } , "}";
 //! ```
 
+use std::convert::TryInto;
 use std::fmt;
 use std::iter::Peekable;
 
@@ -47,10 +48,10 @@ use crate::{
     ast::{Ast, FnAttrs},
     lex::{Token, TokenType},
 };
+use inkwell::AddressSpace;
 use inkwell::context::Context;
 use inkwell::types::BasicType;
 use inkwell::types::BasicTypeEnum;
-use inkwell::values::BasicValue;
 use std::convert::TryFrom;
 
 /// The `Parser` struct contains a reference the the llvm compilation [Context](inkwell::context::Context), used for creating types that LLVM
@@ -165,7 +166,7 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                     open.0,
                     format!("Expected a valid typename in argument list!"),
                 )
-            })?);
+            })?.try_into().unwrap());
             //Get either an identifier or a comma after the name
             match self.toks.next().eof()? {
                 Token(_, TokenType::Comma) => {
@@ -203,7 +204,7 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                 open.0,
                 format!("Expected a return type after function prototype {}", name),
             )
-        })?;
+        })?.try_into().unwrap();
 
         //Return the function prototype
         Ok(FnProto {
@@ -296,27 +297,27 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                         ));
                     }
 
-                    return Ok(Ast::Literal(
+                    return Ok(Ast::NumLiteral(
                         ty.into_int_type()
                             .const_int_from_string(
                                 num.as_str(),
                                 inkwell::types::StringRadix::Decimal,
                             )
-                            .unwrap()
-                            .as_basic_value_enum(),
+                            .unwrap(),
                     ));
                     //Get a constant int for the specified type
                 }
                 //Return the default i32 type
-                Ok(Ast::Literal(
+                Ok(Ast::NumLiteral(
                     self.ctx
                         .i32_type()
                         .const_int_from_string(num.as_str(), inkwell::types::StringRadix::Decimal)
                         .unwrap()
-                        .as_basic_value_enum(),
                 ))
             }
 
+            //Push a string literal
+            Token(_, TokenType::StrLiteral(s)) => Ok(Ast::StrLiteral(s)),
             //This is either a variable access or function call
             Token(_, TokenType::Ident(ident)) => {
                 //Check if it is a function call or a variable access
@@ -327,6 +328,7 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                     _ => Ok(Ast::VarAccess(ident)),
                 }
             },
+            Token(_, TokenType::Key(crate::lex::Key::Ret)) => return Ok(Ast::Ret(Box::new(self.parse_expr()?))), 
             Token(_, TokenType::Key(crate::lex::Key::Fun)) => return self.parse_fn(),
 
             Token(line, tok) => Err(ParseErr::Syntax(line, format!("Unexpected token {}", tok))),
@@ -337,15 +339,39 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
     fn parse_type(&mut self) -> Option<BasicTypeEnum<'ctx>> {
         match self.toks.peek() {
             // This is an integer type
-            Some(Token(_, TokenType::Ident(s))) if s.starts_with('i') || s.starts_with('u') => {
+            Some(Token(_, TokenType::Ident(ref s))) if s.starts_with('i') || s.starts_with('u') => {
+                let s = match self.toks.next() {
+                    Some(Token(_, TokenType::Ident(s))) => s,
+                    _ => unreachable!(),
+                }; //Consume the typename token
+
                 if s.len() < 2 {
                     return None;
                 }
-                let width = s[1..].parse::<u32>().ok()?; //Strip the prefix from the int type
-                self.toks.next(); //Consume the typename token
-                Some(self.ctx.custom_width_int_type(width).as_basic_type_enum())
+
+                //Get a type for this string
+                let mut ty = match s.as_str() {
+                    "i8" | "u8" => self.ctx.i8_type(),
+                    "i16" | "u16" => self.ctx.i16_type(),
+                    "i32" | "u32" => self.ctx.i32_type(),
+                    "i64" | "u64" => self.ctx.i64_type(),
+                    _ => return None,
+                }.as_basic_type_enum();
+
+                //Apply pointer types
+                while match self.toks.peek() {
+                    Some(Token(_, TokenType::Key(crate::lex::Key::Ptr))) => {
+                        self.toks.next();
+                        ty = ty.ptr_type(AddressSpace::Local).as_basic_type_enum();
+                        true
+                    }
+                    _ => false
+                } {}
+
+                Some(ty)
+                
                 //Return the type constructed from the width
-            }
+            },
             _ => None,
         }
     }

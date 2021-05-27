@@ -28,6 +28,9 @@ pub enum Key {
 
     /// The `ptr` keyword is used to declare pointer types
     Ptr,
+
+    /// The `ret` keyword means return from the current function
+    Ret,
 }
 
 impl fmt::Display for Key {
@@ -37,6 +40,7 @@ impl fmt::Display for Key {
             Self::Ext => write!(f, "ext"),
             Self::Fun => write!(f, "fun"),
             Self::Ptr => write!(f, "ptr"),
+            Self::Ret => write!(f, "ret"),
         }
     }
 }
@@ -50,6 +54,7 @@ impl convert::TryFrom<&str> for Key {
             "ext" => Ok(Self::Ext),
             "fun" => Ok(Self::Fun),
             "ptr" => Ok(Self::Ptr),
+            "ret" => Ok(Self::Ret),
             _ => Err(()),
         }
     }

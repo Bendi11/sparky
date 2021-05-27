@@ -4,13 +4,9 @@ use std::io::BufReader;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 const LONG_SOURCE: &[u8] = br#"
-"string literal yayy
-testing newline ayayay
-"
-+ + + testident - 313213 <= + "test"
-123 --|2 testing literal * 
-idenet ewetasfnjaeifunhi ** 2000 20010000 | + +@ @ KAdjwinh190237 W23113.13
-/ (((****))) "TESTIN"""G
+fun testing_fun(i32 argc, u8 ptr ptr argv) i32 {
+    print("Testing!");
+}
 "#;
 
 /// Benchmark the lexer's speed on a large input source code string
