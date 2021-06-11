@@ -52,6 +52,7 @@ use inkwell::context::Context;
 use inkwell::types::BasicType;
 use inkwell::types::BasicTypeEnum;
 use inkwell::AddressSpace;
+use spark::ast::VarAttrs;
 use std::convert::TryFrom;
 
 /// The `Parser` struct contains a reference the the llvm compilation [Context](inkwell::context::Context), used for creating types that LLVM
@@ -164,9 +165,10 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
             self.toks.next();
         } else {
             loop {
+                let ty_name = self.toks.next().eof()?.expect_typename()?; //Get the typename from the tokens
                 //Parse a typename from the tokens
                 types.push(
-                    self.parse_type()
+                    self.parse_type(ty_name)
                         .ok_or_else(|| {
                             ParseErr::Syntax(
                                 open.0,
@@ -210,8 +212,9 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
             }
         }
 
+        let ret_name = self.toks.next().eof()?.expect_typename()?;
         let ret_type = self
-            .parse_type()
+            .parse_type(ret_name)
             .ok_or_else(|| {
                 ParseErr::Syntax(
                     open.0,
@@ -304,7 +307,8 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
             //This is a number literal
             Token(line, TokenType::NumLiteral(num)) => {
                 //Check if there is an explicit type after this literal
-                if let Some(ty) = self.parse_type() {
+                if let Some(Token(line, TokenType::Typename(ty))) = self.toks.peek() {
+                    let ty = self.parse_type(ty).unwrap();
                     if !ty.is_int_type() {
                         return Err(ParseErr::Syntax(
                             line,
@@ -347,51 +351,69 @@ impl<'ctx, I: Iterator<Item = Token>> Parser<'ctx, I> {
                 return Ok(Ast::Ret(Box::new(self.parse_expr()?)))
             }
             Token(_, TokenType::Key(crate::lex::Key::Fun)) => return self.parse_fn(),
+            Token(_, TokenType::Typename(name)) => {
+                let ty = self.parse_type(name).unwrap();
+                self.parse_var_decl(ty)
+            },
 
             Token(line, tok) => Err(ParseErr::Syntax(line, format!("Unexpected token {}", tok))),
         }
     }
 
     /// Attempt to parse a type or None if the type name is invalid
-    fn parse_type(&mut self) -> Option<BasicTypeEnum<'ctx>> {
-        match self.toks.peek() {
-            // This is an integer type
-            Some(Token(_, TokenType::Ident(ref s))) if s.starts_with('i') || s.starts_with('u') => {
-                let s = match self.toks.next() {
-                    Some(Token(_, TokenType::Ident(s))) => s,
-                    _ => unreachable!(),
-                }; //Consume the typename token
-
-                if s.len() < 2 {
-                    return None;
-                }
-
-                //Get a type for this string
-                let mut ty = match s.as_str() {
-                    "i8" | "u8" => self.ctx.i8_type(),
-                    "i16" | "u16" => self.ctx.i16_type(),
-                    "i32" | "u32" => self.ctx.i32_type(),
-                    "i64" | "u64" => self.ctx.i64_type(),
-                    _ => return None,
-                }
-                .as_basic_type_enum();
-
-                //Apply pointer types
-                while match self.toks.peek() {
-                    Some(Token(_, TokenType::Key(crate::lex::Key::Ptr))) => {
-                        self.toks.next();
-                        ty = ty.ptr_type(AddressSpace::Generic).as_basic_type_enum();
-                        true
-                    }
-                    _ => false,
-                } {}
-
-                Some(ty)
-
-                //Return the type constructed from the width
+    fn parse_type(&mut self, name: String) -> Option<BasicTypeEnum<'ctx>> {
+        if name.starts_with('i') || name.starts_with('u') {
+            if s.len() < 2 {
+                return None;
             }
-            _ => None,
+
+            //Get a type for this string
+            let mut ty = match s.as_str() {
+                "i8" | "u8" => self.ctx.i8_type(),
+                "i16" | "u16" => self.ctx.i16_type(),
+                "i32" | "u32" => self.ctx.i32_type(),
+                "i64" | "u64" => self.ctx.i64_type(),
+                _ => return None,
+            }
+            .as_basic_type_enum();
+
+            //Apply pointer types
+            while match self.toks.peek() {
+                Some(Token(_, TokenType::Key(crate::lex::Key::Ptr))) => {
+                    self.toks.next();
+                    ty = ty.ptr_type(AddressSpace::Generic).as_basic_type_enum();
+                    true
+                }
+                _ => false,
+            } {}
+
+            Some(ty)
+
+            //Return the type constructed from the width
         }
+    }
+
+    /// Parse a variable declaration with attributes and type, assumes type has already been parsed
+    fn parse_var_decl(&mut self, ty: BasicTypeEnum<'ctx>) -> Result<Ast<'ctx>, ParseErr> {
+        let mut attrs = VarAttrs::empty();
+        while let Token(line, TokenType::Key(key) ) = self.toks.peek().eof()? {
+            self.toks.next();
+            match VarAttrs::try_from(key) {
+                Ok(attr) => attrs = attrs | attr,
+                Err(_) => return Err(ParseErr::Syntax(line, format!("Unknown variable attribute {}", key))),
+            }
+        }
+        let var_name = match self.toks.next().eof()? {
+            Token(_, TokenType::Ident(name)) => name,
+            Token(line, unexpected) => return Err(ParseErr::Syntax(line, format!("Unexpected token {}, expecting an identifier varaible name after type", unexpected)))
+        };
+
+        Ok(Ast::VarDecl{
+            name: var_name,
+            attrs,
+            ty
+        })
+
     }
 }
 

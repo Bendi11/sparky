@@ -12,6 +12,8 @@ use std::{convert, fmt};
 use utf8_chars::BufReadCharsExt;
 use utf8_chars::Chars;
 
+use crate::parse::ParseErr;
+
 /// The `Key` enum represents every type of keyword that can be lexed from the character stream.
 /// It is contained in the [Key](enum@TokenType::Key) variant of the `Token` enum and is not meant to be constructed directly
 #[repr(u8)]
@@ -81,6 +83,9 @@ pub enum TokenType {
     Comma,
     /// Semicolon used to begin declarations
     Semicolon,
+    
+    /// Typename like i32 or u8, does not include attributes like ptr
+    Typename(String),
 
     /// An internal token used for error messages when lexing
     Error(String),
@@ -105,6 +110,7 @@ impl fmt::Display for TokenType {
             Self::Error(err) => write!(f, "Error Lexing: {}", err),
             Self::Op(op) => write!(f, "Operator: {}", op),
             Self::Key(key) => write!(f, "Keyword: {}", key),
+            Self::Typename(ty) => write!(f, "Typename: {}", ty),
         }
     }
 }
@@ -124,6 +130,14 @@ impl Token {
     /// Check if this token is the same as another
     pub fn is(&self, is: TokenType) -> bool {
         self.1 == is
+    }
+
+    /// Get this token as a typename and return the typename value or an error
+    pub fn expect_typename(self) -> Result<String, ParseErr> {
+        match self {
+            Self(_, TokenType::Typename(ty)) => Ok(ty),
+            Self(line, unexpected) => Err(ParseErr::Syntax(line, format!("Unexpected token {}, expecting a typename", unexpected))),
+        }
     }
 }
 
@@ -191,14 +205,18 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             None => false,
         } {}
 
-        //Create either a keyword or an identifier token
-        Token::new(
-            self.line,
-            match ident.as_str().try_into() {
-                Ok(key) => TokenType::Key(key),
-                _ => TokenType::Ident(ident),
-            },
-        )
+        match ident.as_str() {
+            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" => Token::new(self.line, TokenType::Typename(ident)),
+            ident => //Create either a keyword or an identifier token
+            Token::new(
+                self.line,
+                match ident.as_str().try_into() {
+                    Ok(key) => TokenType::Key(key),
+                    _ => TokenType::Ident(ident),
+                },
+            )
+        }
+        
     }
 
     /// Lex a new token from the input stream or EOF if there are no tokens left to lex

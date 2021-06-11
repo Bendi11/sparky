@@ -1,15 +1,8 @@
 use std::convert::TryInto;
 
-use inkwell::{
-    builder::Builder,
-    context::Context,
-    module::{Linkage, Module},
-    types::BasicType,
-    values::{
+use inkwell::{AddressSpace, builder::Builder, context::Context, module::{Linkage, Module}, types::{BasicType, BasicTypeEnum}, values::{
         AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode,
-    },
-    AddressSpace,
-};
+    }};
 
 use crate::ast::{Ast, Body, FnProto};
 
@@ -24,6 +17,9 @@ pub struct Compiler<'ctx> {
 
     /// The IR builder that we use to actually generate LLVM IR that can then be compiled to a native object file
     pub builder: Builder<'ctx>,
+    
+    /// The current function that we are generating code in
+    current_fn: Option<&'ctx FunctionValue<'ctx>>,
 }
 
 impl<'ctx> Compiler<'ctx> {
@@ -33,6 +29,7 @@ impl<'ctx> Compiler<'ctx> {
             module: ctx.create_module("spark_module"),
             builder: ctx.create_builder(),
             ctx,
+            current_fn: None
         }
     }
 
@@ -44,6 +41,46 @@ impl<'ctx> Compiler<'ctx> {
 
         self.module.verify()?;
         Ok(self.module)
+    }
+
+    /// Create an entry alloca for mutable variables
+    fn create_entry_alloca(&mut self, f: FunctionValue<'ctx>, name: String, ty: BasicTypeEnum<'ctx>) -> BasicValueEnum<'ctx> {
+        let mut entry_builder = self.ctx.create_builder();
+        entry_builder.position_at(f.get_first_basic_block().unwrap(), &f.get_first_basic_block().unwrap().get_first_instruction().unwrap());
+        return entry_builder.build_alloca(ty, name).as_basic_value_enum();
+    }
+
+    /// Generate code for a binary expression
+    pub fn gen_bin(&mut self, lhs: Box<Ast<'ctx>>, rhs: Box<Ast<'ctx>>, op: String) -> Result<BasicValueEnum<'ctx>, Box<dyn std::error::Error>> {
+        //If lhs is a var declaration, then only an assignment operator can be used
+        if let Ast::VarDecl{name, ty, attrs} = lhs {
+            let var: BasicValueEnum<'ctx> = self.gen(lhs.into())?.try_into()?;
+            let rhs: BasicValueEnum<'ctx> = self.gen(rhs.into()).try_into()?;
+            if ty != rhs.get_type() {
+                return Err(format!("Variable type does not match expression type being assigned!"))
+            }
+
+            if op.as_str() != "=" {
+                return Err(format!("Variable declaration can only be assigned, operator {} used", op))
+            }
+            
+        }
+        let lhs: BasicValueEnum<'ctx> = self.gen(lhs.into())?.try_into()?;
+        let rhs: BasicValueEnum<'ctx> = self.gen(rhs.into())?.try_into()?;
+        if lhs.get_type() != rhs.get_type() {
+            return Err(format!("Left hand side of binary expression does not match types with right hand side"))
+        }
+        let ty = rhs.get_type();
+        match ty {
+            BasicTypeEnum::IntType(ty) => match op.as_str() {
+                "+" => Ok(self.builder.build_int_add(lhs, rhs, "tmp_iadd")),
+                "-" => Ok(self.builder.build_int_sub(lhs, rhs, "tmp_isub")),
+                "*" => Ok(self.builder.build_int_mul(lhs, rhs, "tmp_imul")),
+                "/" => Ok(self.builder.build_int_signed_div(lhs, rhs, "tmp_isigneddiv")),
+                unknown => return Err(format!("Unknown operator {} on integer types!", unknown)),
+            },
+            _ => return Err(format!("Type of binary expression is {}, and no binary operators can be applied to types of {}", ty, ty))
+        }
     }
 
     /// Generate code for a function prototype
@@ -97,8 +134,12 @@ impl<'ctx> Compiler<'ctx> {
             Ast::Ret(val) => {
                 let val = BasicValueEnum::try_from(self.gen(*val)?).unwrap();
                 Ok(self.builder.build_return(Some(&val)).as_any_value_enum())
-            }
+            },
+            Ast::VarDecl{name, attrs, ty} => {
+
+            },
             Ast::Fn(proto, body) => Ok(self.gen_fn_decl(proto, body)?.as_any_value_enum()),
+            Ast::Binary{lhs, rhs, op} => Ok(self.gen_bin(*lhs, *rhs, op)?),
             _ => unimplemented!(),
         }
     }
@@ -112,6 +153,7 @@ impl<'ctx> Compiler<'ctx> {
         //Check if the function was already declared
         match self.module.get_function(proto.name.as_str()) {
             Some(f) => {
+                self.current_fn = Some(&f);
                 //TODO: make sure a function isn't defined twice
                 let entry = self.ctx.append_basic_block(f, "entry"); //Create an entry basic block
                 self.builder.position_at_end(entry); //Position the instruction inserter into the function
@@ -122,6 +164,7 @@ impl<'ctx> Compiler<'ctx> {
             }
             None => {
                 let f = self.gen_fn_proto(proto)?;
+                self.current_fn = Some(&f);
                 let entry = self.ctx.append_basic_block(f, "entry"); //Create an entry basic block
                 self.builder.position_at_end(entry); //Position the instruction inserter into the function
                 for expr in body {
@@ -131,6 +174,8 @@ impl<'ctx> Compiler<'ctx> {
             }
         }
     }
+
+    
 }
 
 #[cfg(test)]
