@@ -1,0 +1,67 @@
+use std::str::FromStr;
+use crate::lex::{TokenType, Op, Key};
+use crate::ast::{Ast, self};
+use crate::Type;
+
+grammar;
+
+extern {
+    type Location = usize;
+    type Error = ();
+
+    enum TokenType {
+        "(" => TokenType::LeftBrace('('),
+        ")" => TokenType::RightBrace(')'),
+        "{" => TokenType::LeftBrace('{'),
+        "}" => TokenType::RightBrace('}'),
+        "fun" => TokenType::Key(Key::Fun),
+        IntegerType => TokenType::IntType(<Type>),
+        "struct" => TokenType::Key(Key::Struct),
+        "ptr" => TokenType::Key(Key::Ptr),
+        "const" => TokenType::Key(Key::Const),
+        ";" => TokenType::Semicolon,
+        "." => TokenType::Dot,
+        Ident => TokenType::Ident(<String>),
+        StrLiteral => TokenType::StrLiteral(<String>),
+        NumLiteral => TokenType::NumLiteral(<String>),
+        Op => TokenType::Op(<Op>),
+        "," => TokenType::Comma,
+    }
+}
+
+pub FunProto: ast::FunProto = {
+    "fun" <attrs:Attributes> <name:Ident> "(" <args:CommaList<(Typename Ident?)>> ")" <ret:Typename> => ast::FunProto {
+        name,
+        ret,
+        attrs,
+        args,
+    }
+};
+
+
+
+
+CommaList<T>: Vec<T> = {
+    <mut first:(<T> ",")*> <last:T?> => match last {
+        Some(e) => {
+            first.push(e);
+            first
+        },
+        None => first,
+    }
+};
+
+Attributes: ast::Attributes = {
+    <attrs:Attribute*> => attrs.iter().fold(ast::Attributes::empty(), |acc, v| acc | *v),
+};
+
+Attribute: ast::Attributes = {
+    "const" => ast::Attributes::CONST
+};
+
+Typename: Type = {
+    <ity:IntegerType> => ity,
+    <t:Typename> "ptr" => t.ptr_type(),
+};
+
+

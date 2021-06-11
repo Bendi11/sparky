@@ -12,6 +12,8 @@ use std::{convert, fmt};
 use utf8_chars::BufReadCharsExt;
 use utf8_chars::Chars;
 
+use crate::Type;
+
 /// The `Key` enum represents every type of keyword that can be lexed from the character stream.
 /// It is contained in the [Key](enum@TokenType::Key) variant of the `Token` enum and is not meant to be constructed directly
 #[repr(u8)]
@@ -114,6 +116,9 @@ pub enum Op {
     /// The conditional or `||` operator
     OrOr,
 
+    /// The bitwise Exclusive OR `^` operator
+    Xor,
+
     /// The conditional equality `==` operator
     Equal,
 
@@ -146,7 +151,7 @@ impl fmt::Display for Op {
             Self::Divide => "/",
             Self::Modulo => "%",
             Self::And => "&",
-            Self::AndAnd => "&&".
+            Self::AndAnd => "&&",
             Self::Or => "|",
             Self::OrOr => "||",
             Self::Equal => "==",
@@ -156,10 +161,10 @@ impl fmt::Display for Op {
             Self::Greater => ">",
             Self::GreaterEq => ">=",
             Self::LessEq => "<=",
+            Self::Xor => "^",
         })
     }
 }
-
 
 /// The `TokenType` enumerates every type of token that can be lexed from the input source file
 /// and is parsed into an AST by the parser
@@ -189,7 +194,7 @@ pub enum TokenType {
     Dot,
     
     /// Typename like i32 or u8, does not include attributes like ptr
-    Typename(String),
+    IntType(Type),
 
     /// An internal token used for error messages when lexing
     Error(String),
@@ -214,7 +219,7 @@ impl fmt::Display for TokenType {
             Self::Error(err) => write!(f, "Error Lexing: {}", err),
             Self::Op(op) => write!(f, "Operator: {}", op),
             Self::Key(key) => write!(f, "Keyword: {}", key),
-            Self::Typename(ty) => write!(f, "Typename: {}", ty),
+            Self::IntType(ty) => write!(f, "Typename: {}", ty),
             Self::Dot => write!(f, "Period"),
         }
     }
@@ -303,13 +308,13 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         } {}
 
         match ident.as_str() {
-            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" => Token::new(self.line, TokenType::Typename(ident)),
+            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" => Token::new(self.line, TokenType::IntType(Type::int_ty(ident))),
             ident => //Create either a keyword or an identifier token
             Token::new(
                 self.line,
-                match ident.as_str().try_into() {
+                match ident.try_into() {
                     Ok(key) => TokenType::Key(key),
-                    _ => TokenType::Ident(ident),
+                    _ => TokenType::Ident(ident.to_string()),
                 },
             )
         }
@@ -339,6 +344,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             '{' | '(' | '[' => Some(Token::new(self.line, TokenType::LeftBrace(next))),
             ',' => Some(Token::new(self.line, TokenType::Comma)),
             ';' => Some(Token::new(self.line, TokenType::Semicolon)),
+            '.' => Some(Token::new(self.line, TokenType::Dot)),
 
             //Lex a number literal from the input
             c if c.is_numeric() => {
@@ -358,6 +364,16 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                 let mut literal = String::new(); //Make a string for the string literal
                 while match self.chars.next().and_then(|o| o.ok()) {
                     Some('\"') => false, //Stop looping when we take a double quote from the end
+                    //Parse escape sequences
+                    Some('\\') => {
+                        match self.chars.next().and_then(|o| o.ok())? {
+                            '\"' => literal.push('\"'),
+                            'n' => literal.push('\n'),
+                            't' => literal.push('\t'),
+                            unknown => return Some(Token(self.line, TokenType::Error(format!("Unknown escape sequence \\{}", unknown))))
+                        }
+                        true
+                    },
                     Some(c) => {
                         //Increment line number if the char is a newline
                         if c == '\n' {
@@ -377,22 +393,76 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                 Some(Token::new(self.line, TokenType::StrLiteral(literal))) //Return the string literal
             }
             //This is an operator
-            '+' | '/' | '*' | '%' | '^' | '&' | '|' | '=' => {
+              '+' 
+            | '-' 
+            | '/' 
+            | '*' 
+            | '%' 
+            | '^' 
+            | '&' 
+            | '|' 
+            | '=' 
+            | '>' 
+            | '<' => {
                 let peek = self.chars.peek();
                 //Check if this is a two character operator
                 if let Some(Ok(peek)) = peek {
                     match (next, peek) {
-                        ('=', '=') | ('>', '=') | ('<', '=') => {
+                        ('=', '=') => {
+                            self.chars.next();
                             return Some(Token(
                                 self.line,
-                                TokenType::Op(String::from(next) + String::from(*peek).as_str()),
+                                TokenType::Op(Op::Equal),
                             ))
-                        }
+                        },
+                        ('>', '=') => {
+                            self.chars.next();
+                            return Some(Token(
+                                self.line,
+                                TokenType::Op(Op::GreaterEq),
+                            ))
+                        },
+                        ('<', '=') => {
+                            self.chars.next();
+                            return Some(Token(
+                                self.line,
+                                TokenType::Op(Op::LessEq),
+                            ))
+                        },
+                        ('&', '&') => {
+                            self.chars.next();
+                            return Some(Token(
+                                self.line,
+                                TokenType::Op(Op::AndAnd),
+                            ))
+                        },
+                        ('|', '|') => {
+                            self.chars.next();
+                            return Some(Token(
+                                self.line,
+                                TokenType::Op(Op::OrOr),
+                            ))
+                        },
                         _ => (),
                     }
                 }
-                Some(Token(self.line, TokenType::Op(String::from(next))))
-                //Return the operator string
+                
+                //Return the operator
+                Some(Token(self.line, TokenType::Op(match next {
+                    '+' => Op::Plus,
+                    '-' => Op::Minus,
+                    '*' => Op::Star,
+                    '/' => Op::Divide,
+                    '%' => Op::Modulo,
+                    '&' => Op::And,
+                    '|' => Op::Or,
+                    '>' => Op::Greater,
+                    '<' => Op::Less,
+                    '=' => Op::Assign,
+                    '^' => Op::Xor,
+                    _ => unreachable!(),
+                })))
+                
             }
 
             //Parse identifier or keyword
@@ -405,15 +475,30 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     /// in memory and only work with tokens.
     #[inline(always)]
     pub fn into_vec(self) -> Vec<Token> {
-        self.collect::<Vec<Token>>()
+        self.into_iter().map(|t| {
+            let t = t.unwrap();
+            Token(t.0, t.1)
+        }).collect::<Vec<Token>>()
     }
 }
 
+//impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
+//    type Item = Token;
+//    ///Lex tokens from the input stream until there are none left
+//    fn next(&mut self) -> Option<Self::Item> {
+//        self.token()
+//    }
+//}
+
+type Spanned<Tok, Loc, E> = Result<(Loc, Tok, Loc), E>;
 impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
-    type Item = Token;
-    ///Lex tokens from the input stream until there are none left
+    type Item = Spanned<TokenType, usize, ()>;
+
     fn next(&mut self) -> Option<Self::Item> {
-        self.token()
+        match self.token() {
+            Some(tok) => Some(Ok((tok.0, tok.1, self.line))),
+            None => None
+        }
     }
 }
 

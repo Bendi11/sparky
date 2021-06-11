@@ -3,9 +3,15 @@ name = "spark"
 version = "0.1.0"
 authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
+build = "build.rs"
+
+[build-dependencies]
+lalrpop = "0.19.6"
 
 [dependencies]
-nom = "6.1.2" # I'm lazy and want to prototype
+lalrpop-util = "0.19.6"
+regex = "1"
+
 hashbrown = "0.11.2" # For mapping strings to values throughout the compiler
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] } # For actual code generation
 utf8-chars = "1" # For reading a BufReader character by character without reading entire file to string
