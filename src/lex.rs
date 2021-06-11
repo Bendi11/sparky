@@ -12,8 +12,6 @@ use std::{convert, fmt};
 use utf8_chars::BufReadCharsExt;
 use utf8_chars::Chars;
 
-use crate::parse::ParseErr;
-
 /// The `Key` enum represents every type of keyword that can be lexed from the character stream.
 /// It is contained in the [Key](enum@TokenType::Key) variant of the `Token` enum and is not meant to be constructed directly
 #[repr(u8)]
@@ -33,6 +31,18 @@ pub enum Key {
 
     /// The `ret` keyword means return from the current function
     Ret,
+
+    /// The `struct` keyword is used to define structs or struct types
+    Struct,
+
+    /// The `union` keyword is used to define unions or union types
+    Union,
+
+    /// The `if` keyword performs basic control flow
+    If,
+
+    /// The `while` keyword performs looping based on a condition
+    While,
 }
 
 impl fmt::Display for Key {
@@ -43,6 +53,10 @@ impl fmt::Display for Key {
             Self::Fun => write!(f, "fun"),
             Self::Ptr => write!(f, "ptr"),
             Self::Ret => write!(f, "ret"),
+            Self::Union => write!(f, "union"),
+            Self::Struct => write!(f, "struct"),
+            Self::If => write!(f, "if"),
+            Self::While => write!(f, "while"),
         }
     }
 }
@@ -57,10 +71,95 @@ impl convert::TryFrom<&str> for Key {
             "fun" => Ok(Self::Fun),
             "ptr" => Ok(Self::Ptr),
             "ret" => Ok(Self::Ret),
+            "union" => Ok(Self::Union),
+            "struct" => Ok(Self::Struct),
+            "if" => Ok(Self::If),
+            "while" => Ok(Self::While),
             _ => Err(()),
         }
     }
 }
+
+/// The `Op` enum is held in the [Op](enum@TokenType::Op) variant of the `TokenType` enum and enumerates all possible operator tokens
+/// lexed from the input stream
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Op {
+    /// The equals assignment `=` operator
+    Assign,
+
+    /// The addition `+` operator
+    Plus,
+    
+    /// The subtraction `-` operator
+    Minus,
+
+    /// The dereference / multiply `*` operator
+    Star,
+
+    /// The division `/` operator
+    Divide,
+
+    /// The remainder division `%` operator
+    Modulo,
+
+    /// The bitwise AND `&` operator
+    And,
+
+    /// The conditional and `&&` operator
+    AndAnd,
+
+    /// The bitwise OR '|' operator
+    Or,
+
+    /// The conditional or `||` operator
+    OrOr,
+
+    /// The conditional equality `==` operator
+    Equal,
+
+    /// The bitwise unary NOT `!` operator
+    Not,
+
+    /// The conditional inverse equality `!=` operator
+    NEqual,
+
+    /// The conditional greater-than `>` operator
+    Greater,
+
+    /// The conditional less-than `<` operator
+    Less,
+
+    /// The conditional greater than or equal to `>=` operator
+    GreaterEq,
+
+    /// The conditional less than or equal to `<=` operator
+    LessEq,
+}
+
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", match self {
+            Self::Assign => "=",
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::Divide => "/",
+            Self::Modulo => "%",
+            Self::And => "&",
+            Self::AndAnd => "&&".
+            Self::Or => "|",
+            Self::OrOr => "||",
+            Self::Equal => "==",
+            Self::Not => "!",
+            Self::NEqual => "!=",
+            Self::Less => "<",
+            Self::Greater => ">",
+            Self::GreaterEq => ">=",
+            Self::LessEq => "<=",
+        })
+    }
+}
+
 
 /// The `TokenType` enumerates every type of token that can be lexed from the input source file
 /// and is parsed into an AST by the parser
@@ -76,13 +175,18 @@ pub enum TokenType {
 
     /// A string literal enclosed in double quotes
     StrLiteral(String),
+
     /// A number literal that is not floating point
     NumLiteral(String),
 
     /// The literal comma character ','; used to separate arguments; tuple fields, etc.
     Comma,
+
     /// Semicolon used to begin declarations
     Semicolon,
+
+    /// The literal '.' character used for member method and variable access
+    Dot,
     
     /// Typename like i32 or u8, does not include attributes like ptr
     Typename(String),
@@ -90,8 +194,8 @@ pub enum TokenType {
     /// An internal token used for error messages when lexing
     Error(String),
 
-    /// Any operator token
-    Op(String),
+    /// A unary or binary operator
+    Op(Op),
 
     /// Any keyword
     Key(Key),
@@ -111,6 +215,7 @@ impl fmt::Display for TokenType {
             Self::Op(op) => write!(f, "Operator: {}", op),
             Self::Key(key) => write!(f, "Keyword: {}", key),
             Self::Typename(ty) => write!(f, "Typename: {}", ty),
+            Self::Dot => write!(f, "Period"),
         }
     }
 }
@@ -130,14 +235,6 @@ impl Token {
     /// Check if this token is the same as another
     pub fn is(&self, is: TokenType) -> bool {
         self.1 == is
-    }
-
-    /// Get this token as a typename and return the typename value or an error
-    pub fn expect_typename(self) -> Result<String, ParseErr> {
-        match self {
-            Self(_, TokenType::Typename(ty)) => Ok(ty),
-            Self(line, unexpected) => Err(ParseErr::Syntax(line, format!("Unexpected token {}, expecting a typename", unexpected))),
-        }
     }
 }
 
