@@ -18,6 +18,7 @@ extern {
         "fun" => TokenType::Key(Key::Fun),
         IntegerType => TokenType::IntType(<Type>),
         "struct" => TokenType::Key(Key::Struct),
+        "union"  => TokenType::Key(Key::Union),
         "ptr" => TokenType::Key(Key::Ptr),
         "const" => TokenType::Key(Key::Const),
         "ext"   => TokenType::Key(Key::Ext),
@@ -45,6 +46,7 @@ Decl: Ast = {
     <s:FunProto> ";" => Ast::FunProto(s),
     <d:FunDef> => d,
     <s:StructDef> => Ast::StructDef(s),
+    <u:UnionDef> => Ast::UnionDef(u),
 }
 
 FunProto: ast::FunProto = {
@@ -58,8 +60,15 @@ FunProto: ast::FunProto = {
 
 FunDef: Ast = <proto: FunProto> <body:Body> => Ast::FunDef(proto, body);
 
-StructDef: types::Struct = {
-    "struct" <name:Ident> "{" <fields:CommaList<(Typename Ident)>> "}" => types::Struct {
+UnionDef: types::Container = {
+    "union" <name:Ident> "{" <fields:CommaList<(Typename Ident)>> "}" => types::Container {
+        name,
+        fields: fields.iter().map(|(ty, name)| (name.clone(), ty.clone())).collect()
+    },
+}
+
+StructDef: types::Container = {
+    "struct" <name:Ident> "{" <fields:CommaList<(Typename Ident)>> "}" => types::Container {
         name,
         fields: fields.iter().map(|(ty, name)| (name.clone(), ty.clone())).collect()
     },
@@ -76,6 +85,8 @@ Expr: Ast = {
     BinExpr,
     "(" <e:Expr> ")" => e,
     "ret" <e:Expr> => Ast::Ret(Box::new(e)),
+    ItemAccess,
+    AssocFunAccess,
 };
 
 PrimaryExpr: Ast = {
@@ -84,10 +95,18 @@ PrimaryExpr: Ast = {
     VarDecl,
     VarAccess,
     UnaryExpr,
-    FunCall,
+    <f:FunCall> => Ast::FunCall(f.0, f.1),
     <s:StrLiteral> => Ast::StrLiteral(s),
     IfExpr,
     WhileExpr,
+};
+
+ItemAccess: Ast = {
+    <e:PrimaryExpr> "." <n:Ident> => Ast::MemberAccess(Box::new(e), n),
+};
+
+AssocFunAccess: Ast = {
+    <e:PrimaryExpr> "." <f:FunCall> => Ast::AssocFunAccess(Box::new(e), f.0, f.1),
 };
 
 IfExpr: Ast = {
@@ -106,8 +125,8 @@ WhileExpr: Ast = {
 };
 
 //A function call with argument expressions
-FunCall: Ast = {
-    <name:Ident> "(" <args:CommaList<Expr>> ")" => Ast::FunCall(name, args)
+FunCall: (String, Vec<Ast>) = {
+    <name:Ident> "(" <args:CommaList<Expr>> ")" => (name, args)
 };
 
 //A unary operator being applied to an expression
@@ -147,6 +166,8 @@ Attribute: ast::Attributes = {
 Typename: Type = {
     <ity:IntegerType> => ity,
     <t:Typename> "ptr" => t.ptr_type(),
+    "struct" <n:Ident> => Type::UnknownStruct(n),
+    "union"  <n:Ident> => Type::UnknownUnion(n),
 };
 
 

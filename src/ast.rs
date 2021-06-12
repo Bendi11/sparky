@@ -48,7 +48,16 @@ pub enum Ast {
     Bin(Box<Ast>, Op, Box<Ast>),
 
     /// A struct definition with the defined type 
-    StructDef(types::Struct),
+    StructDef(types::Container),
+
+    /// A union type definition
+    UnionDef(types::Container),
+
+    /// A struct or union field access
+    MemberAccess(Box<Ast>, String),
+
+    /// An associated function is being called on a value
+    AssocFunAccess(Box<Ast>, String, Vec<Ast>),
 
     /// A variable declaration with type, name, and attributes of the variable
     VarDecl{
