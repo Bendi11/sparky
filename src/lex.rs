@@ -43,6 +43,9 @@ pub enum Key {
     /// The `if` keyword performs basic control flow
     If,
 
+    /// The `else` keyword performs false condition control flow
+    Else,
+
     /// The `while` keyword performs looping based on a condition
     While,
 }
@@ -58,6 +61,7 @@ impl fmt::Display for Key {
             Self::Union => write!(f, "union"),
             Self::Struct => write!(f, "struct"),
             Self::If => write!(f, "if"),
+            Self::Else => write!(f, "else"),
             Self::While => write!(f, "while"),
         }
     }
@@ -76,6 +80,7 @@ impl convert::TryFrom<&str> for Key {
             "union" => Ok(Self::Union),
             "struct" => Ok(Self::Struct),
             "if" => Ok(Self::If),
+            "else" => Ok(Self::Else),
             "while" => Ok(Self::While),
             _ => Err(()),
         }

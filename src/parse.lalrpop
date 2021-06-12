@@ -1,7 +1,7 @@
-use std::str::FromStr;
 use crate::lex::{TokenType, Op, Key};
 use crate::ast::{Ast, self};
 use crate::Type;
+use crate::types;
 
 grammar;
 
@@ -14,11 +14,18 @@ extern {
         ")" => TokenType::RightBrace(')'),
         "{" => TokenType::LeftBrace('{'),
         "}" => TokenType::RightBrace('}'),
+
         "fun" => TokenType::Key(Key::Fun),
         IntegerType => TokenType::IntType(<Type>),
         "struct" => TokenType::Key(Key::Struct),
         "ptr" => TokenType::Key(Key::Ptr),
         "const" => TokenType::Key(Key::Const),
+        "ext"   => TokenType::Key(Key::Ext),
+        "ret"   => TokenType::Key(Key::Ret),
+        "if"    => TokenType::Key(Key::If),
+        "else"  => TokenType::Key(Key::Else),
+        "while" => TokenType::Key(Key::While),
+
         ";" => TokenType::Semicolon,
         "." => TokenType::Dot,
         Ident => TokenType::Ident(<String>),
@@ -29,7 +36,18 @@ extern {
     }
 }
 
-pub FunProto: ast::FunProto = {
+//A program is made up of declarations
+pub Program: Vec<Ast> = {
+    <ds:Decl*> => ds,
+}
+
+Decl: Ast = {
+    <s:FunProto> ";" => Ast::FunProto(s),
+    <d:FunDef> => d,
+    <s:StructDef> => Ast::StructDef(s),
+}
+
+FunProto: ast::FunProto = {
     "fun" <attrs:Attributes> <name:Ident> "(" <args:CommaList<(Typename Ident?)>> ")" <ret:Typename> => ast::FunProto {
         name,
         ret,
@@ -38,8 +56,74 @@ pub FunProto: ast::FunProto = {
     }
 };
 
+FunDef: Ast = <proto: FunProto> <body:Body> => Ast::FunDef(proto, body);
 
+StructDef: types::Struct = {
+    "struct" <name:Ident> "{" <fields:CommaList<(Typename Ident)>> "}" => types::Struct {
+        name,
+        fields: fields.iter().map(|(ty, name)| (name.clone(), ty.clone())).collect()
+    },
+};
 
+//A body of expressions
+Body: Vec<Ast> = "{" <exprs:FullExpr*> "}" => exprs;
+
+//A semicolon terminated expression
+FullExpr: Ast = <e:Expr> ";" => e;
+
+Expr: Ast = {
+    PrimaryExpr,
+    BinExpr,
+    "(" <e:Expr> ")" => e,
+    "ret" <e:Expr> => Ast::Ret(Box::new(e)),
+};
+
+PrimaryExpr: Ast = {
+    //A constant number literal 
+    <n:NumLiteral> <ty:IntegerType?> => Ast::NumLiteral(ty.unwrap_or(Type::Integer{width: 32, signed: true}), n),
+    VarDecl,
+    VarAccess,
+    UnaryExpr,
+    FunCall,
+    <s:StrLiteral> => Ast::StrLiteral(s),
+    IfExpr,
+    WhileExpr,
+};
+
+IfExpr: Ast = {
+    "if" <cond:Expr> <on_true:Body> <on_else:("else" <Body>)?> => Ast::If {
+        cond: Box::new(cond),
+        true_block: on_true,
+        else_block: on_else,
+    }
+};
+
+WhileExpr: Ast = {
+    "while" <cond:Expr> <block:Body> => Ast::While {
+        cond: Box::new(cond),
+        block,
+    }
+};
+
+//A function call with argument expressions
+FunCall: Ast = {
+    <name:Ident> "(" <args:CommaList<Expr>> ")" => Ast::FunCall(name, args)
+};
+
+//A unary operator being applied to an expression
+UnaryExpr: Ast = <o:Op> <e:PrimaryExpr> => Ast::Unary(o, Box::new(e));
+
+//Variable value access
+VarAccess: Ast = <i:Ident> => Ast::VarAccess(i);
+
+//Variable declaration
+VarDecl: Ast = {
+    <ty:Typename> <attrs:Attributes> <name:Ident> => Ast::VarDecl{ty, name, attrs},
+};
+
+BinExpr: Ast = {
+    <lhs:PrimaryExpr> <o:Op> <rhs:Expr> => Ast::Bin(Box::new(lhs), o, Box::new(rhs))
+};
 
 CommaList<T>: Vec<T> = {
     <mut first:(<T> ",")*> <last:T?> => match last {
@@ -56,7 +140,8 @@ Attributes: ast::Attributes = {
 };
 
 Attribute: ast::Attributes = {
-    "const" => ast::Attributes::CONST
+    "const" => ast::Attributes::CONST,
+    "ext"   => ast::Attributes::EXT,
 };
 
 Typename: Type = {
