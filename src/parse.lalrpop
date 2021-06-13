@@ -26,6 +26,8 @@ extern {
         "if"    => TokenType::Key(Key::If),
         "else"  => TokenType::Key(Key::Else),
         "while" => TokenType::Key(Key::While),
+        "var"   => TokenType::Key(Key::Var),
+        "void"  => TokenType::Key(Key::Void),
 
         ";" => TokenType::Semicolon,
         "." => TokenType::Dot,
@@ -137,7 +139,7 @@ VarAccess: Ast = <i:Ident> => Ast::VarAccess(i);
 
 //Variable declaration
 VarDecl: Ast = {
-    <ty:Typename> <attrs:Attributes> <name:Ident> => Ast::VarDecl{ty, name, attrs},
+    "var" <ty:Typename> <attrs:Attributes> <name:Ident> => Ast::VarDecl{ty, name, attrs},
 };
 
 BinExpr: Ast = {
@@ -168,6 +170,8 @@ Typename: Type = {
     <t:Typename> "ptr" => t.ptr_type(),
     "struct" <n:Ident> => Type::UnknownStruct(n),
     "union"  <n:Ident> => Type::UnknownUnion(n),
+    "void" => Type::Void,
+    <t:Ident> => Type::Unknown(t),
 };
 
 

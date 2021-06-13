@@ -1,6 +1,7 @@
 pub mod lex;
 pub mod ast;
 pub mod types;
+pub mod code;
 pub use types::Type;
 
 use lalrpop_util::lalrpop_mod;

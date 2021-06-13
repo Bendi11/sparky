@@ -34,6 +34,12 @@ pub enum Type {
     /// An unknown union type with name only
     UnknownUnion(String),
 
+    /// An unknown union or struct type
+    Unknown(String),
+
+    /// No type
+    Void,
+
     /// Pointer to a type
     Ptr(Box<Type>),
 }
@@ -62,6 +68,8 @@ impl Type {
             Self::Union(s) => s.fields.iter().map(|(_, ty)| ty.size()).max().unwrap_or(0),
             Self::UnknownStruct(_) => panic!("Unknown struct"),
             Self::UnknownUnion(_)  => panic!("Unknown union"),
+            Self::Unknown(name) => panic!("Unknown type {}", name),
+            Self::Void => panic!("Void type"),
         }
     }
 }
@@ -78,6 +86,8 @@ impl fmt::Display for Type {
             Self::Union(s) => write!(f, "Union {}: {{\n{:#?}\n}}", s.name, s.fields),
             Self::UnknownStruct(s) => write!(f, "Unknown struct {}", s),
             Self::UnknownUnion(s) => write!(f, "Unknown union {}", s),
+            Self::Unknown(name) => write!(f, "Unknown type {}", name),
+            Self::Void => write!(f, "void"),
         }
     }
 }

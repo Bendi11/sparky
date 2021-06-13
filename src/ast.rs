@@ -15,7 +15,7 @@ bitflags! {
 
 /// The `FunProto` struct holds information about a function like its name, return type, argument names, and 
 /// argument types
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunProto {
     /// The name of the function
     pub name: String,
@@ -30,7 +30,7 @@ pub struct FunProto {
 
 /// The `Ast` enum is what is parsed from the lexer's token stream and consumed by the code generator to produce an executable
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Ast {
     /// A function prototype with all needed information to call the function
     FunProto(FunProto),

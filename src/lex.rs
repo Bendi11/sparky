@@ -48,6 +48,12 @@ pub enum Key {
 
     /// The `while` keyword performs looping based on a condition
     While,
+
+    /// The `var` keyword is used to declare variables
+    Var,
+
+    /// The `void` keyword is used to indicate no type
+    Void,
 }
 
 impl fmt::Display for Key {
@@ -63,6 +69,8 @@ impl fmt::Display for Key {
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
             Self::While => write!(f, "while"),
+            Self::Var   => write!(f, "var"),
+            Self::Void  => write!(f, "void"),
         }
     }
 }
@@ -82,6 +90,8 @@ impl convert::TryFrom<&str> for Key {
             "if" => Ok(Self::If),
             "else" => Ok(Self::Else),
             "while" => Ok(Self::While),
+            "var"   => Ok(Self::Var),
+            "void"  => Ok(Self::Void),
             _ => Err(()),
         }
     }
