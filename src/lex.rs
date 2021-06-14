@@ -69,8 +69,8 @@ impl fmt::Display for Key {
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
             Self::While => write!(f, "while"),
-            Self::Var   => write!(f, "var"),
-            Self::Void  => write!(f, "void"),
+            Self::Var => write!(f, "var"),
+            Self::Void => write!(f, "void"),
         }
     }
 }
@@ -90,8 +90,8 @@ impl convert::TryFrom<&str> for Key {
             "if" => Ok(Self::If),
             "else" => Ok(Self::Else),
             "while" => Ok(Self::While),
-            "var"   => Ok(Self::Var),
-            "void"  => Ok(Self::Void),
+            "var" => Ok(Self::Var),
+            "void" => Ok(Self::Void),
             _ => Err(()),
         }
     }
@@ -106,7 +106,7 @@ pub enum Op {
 
     /// The addition `+` operator
     Plus,
-    
+
     /// The subtraction `-` operator
     Minus,
 
@@ -158,26 +158,30 @@ pub enum Op {
 
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            Self::Assign => "=",
-            Self::Plus => "+",
-            Self::Minus => "-",
-            Self::Star => "*",
-            Self::Divide => "/",
-            Self::Modulo => "%",
-            Self::And => "&",
-            Self::AndAnd => "&&",
-            Self::Or => "|",
-            Self::OrOr => "||",
-            Self::Equal => "==",
-            Self::Not => "!",
-            Self::NEqual => "!=",
-            Self::Less => "<",
-            Self::Greater => ">",
-            Self::GreaterEq => ">=",
-            Self::LessEq => "<=",
-            Self::Xor => "^",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Assign => "=",
+                Self::Plus => "+",
+                Self::Minus => "-",
+                Self::Star => "*",
+                Self::Divide => "/",
+                Self::Modulo => "%",
+                Self::And => "&",
+                Self::AndAnd => "&&",
+                Self::Or => "|",
+                Self::OrOr => "||",
+                Self::Equal => "==",
+                Self::Not => "!",
+                Self::NEqual => "!=",
+                Self::Less => "<",
+                Self::Greater => ">",
+                Self::GreaterEq => ">=",
+                Self::LessEq => "<=",
+                Self::Xor => "^",
+            }
+        )
     }
 }
 
@@ -207,7 +211,7 @@ pub enum TokenType {
 
     /// The literal '.' character used for member method and variable access
     Dot,
-    
+
     /// Typename like i32 or u8, does not include attributes like ptr
     IntType(Type),
 
@@ -323,17 +327,21 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         } {}
 
         match ident.as_str() {
-            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" => Token::new(self.line, TokenType::IntType(Type::int_ty(ident))),
-            ident => //Create either a keyword or an identifier token
-            Token::new(
-                self.line,
-                match ident.try_into() {
-                    Ok(key) => TokenType::Key(key),
-                    _ => TokenType::Ident(ident.to_string()),
-                },
-            )
+            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" => {
+                Token::new(self.line, TokenType::IntType(Type::int_ty(ident)))
+            }
+            ident =>
+            //Create either a keyword or an identifier token
+            {
+                Token::new(
+                    self.line,
+                    match ident.try_into() {
+                        Ok(key) => TokenType::Key(key),
+                        _ => TokenType::Ident(ident.to_string()),
+                    },
+                )
+            }
         }
-        
     }
 
     /// Lex a new token from the input stream or EOF if there are no tokens left to lex
@@ -385,10 +393,18 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                             '\"' => literal.push('\"'),
                             'n' => literal.push('\n'),
                             't' => literal.push('\t'),
-                            unknown => return Some(Token(self.line, TokenType::Error(format!("Unknown escape sequence \\{}", unknown))))
+                            unknown => {
+                                return Some(Token(
+                                    self.line,
+                                    TokenType::Error(format!(
+                                        "Unknown escape sequence \\{}",
+                                        unknown
+                                    )),
+                                ))
+                            }
                         }
                         true
-                    },
+                    }
                     Some(c) => {
                         //Increment line number if the char is a newline
                         if c == '\n' {
@@ -408,76 +424,53 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                 Some(Token::new(self.line, TokenType::StrLiteral(literal))) //Return the string literal
             }
             //This is an operator
-              '+' 
-            | '-' 
-            | '/' 
-            | '*' 
-            | '%' 
-            | '^' 
-            | '&' 
-            | '|' 
-            | '=' 
-            | '>' 
-            | '<' => {
+            '+' | '-' | '/' | '*' | '%' | '^' | '&' | '|' | '=' | '>' | '<' => {
                 let peek = self.chars.peek();
                 //Check if this is a two character operator
                 if let Some(Ok(peek)) = peek {
                     match (next, peek) {
                         ('=', '=') => {
                             self.chars.next();
-                            return Some(Token(
-                                self.line,
-                                TokenType::Op(Op::Equal),
-                            ))
-                        },
+                            return Some(Token(self.line, TokenType::Op(Op::Equal)));
+                        }
                         ('>', '=') => {
                             self.chars.next();
-                            return Some(Token(
-                                self.line,
-                                TokenType::Op(Op::GreaterEq),
-                            ))
-                        },
+                            return Some(Token(self.line, TokenType::Op(Op::GreaterEq)));
+                        }
                         ('<', '=') => {
                             self.chars.next();
-                            return Some(Token(
-                                self.line,
-                                TokenType::Op(Op::LessEq),
-                            ))
-                        },
+                            return Some(Token(self.line, TokenType::Op(Op::LessEq)));
+                        }
                         ('&', '&') => {
                             self.chars.next();
-                            return Some(Token(
-                                self.line,
-                                TokenType::Op(Op::AndAnd),
-                            ))
-                        },
+                            return Some(Token(self.line, TokenType::Op(Op::AndAnd)));
+                        }
                         ('|', '|') => {
                             self.chars.next();
-                            return Some(Token(
-                                self.line,
-                                TokenType::Op(Op::OrOr),
-                            ))
-                        },
+                            return Some(Token(self.line, TokenType::Op(Op::OrOr)));
+                        }
                         _ => (),
                     }
                 }
-                
+
                 //Return the operator
-                Some(Token(self.line, TokenType::Op(match next {
-                    '+' => Op::Plus,
-                    '-' => Op::Minus,
-                    '*' => Op::Star,
-                    '/' => Op::Divide,
-                    '%' => Op::Modulo,
-                    '&' => Op::And,
-                    '|' => Op::Or,
-                    '>' => Op::Greater,
-                    '<' => Op::Less,
-                    '=' => Op::Assign,
-                    '^' => Op::Xor,
-                    _ => unreachable!(),
-                })))
-                
+                Some(Token(
+                    self.line,
+                    TokenType::Op(match next {
+                        '+' => Op::Plus,
+                        '-' => Op::Minus,
+                        '*' => Op::Star,
+                        '/' => Op::Divide,
+                        '%' => Op::Modulo,
+                        '&' => Op::And,
+                        '|' => Op::Or,
+                        '>' => Op::Greater,
+                        '<' => Op::Less,
+                        '=' => Op::Assign,
+                        '^' => Op::Xor,
+                        _ => unreachable!(),
+                    }),
+                ))
             }
 
             //Parse identifier or keyword
@@ -490,10 +483,12 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     /// in memory and only work with tokens.
     #[inline(always)]
     pub fn into_vec(self) -> Vec<Token> {
-        self.into_iter().map(|t| {
-            let t = t.unwrap();
-            Token(t.0, t.1)
-        }).collect::<Vec<Token>>()
+        self.into_iter()
+            .map(|t| {
+                let t = t.unwrap();
+                Token(t.0, t.1)
+            })
+            .collect::<Vec<Token>>()
     }
 }
 
@@ -512,7 +507,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.token() {
             Some(tok) => Some(Ok((tok.0, tok.1, self.line))),
-            None => None
+            None => None,
         }
     }
 }

@@ -1,4 +1,7 @@
-use crate::{lex::Op, types};
+use crate::{
+    lex::Op,
+    types::{self, Container},
+};
 
 use super::Type;
 use bitflags::bitflags;
@@ -12,8 +15,7 @@ bitflags! {
     }
 }
 
-
-/// The `FunProto` struct holds information about a function like its name, return type, argument names, and 
+/// The `FunProto` struct holds information about a function like its name, return type, argument names, and
 /// argument types
 #[derive(Debug, Clone)]
 pub struct FunProto {
@@ -27,7 +29,6 @@ pub struct FunProto {
     pub args: Vec<(Type, Option<String>)>,
 }
 
-
 /// The `Ast` enum is what is parsed from the lexer's token stream and consumed by the code generator to produce an executable
 ///
 #[derive(Debug, Clone)]
@@ -35,10 +36,10 @@ pub enum Ast {
     /// A function prototype with all needed information to call the function
     FunProto(FunProto),
 
-    /// A function definition with the function signature and the body of the function 
+    /// A function definition with the function signature and the body of the function
     FunDef(FunProto, Vec<Ast>),
 
-    /// A constant number literal 
+    /// A constant number literal
     NumLiteral(Type, String),
 
     /// A constant string literal
@@ -47,11 +48,20 @@ pub enum Ast {
     /// A binary operation  applied to two expressions
     Bin(Box<Ast>, Op, Box<Ast>),
 
-    /// A struct definition with the defined type 
+    /// A struct definition with the defined type
     StructDef(types::Container),
 
     /// A union type definition
     UnionDef(types::Container),
+
+    /// A constant struct literal
+    StructLiteral {
+        /// The struct type name
+        name: String,
+
+        /// The given field values
+        fields: Vec<(String, Ast)>,
+    },
 
     /// A struct or union field access
     MemberAccess(Box<Ast>, String),
@@ -60,7 +70,7 @@ pub enum Ast {
     AssocFunAccess(Box<Ast>, String, Vec<Ast>),
 
     /// A variable declaration with type, name, and attributes of the variable
-    VarDecl{
+    VarDecl {
         /// The type of variable being declared
         ty: Type,
 
@@ -69,12 +79,11 @@ pub enum Ast {
 
         /// Attributes of the variable declaration
         attrs: Attributes,
-
     },
 
     /// A variable access with the name of the variable
     VarAccess(String),
-    
+
     /// A unary operator being applied the the RHS expression
     Unary(Op, Box<Ast>),
 
@@ -102,5 +111,3 @@ pub enum Ast {
         block: Vec<Ast>,
     },
 }
-
-

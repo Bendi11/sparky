@@ -28,13 +28,13 @@ extern {
         "while" => TokenType::Key(Key::While),
         "var"   => TokenType::Key(Key::Var),
         "void"  => TokenType::Key(Key::Void),
+        Op => TokenType::Op(<Op>),
 
         ";" => TokenType::Semicolon,
         "." => TokenType::Dot,
         Ident => TokenType::Ident(<String>),
         StrLiteral => TokenType::StrLiteral(<String>),
         NumLiteral => TokenType::NumLiteral(<String>),
-        Op => TokenType::Op(<Op>),
         "," => TokenType::Comma,
     }
 }
@@ -101,6 +101,14 @@ PrimaryExpr: Ast = {
     <s:StrLiteral> => Ast::StrLiteral(s),
     IfExpr,
     WhileExpr,
+    StructLiteral,
+};
+
+StructLiteral: Ast = {
+    "struct" <i:Ident> "{" <items:CommaList<(Ident Expr)>> "}" => Ast::StructLiteral {
+        name: i,
+        fields: items//.into_iter().map(|(name, _, val)| (name.clone(), val.clone())).collect(),
+    }
 };
 
 ItemAccess: Ast = {
