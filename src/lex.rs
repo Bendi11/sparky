@@ -332,7 +332,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         } {}
 
         match ident.as_str() {
-            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" => {
+            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" | "u64" | "i64" => {
                 Token::new(self.line, TokenType::IntType(Type::int_ty(ident)))
             }
             ident =>
@@ -430,8 +430,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             }
             //This is an operator
             '+' | '-' | '/' | '*' | '%' | '^' | '&' | '|' | '=' | '>' | '<' | '!' => {
-                //If this is a negative number, lex it
-                if next == '-' && self.chars.peek().unwrap().as_ref().unwrap().is_numeric() {
+                if self.chars.peek().unwrap().as_ref().unwrap().is_numeric() {
                     let mut num = String::from('-');
                     while match self.chars.peek() {
                         Some(Ok(n)) if n.is_numeric() => {
@@ -470,7 +469,12 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                         ('!', '=') => {
                             self.chars.next();
                             return Some(Token(self.line, TokenType::Op(Op::NEqual)));
-                        }
+                        },
+
+                        //Negative number
+                        //('-', n) if n.is_numeric() => {
+                        //    
+                        //}
                         _ => (),
                     }
                 }

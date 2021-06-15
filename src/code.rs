@@ -36,6 +36,9 @@ pub struct Compiler<'c> {
     /// The function that we are currently generating code in
     current_fn: Option<FunctionValue<'c>>,
 
+    /// The signature of the current function
+    current_proto: Option<FunProto>,
+
     /// A map of variable / argument names to LLVM values
     vars: HashMap<String, (PointerValue<'c>, Type)>,
 }
@@ -52,6 +55,7 @@ impl<'c> Compiler<'c> {
             current_fn: None,
             funs: HashMap::new(),
             vars: HashMap::new(),
+            current_proto: None,
         }
     }
 
@@ -93,22 +97,43 @@ impl<'c> Compiler<'c> {
         if self.module.get_function(proto.name.as_str()).is_some() {
             return Err(format!("Function {} defined twice", proto.name));
         }
-        let proto_clone = proto.clone();
-        let fun = self.module.add_function(
-            proto.name.as_str(),
-            self.llvm_type(&proto.ret).fn_type(
-                proto
-                    .args
-                    .iter()
-                    .map(|(ty, _)| self.llvm_type(ty))
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-                false,
-            ),
-            None,
-        );
-        self.funs.insert(proto.name, (fun, proto_clone));
-        Ok(fun)
+
+        if proto.ret == Type::Void {
+            let proto_clone = proto.clone();
+            let fun = self.module.add_function(
+                proto.name.as_str(),
+                self.ctx.void_type().fn_type(
+                    proto
+                        .args
+                        .iter()
+                        .map(|(ty, _)| self.llvm_type(ty))
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                    false,
+                ),
+                None,
+            );
+            self.funs.insert(proto.name, (fun, proto_clone));
+            Ok(fun)
+        }
+        else {
+            let proto_clone = proto.clone();
+            let fun = self.module.add_function(
+                proto.name.as_str(),
+                self.llvm_type(&proto.ret).fn_type(
+                    proto
+                        .args
+                        .iter()
+                        .map(|(ty, _)| self.llvm_type(ty))
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                    false,
+                ),
+                None,
+            );
+            self.funs.insert(proto.name, (fun, proto_clone));
+            Ok(fun)
+        }
     }
 
     /// Build an alloca for a variable in the current function
@@ -139,10 +164,15 @@ impl<'c> Compiler<'c> {
                 .unwrap()
                 .as_any_value_enum(),
             Ast::Ret(node) => {
-                let ret = self.gen(node, false);
-                self.build
-                    .build_return(Some(&BasicValueEnum::try_from(ret).unwrap()))
-                    .as_any_value_enum()
+                match self.current_proto.as_ref().expect("Must be in a function to return from one!").ret {
+                    Type::Void => self.build.build_return(None).as_any_value_enum(),
+                    _ => {
+                        let ret = self.gen(node, false);
+                        self.build
+                            .build_return(Some(&BasicValueEnum::try_from(ret).unwrap()))
+                            .as_any_value_enum()
+                    }
+                }
             }
             Ast::FunCall(name, args) => match self.module.get_function(name.as_str()) {
                 Some(f) => {
@@ -550,6 +580,23 @@ impl<'c> Compiler<'c> {
                             self.build
                                 .build_or(lhs, rhs, "cond_or_or_cmp")
                                 .as_any_value_enum()
+                        },
+
+                        //---------- Pointer Operations
+                        (AnyTypeEnum::PointerType(ptr), op) => {
+                            let lhs = self.build.build_ptr_to_int(lhs.into_pointer_value(), self.ctx.i64_type(), "ptr_cmp_cast_lhs");
+                            let rhs = self.build.build_ptr_to_int(rhs.into_pointer_value(), self.ctx.i64_type(), "ptr_cmp_cast_rhs");
+
+                            match op {
+                                Op::NEqual => self.build.build_int_compare(IntPredicate::NE, lhs, rhs, "ptr_nequal_cmp").as_any_value_enum(),
+                                Op::Equal => self.build.build_int_compare(IntPredicate::NE, lhs, rhs, "ptr_equal_cmp").as_any_value_enum(),
+
+                                Op::Plus => self.build.build_int_to_ptr(self.build.build_int_add(lhs, rhs, "ptr_add"), ptr, "ptr_add_cast_back_to_ptr").as_any_value_enum(),
+                                Op::Minus => self.build.build_int_to_ptr(self.build.build_int_sub(lhs, rhs, "ptr_sub"), ptr, "ptr_sub_cast_back_to_ptr").as_any_value_enum(),
+                                Op::Star => self.build.build_int_to_ptr(self.build.build_int_mul(lhs, rhs, "ptr_mul"), ptr, "ptr_mul_cast_back_to_ptr").as_any_value_enum(),
+                                Op::Divide => self.build.build_int_to_ptr(self.build.build_int_unsigned_div(lhs, rhs, "ptr_div"), ptr, "ptr_div_cast_back_to_ptr").as_any_value_enum(),
+                                other => panic!("Cannot use operator {} on pointers", other),
+                            }
                         }
                         other => panic!("Unable to use operator '{}' on type {:?}", op, other),
                     }
@@ -685,7 +732,7 @@ impl<'c> Compiler<'c> {
                         )
                         .unwrap(),
                     OutFormat::Lib => {
-                        let obj = opts.out_file.with_extension(".obj");
+                        let obj = opts.out_file.with_extension("obj");
                         machine
                         .write_to_file(
                             &module,
@@ -706,7 +753,7 @@ impl<'c> Compiler<'c> {
                         std::fs::remove_file(obj).unwrap();
                     },
                     OutFormat::Exe => {
-                        let obj = opts.out_file.with_extension(".obj");
+                        let obj = opts.out_file.with_extension("obj");
                         machine
                         .write_to_file(
                             &module,

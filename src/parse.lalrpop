@@ -84,7 +84,6 @@ Body: Vec<Ast> = "{" <exprs:FullExpr*> "}" => exprs;
 FullExpr: Ast = <e:Expr> ";" => e;
 
 Expr: Ast = {
-    
     PrimaryExpr,
     BinExpr,
     "(" <e:Expr> ")" => e,
