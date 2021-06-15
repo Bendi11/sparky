@@ -138,7 +138,6 @@ fn main() {
         .arg(Arg::with_name("library")
             .short("l")
             .multiple(true)
-            .max_values(1)
             .takes_value(true)
             .long("library")
             .help("Specify the path to one library file (.lib) that will be linked to produce the final executable file")
@@ -217,10 +216,6 @@ fn main() {
         ast.extend(parse::ProgramParser::new().parse(lexer).unwrap_or_else(|e| panic!("Error when parsing: {}", e)) ); //Parse the file and add it to the AST
     }
 
-    let mut reader = std::io::BufReader::new(
-        std::fs::File::open("source.sprk").expect("Failed to open source file source.sprk!"),
-    );
-    let p = lex::Lexer::from_reader(&mut reader);
     let ctx = Context::create();
     let code = code::Compiler::new(&ctx);
 
@@ -231,5 +226,5 @@ fn main() {
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),
         out_file: PathBuf::from(args.value_of("output-file").unwrap()),
     };
-    code.compile(parse::ProgramParser::new().parse(p).unwrap(), opts);
+    code.compile(ast, opts);
 }

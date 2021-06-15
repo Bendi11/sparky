@@ -470,6 +470,12 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                             self.chars.next();
                             return Some(Token(self.line, TokenType::Op(Op::NEqual)));
                         },
+                        ('/', '/') => {
+                            self.chars.next();
+                            while self.chars.next().unwrap().unwrap() != '\n' {} //Skip the comment
+                            self.line += 1;
+                            return self.token() //Get the next token
+                        }
 
                         //Negative number
                         //('-', n) if n.is_numeric() => {

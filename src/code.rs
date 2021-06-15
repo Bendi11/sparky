@@ -225,11 +225,14 @@ impl<'c> Compiler<'c> {
                 let fun = self.current_fn.expect("While loop outside of function");
 
                 let cond_bb = self.ctx.append_basic_block(fun, "while_cond_bb");
+                let while_bb = self.ctx.append_basic_block(fun, "while_loop_bb");
+                let after_bb = self.ctx.append_basic_block(fun, "after_while_bb");
+
+                self.build.build_unconditional_branch(cond_bb); //Jump to the condition block for the first check
                 self.build.position_at_end(cond_bb);
                 let cond = self.gen(cond, false).into_int_value();
 
-                let while_bb = self.ctx.append_basic_block(fun, "while_loop_bb");
-                let after_bb = self.ctx.append_basic_block(fun, "after_while_bb");
+                
 
                 self.build.build_conditional_branch(cond, while_bb, after_bb);
                 self.build.position_at_end(while_bb);
@@ -256,6 +259,7 @@ impl<'c> Compiler<'c> {
                     None => self.gen_fun_proto(proto.clone()).unwrap(),
                 };
                 self.current_fn = Some(f);
+                self.current_proto = Some(proto.clone());
 
                 let bb = self.ctx.append_basic_block(f, "fn_entry"); //Add the first basic block
                 self.build.position_at_end(bb); //Start inserting into the function
@@ -280,6 +284,7 @@ impl<'c> Compiler<'c> {
 
                 self.vars = old_vars; //Reset the variables
                 self.current_fn = None;
+                self.current_proto = None;
 
                 f.as_any_value_enum()
             }
@@ -715,6 +720,7 @@ impl<'c> Compiler<'c> {
                     .unwrap();
 
                 machine.add_analysis_passes(&fpm);
+                module.verify().unwrap_or_else(|e| panic!("Failed to verify the LLVM module: {}", e));
 
                 match other {
                     OutFormat::Asm => machine
@@ -742,7 +748,7 @@ impl<'c> Compiler<'c> {
                         .unwrap();
 
                         let out = format!("/OUT:{}", opts.out_file.display());
-                        let mut args = vec![obj.to_str().unwrap(), "/NOLOGO", "/LIB", out.as_str()];
+                        let mut args = vec!["/LIB", obj.to_str().unwrap(), "/NOLOGO", out.as_str()];
                         args.extend(opts.libraries.iter().map(|s| s.as_str())); //Add all linked libraries
 
                         let cmd = Command::new(Path::new(LINKER)).args(args).stderr(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap(); //Link the file into a library
@@ -750,6 +756,7 @@ impl<'c> Compiler<'c> {
                             "{}",
                             String::from_utf8(cmd.wait_with_output().unwrap().stdout).unwrap()
                         );
+                        
                         std::fs::remove_file(obj).unwrap();
                     },
                     OutFormat::Exe => {
