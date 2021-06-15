@@ -1,5 +1,4 @@
-use hashbrown::HashMap;
-use std::fmt;
+use std::{fmt, ops::Deref};
 
 /// The `Container` struct contains all information about a struct / union type in Spark
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,9 +41,16 @@ pub enum Type {
 impl Type {
     /// Generate a type from a string, this function is only meant to be used in a lexer where it can not possibly fail
     pub fn int_ty(s: String) -> Self {
-        Self::Integer {
-            signed: &s[0..1] == "i",
-            width: s[1..].parse().unwrap(),
+        if s == "bool" {
+            Self::Integer {
+                signed: false,
+                width: 1,
+            }
+        } else {
+            Self::Integer {
+                signed: &s[0..1] == "i",
+                width: s[1..].parse().unwrap(),
+            }
         }
     }
 
@@ -52,6 +58,14 @@ impl Type {
     #[inline]
     pub fn ptr_type(&self) -> Self {
         Self::Ptr(Box::new(self.clone()))
+    }
+
+    /// Get the contained type if this is a pointer type
+    pub fn deref_type(&self) -> Option<Self> {
+        match self {
+            Self::Ptr(t) => Some(t.deref().clone()),
+            _ => None,
+        }
     }
 
     /// Get the size of this type in bytes

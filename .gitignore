@@ -5,3 +5,5 @@
 *.exe
 *.s
 *.c
+*.sprk
+paths.txt

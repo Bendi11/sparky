@@ -7,7 +7,7 @@ grammar;
 
 extern {
     type Location = usize;
-    type Error = ();
+    type Error = String;
 
     enum TokenType {
         "(" => TokenType::LeftBrace('('),
@@ -28,6 +28,7 @@ extern {
         "while" => TokenType::Key(Key::While),
         "var"   => TokenType::Key(Key::Var),
         "void"  => TokenType::Key(Key::Void),
+        "cast"  => TokenType::Key(Key::Cast),
         Op => TokenType::Op(<Op>),
 
         ";" => TokenType::Semicolon,
@@ -83,20 +84,21 @@ Body: Vec<Ast> = "{" <exprs:FullExpr*> "}" => exprs;
 FullExpr: Ast = <e:Expr> ";" => e;
 
 Expr: Ast = {
+    
     PrimaryExpr,
     BinExpr,
     "(" <e:Expr> ")" => e,
     "ret" <e:Expr> => Ast::Ret(Box::new(e)),
-    ItemAccess,
-    AssocFunAccess,
+    "cast" <e:Expr> "{" <t:Typename> "}" => Ast::Cast(Box::new(e), t),
 };
 
 PrimaryExpr: Ast = {
+    <e:PrimaryExpr> "." <n:Ident> => Ast::MemberAccess(Box::new(e), n),
     //A constant number literal 
     <n:NumLiteral> <ty:IntegerType?> => Ast::NumLiteral(ty.unwrap_or(Type::Integer{width: 32, signed: true}), n),
     VarDecl,
     VarAccess,
-    UnaryExpr,
+    "(" <u:UnaryExpr> ")" => u,
     <f:FunCall> => Ast::FunCall(f.0, f.1),
     <s:StrLiteral> => Ast::StrLiteral(s),
     IfExpr,
@@ -111,9 +113,10 @@ StructLiteral: Ast = {
     }
 };
 
-ItemAccess: Ast = {
-    <e:PrimaryExpr> "." <n:Ident> => Ast::MemberAccess(Box::new(e), n),
-};
+
+//ItemAccess: Ast = {
+//    <e:PrimaryExpr> "." <n:Ident> => Ast::MemberAccess(Box::new(e), n),
+//};
 
 AssocFunAccess: Ast = {
     <e:PrimaryExpr> "." <f:FunCall> => Ast::AssocFunAccess(Box::new(e), f.0, f.1),

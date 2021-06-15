@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::{
     lex::Op,
     types::{self, Container},
@@ -5,6 +7,7 @@ use crate::{
 
 use super::Type;
 use bitflags::bitflags;
+use hashbrown::HashMap;
 
 bitflags! {
     pub struct Attributes: u8 {
@@ -63,6 +66,9 @@ pub enum Ast {
         fields: Vec<(String, Ast)>,
     },
 
+    /// Cast an expression to a type
+    Cast(Box<Ast>, Type),
+
     /// A struct or union field access
     MemberAccess(Box<Ast>, String),
 
@@ -110,4 +116,51 @@ pub enum Ast {
         /// The block to loop over
         block: Vec<Ast>,
     },
+}
+
+impl Ast {
+    /// Get the type of this expression, if any
+    pub fn get_type<'a, U, U1, U2, U3>(
+        &'a self,
+        funs: &'a HashMap<String, (U, FunProto)>,
+        structs: &'a HashMap<String, (U1, Container)>,
+        unions: &'a HashMap<String, (U2, Container)>,
+        vars: &'a HashMap<String, (U3, Type)>,
+    ) -> Option<Type> {
+        Some(match self {
+            Self::FunCall(name, _) => funs.get(name)?.1.ret.clone(),
+            Self::VarDecl {
+                name: _,
+                ty,
+                attrs: _,
+            } => ty.clone(),
+            Self::Cast(_, ty) => ty.clone(),
+            Self::VarAccess(name) => vars.get(name)?.1.clone(),
+            Self::StructLiteral { name, fields: _ } => Type::Struct(structs.get(name)?.1.clone()),
+            Self::MemberAccess(first, item) => match first.get_type(funs, structs, unions, vars)? {
+                Type::Struct(col) | Type::Union(col) => {
+                    col.fields.iter().find(|(name, _)| name == item)?.1.clone()
+                }
+                _ => return None,
+            },
+            Self::NumLiteral(ty, _) => ty.clone(),
+            Self::StrLiteral(_) => Type::Ptr(Box::new(Type::Integer {
+                width: 8,
+                signed: false,
+            })), //char pointer for string literals
+            Self::Unary(op, val) => match op {
+                Op::Star => val
+                    .deref()
+                    .get_type(funs, structs, unions, vars)?
+                    .deref_type()?,
+                Op::And => val
+                    .deref()
+                    .get_type(funs, structs, unions, vars)?
+                    .ptr_type(),
+                _ => return None,
+            },
+            Self::Bin(lhs, _, _) => lhs.get_type(funs, structs, unions, vars)?,
+            _ => return None,
+        })
+    }
 }

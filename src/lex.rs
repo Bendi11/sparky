@@ -52,6 +52,9 @@ pub enum Key {
     /// The `var` keyword is used to declare variables
     Var,
 
+    /// The `cast` keyword is used to cast an expression to a different type
+    Cast,
+
     /// The `void` keyword is used to indicate no type
     Void,
 }
@@ -71,6 +74,7 @@ impl fmt::Display for Key {
             Self::While => write!(f, "while"),
             Self::Var => write!(f, "var"),
             Self::Void => write!(f, "void"),
+            Self::Cast => write!(f, "cast"),
         }
     }
 }
@@ -92,6 +96,7 @@ impl convert::TryFrom<&str> for Key {
             "while" => Ok(Self::While),
             "var" => Ok(Self::Var),
             "void" => Ok(Self::Void),
+            "cast" => Ok(Self::Cast),
             _ => Err(()),
         }
     }
@@ -327,7 +332,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         } {}
 
         match ident.as_str() {
-            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" => {
+            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" => {
                 Token::new(self.line, TokenType::IntType(Type::int_ty(ident)))
             }
             ident =>
@@ -424,7 +429,20 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                 Some(Token::new(self.line, TokenType::StrLiteral(literal))) //Return the string literal
             }
             //This is an operator
-            '+' | '-' | '/' | '*' | '%' | '^' | '&' | '|' | '=' | '>' | '<' => {
+            '+' | '-' | '/' | '*' | '%' | '^' | '&' | '|' | '=' | '>' | '<' | '!' => {
+                //If this is a negative number, lex it
+                if next == '-' && self.chars.peek().unwrap().as_ref().unwrap().is_numeric() {
+                    let mut num = String::from('-');
+                    while match self.chars.peek() {
+                        Some(Ok(n)) if n.is_numeric() => {
+                            num.push(self.chars.next().unwrap().unwrap());
+                            true
+                        }
+                        _ => false,
+                    } {}
+
+                    return Some(Token::new(self.line, TokenType::NumLiteral(num)));
+                }
                 let peek = self.chars.peek();
                 //Check if this is a two character operator
                 if let Some(Ok(peek)) = peek {
@@ -448,6 +466,10 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                         ('|', '|') => {
                             self.chars.next();
                             return Some(Token(self.line, TokenType::Op(Op::OrOr)));
+                        },
+                        ('!', '=') => {
+                            self.chars.next();
+                            return Some(Token(self.line, TokenType::Op(Op::NEqual)));
                         }
                         _ => (),
                     }
@@ -502,10 +524,12 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
 
 type Spanned<Tok, Loc, E> = Result<(Loc, Tok, Loc), E>;
 impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
-    type Item = Spanned<TokenType, usize, ()>;
+    type Item = Spanned<TokenType, usize, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.token() {
+        match self.token()
+        {   
+            Some(Token(_, TokenType::Error(s))) => Some(Err(s)),
             Some(tok) => Some(Ok((tok.0, tok.1, self.line))),
             None => None,
         }
