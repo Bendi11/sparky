@@ -68,7 +68,7 @@ impl<'c> Compiler<'c> {
             } => self.ctx.custom_width_int_type(*width as u32).as_basic_type_enum(),
             Type::Ptr(internal) => self.llvm_type(internal).ptr_type(inkwell::AddressSpace::Generic).as_basic_type_enum(),
             Type::Struct(con) => {
-                self.ctx.struct_type(con.fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), false).as_basic_type_enum()
+                self.ctx.struct_type(con.fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), true).as_basic_type_enum()
             },
             Type::Union(con) => {
                 let largest = con.fields.iter().max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size())).expect("Union type with no fields!");
@@ -340,9 +340,8 @@ impl<'c> Compiler<'c> {
                     pos_vals[pos] = 
                         BasicValueEnum::try_from(val)
                             .expect("Failed to convert struct literal field to a basic value");
-                    
                 }
-                self.ctx.const_struct(pos_vals.as_ref(), ty.is_packed()).as_any_value_enum()
+                ty.const_named_struct(pos_vals.as_ref()).as_any_value_enum()
             }
             Ast::MemberAccess(val, field) => {
                 let col = val
