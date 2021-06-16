@@ -336,14 +336,13 @@ impl<'c> Compiler<'c> {
                                 name, field.0
                             )
                         });
-                    let val = self.gen(&field.1, false);
-                    pos_vals.insert(
-                        pos,
+                    let val = self.gen(&field.1, false);     
+                    pos_vals[pos] = 
                         BasicValueEnum::try_from(val)
-                            .expect("Failed to convert struct literal field to a basic value"),
-                    );
+                            .expect("Failed to convert struct literal field to a basic value");
+                    
                 }
-                ty.const_named_struct(pos_vals.as_ref()).as_any_value_enum()
+                self.ctx.const_struct(pos_vals.as_ref(), ty.is_packed()).as_any_value_enum()
             }
             Ast::MemberAccess(val, field) => {
                 let col = val
@@ -668,6 +667,7 @@ impl<'c> Compiler<'c> {
         use std::process::Stdio;
 
         let module = self.finish(ast); //Compile the actual AST into LLVM IR
+        module.verify().unwrap_or_else(|e| panic!("Failed to verify the LLVM module: {}", e));
 
         let fpm: PassManager<Module<'c>> = PassManager::create(());
 
@@ -720,8 +720,7 @@ impl<'c> Compiler<'c> {
                     .unwrap();
 
                 machine.add_analysis_passes(&fpm);
-                module.verify().unwrap_or_else(|e| panic!("Failed to verify the LLVM module: {}", e));
-
+                
                 match other {
                     OutFormat::Asm => machine
                         .write_to_file(
@@ -786,15 +785,6 @@ impl<'c> Compiler<'c> {
                 
             }
         }
-
-        
-
-        
-        
-
-        
-
-        
         
     }
 }

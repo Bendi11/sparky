@@ -82,6 +82,10 @@ pub fn panic_handler(p: &PanicInfo) {
             .red()
             .bold()
     );
+    match p.location() {
+        Some(loc) => eprintln!("At {}", loc),
+        None => eprintln!("In an unknown location"),
+    }
     match (
         p.payload().downcast_ref::<&str>(),
         p.payload().downcast_ref::<String>(),
@@ -221,7 +225,10 @@ fn main() {
 
     //Get the given compilation options
     let opts = CompileOpts {
-        libraries: args.values_of("library").unwrap().map(|s| s.to_owned()).collect(),
+        libraries: match args.values_of("library") {
+            Some(l) => l.map(|s| s.to_owned()).collect(),
+            None => Vec::new()
+        },
         opt_lvl: args.value_of("optimization").unwrap().parse().unwrap(),
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),
         out_file: PathBuf::from(args.value_of("output-file").unwrap()),
