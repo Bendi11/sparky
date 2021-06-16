@@ -87,7 +87,7 @@ Expr: Ast = {
     PrimaryExpr,
     BinExpr,
     "(" <e:Expr> ")" => e,
-    "ret" <e:Expr> => Ast::Ret(Box::new(e)),
+    "ret" <e:Expr?> => Ast::Ret(Box::new(e)),
     "cast" <e:Expr> "{" <t:Typename> "}" => Ast::Cast(Box::new(e), t),
 };
 

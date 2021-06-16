@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, path::Path, process::Command};
+use std::{convert::TryFrom, ops::Deref, path::Path, process::Command};
 
 use crate::{CompileOpts, OutFormat, Type, ast::{Ast, FunProto}, lex::Op, types::Container};
 use hashbrown::HashMap;
@@ -167,7 +167,7 @@ impl<'c> Compiler<'c> {
                 match self.current_proto.as_ref().expect("Must be in a function to return from one!").ret {
                     Type::Void => self.build.build_return(None).as_any_value_enum(),
                     _ => {
-                        let ret = self.gen(node, false);
+                        let ret = self.gen(node.deref().as_ref().unwrap(), false);
                         self.build
                             .build_return(Some(&BasicValueEnum::try_from(ret).unwrap()))
                             .as_any_value_enum()

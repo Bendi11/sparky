@@ -97,7 +97,7 @@ pub enum Ast {
     FunCall(String, Vec<Ast>),
 
     /// Return statement
-    Ret(Box<Ast>),
+    Ret(Box<Option<Ast>>),
 
     /// An if conditional statement
     If {
