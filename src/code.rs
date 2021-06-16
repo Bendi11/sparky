@@ -313,6 +313,7 @@ impl<'c> Compiler<'c> {
                     }
                 ),
             },
+            //FIXME: Struct literals only take constant values currently, need to update
             Ast::StructLiteral { name, fields } => {
                 let (ty, def) = self.struct_types.get(name).unwrap_or_else(|| {
                     panic!(
@@ -341,7 +342,7 @@ impl<'c> Compiler<'c> {
                         BasicValueEnum::try_from(val)
                             .expect("Failed to convert struct literal field to a basic value");
                 }
-                ty.const_named_struct(pos_vals.as_ref()).as_any_value_enum()
+                self.build.str(pos_vals.as_ref()).as_any_value_enum()
             }
             Ast::MemberAccess(val, field) => {
                 let col = val
