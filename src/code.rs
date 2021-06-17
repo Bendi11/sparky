@@ -313,7 +313,6 @@ impl<'c> Compiler<'c> {
                     }
                 ),
             },
-            //FIXME: Struct literals only take constant values currently, need to update
             Ast::StructLiteral { name, fields } => {
                 let (ty, def) = self.struct_types.get(name).unwrap_or_else(|| {
                     panic!(
@@ -342,7 +341,14 @@ impl<'c> Compiler<'c> {
                         BasicValueEnum::try_from(val)
                             .expect("Failed to convert struct literal field to a basic value");
                 }
-                self.build.str(pos_vals.as_ref()).as_any_value_enum()
+
+                let literal = self.entry_alloca("struct_literal", ty.as_basic_type_enum()); //Create an alloca for the struct literal
+                //Store the fields in the allocated struct literal
+                for (idx, val) in pos_vals.iter().enumerate() {
+                    let field = self.build.build_struct_gep(literal, idx as u32, "struct_literal_field").unwrap();
+                    self.build.build_store(field, *val);
+                }
+                self.build.build_load(literal, "load_struct_literal").as_any_value_enum()
             }
             Ast::MemberAccess(val, field) => {
                 let col = val
@@ -663,7 +669,7 @@ impl<'c> Compiler<'c> {
 
     /// Compile the code into an executable file
     pub fn compile(self, ast: Vec<Ast>, opts: CompileOpts) {
-        const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30037\\bin\\Hostx64\\x64\\link.exe";
+        const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
         use std::process::Stdio;
 
         let module = self.finish(ast); //Compile the actual AST into LLVM IR
