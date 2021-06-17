@@ -154,6 +154,182 @@ impl<'c> Compiler<'c> {
         entry_builder.build_alloca(ty, name)
     }
 
+    /// Generate code for a binary expression
+    fn gen_bin(&mut self, lhs: &Ast, rhs: &Ast, op: &Op) -> AnyValueEnum<'c> {
+        match op {
+            //Handle assignment separately
+            Op::Assign => {
+                let lhs = self.gen(lhs, true).into_pointer_value();
+                let rhs = BasicValueEnum::try_from(self.gen(rhs, false))
+                    .expect("Right hand side of assignment expression is not a basic type!");
+
+                self.build.build_store(lhs, rhs).as_any_value_enum()
+            }
+            op => {
+                use std::mem::discriminant;
+                let lhs = self.gen(lhs, false);
+                let rhs = self.gen(rhs, false);
+                if discriminant(&lhs.get_type()) != discriminant(&rhs.get_type()) {
+                    panic!("Left hand side of '{}' expression does not match types with right hand side! LHS: {:?}, RHS: {:?}", op, lhs.get_type(), rhs.get_type());
+                }
+                let ty = lhs.get_type();
+                match (ty, op) {
+                    (AnyTypeEnum::IntType(_), Op::Plus) => {
+                        let lhs = lhs.into_int_value();
+                        let rhs = rhs.into_int_value();
+                        self.build
+                            .build_int_add(lhs, rhs, "tmp_iadd")
+                            .as_any_value_enum()
+                    }
+                    (AnyTypeEnum::IntType(_), Op::Greater) => self
+                        .build
+                        .build_int_compare(
+                            IntPredicate::SGT,
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_greater_than_cmp",
+                        )
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Less) => self
+                        .build
+                        .build_int_compare(
+                            IntPredicate::SLT,
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_less_than_cmp",
+                        )
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Equal) => self
+                        .build
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_eq_cmp",
+                        )
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::GreaterEq) => self
+                        .build
+                        .build_int_compare(
+                            IntPredicate::SGE,
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_greater_than_eq_cmp",
+                        )
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::NEqual) => self
+                        .build
+                        .build_int_compare(
+                            IntPredicate::NE,
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_not_eq_cmp",
+                        )
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::LessEq) => self
+                        .build
+                        .build_int_compare(
+                            IntPredicate::SLE,
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_less_than_eq_cmp",
+                        )
+                        .as_any_value_enum(),
+
+                    (AnyTypeEnum::IntType(_), Op::And) => self
+                        .build
+                        .build_and(lhs.into_int_value(), rhs.into_int_value(), "bit_and")
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Or) => self
+                        .build
+                        .build_or(lhs.into_int_value(), rhs.into_int_value(), "bit_or")
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Xor) => self
+                        .build
+                        .build_xor(lhs.into_int_value(), rhs.into_int_value(), "bit_xor")
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Star) => self
+                        .build
+                        .build_int_mul(lhs.into_int_value(), rhs.into_int_value(), "int_mul")
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Divide) => self
+                        .build
+                        .build_int_signed_div(
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_div",
+                        )
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Modulo) => self
+                        .build
+                        .build_int_signed_rem(
+                            lhs.into_int_value(),
+                            rhs.into_int_value(),
+                            "int_modulo",
+                        )
+                        .as_any_value_enum(),
+                    (AnyTypeEnum::IntType(_), Op::Minus) => self
+                        .build
+                        .build_int_sub(lhs.into_int_value(), rhs.into_int_value(), "int_sub")
+                        .as_any_value_enum(),
+
+                    (AnyTypeEnum::IntType(_), Op::AndAnd) => {
+                        let lhs = self.build.build_int_compare(
+                            IntPredicate::SGT,
+                            lhs.into_int_value(),
+                            self.ctx.bool_type().const_zero(),
+                            "and_and_cond_check_lhs",
+                        );
+                        let rhs = self.build.build_int_compare(
+                            IntPredicate::SGT,
+                            rhs.into_int_value(),
+                            self.ctx.bool_type().const_zero(),
+                            "and_and_cond_check_rhs",
+                        );
+                        self.build
+                            .build_and(lhs, rhs, "cond_and_and_cmp")
+                            .as_any_value_enum()
+                    }
+                    (AnyTypeEnum::IntType(_), Op::OrOr) => {
+                        let lhs = self.build.build_int_compare(
+                            IntPredicate::SGT,
+                            lhs.into_int_value(),
+                            self.ctx.bool_type().const_zero(),
+                            "or_or_cond_check_lhs",
+                        );
+                        let rhs = self.build.build_int_compare(
+                            IntPredicate::SGT,
+                            rhs.into_int_value(),
+                            self.ctx.bool_type().const_zero(),
+                            "or_or_cond_check_rhs",
+                        );
+                        self.build
+                            .build_or(lhs, rhs, "cond_or_or_cmp")
+                            .as_any_value_enum()
+                    },
+
+                    //---------- Pointer Operations
+                    (AnyTypeEnum::PointerType(ptr), op) => {
+                        let lhs = self.build.build_ptr_to_int(lhs.into_pointer_value(), self.ctx.i64_type(), "ptr_cmp_cast_lhs");
+                        let rhs = self.build.build_ptr_to_int(rhs.into_pointer_value(), self.ctx.i64_type(), "ptr_cmp_cast_rhs");
+
+                        match op {
+                            Op::NEqual => self.build.build_int_compare(IntPredicate::NE, lhs, rhs, "ptr_nequal_cmp").as_any_value_enum(),
+                            Op::Equal => self.build.build_int_compare(IntPredicate::NE, lhs, rhs, "ptr_equal_cmp").as_any_value_enum(),
+
+                            Op::Plus => self.build.build_int_to_ptr(self.build.build_int_add(lhs, rhs, "ptr_add"), ptr, "ptr_add_cast_back_to_ptr").as_any_value_enum(),
+                            Op::Minus => self.build.build_int_to_ptr(self.build.build_int_sub(lhs, rhs, "ptr_sub"), ptr, "ptr_sub_cast_back_to_ptr").as_any_value_enum(),
+                            Op::Star => self.build.build_int_to_ptr(self.build.build_int_mul(lhs, rhs, "ptr_mul"), ptr, "ptr_mul_cast_back_to_ptr").as_any_value_enum(),
+                            Op::Divide => self.build.build_int_to_ptr(self.build.build_int_unsigned_div(lhs, rhs, "ptr_div"), ptr, "ptr_div_cast_back_to_ptr").as_any_value_enum(),
+                            other => panic!("Cannot use operator {} on pointers", other),
+                        }
+                    }
+                    other => panic!("Unable to use operator '{}' on type {:?}", op, other),
+                }
+            }
+        }
+    }
+
     /// Generate code for one expression
     pub fn gen(&mut self, node: &Ast, lval: bool) -> AnyValueEnum<'c> {
         match node {
@@ -455,178 +631,7 @@ impl<'c> Compiler<'c> {
                 }
                 other => panic!("Unknown unary operator {} being applied", other),
             },
-            Ast::Bin(lhs, op, rhs) => match op {
-                //Handle assignment separately
-                Op::Assign => {
-                    let lhs = self.gen(lhs, true).into_pointer_value();
-                    let rhs = BasicValueEnum::try_from(self.gen(rhs, false))
-                        .expect("Right hand side of assignment expression is not a basic type!");
-
-                    self.build.build_store(lhs, rhs).as_any_value_enum()
-                }
-                op => {
-                    use std::mem::discriminant;
-                    let lhs = self.gen(lhs, false);
-                    let rhs = self.gen(rhs, false);
-                    if discriminant(&lhs.get_type()) != discriminant(&rhs.get_type()) {
-                        panic!("Left hand side of '{}' expression does not match types with right hand side! LHS: {:?}, RHS: {:?}", op, lhs.get_type(), rhs.get_type());
-                    }
-                    let ty = lhs.get_type();
-                    match (ty, op) {
-                        (AnyTypeEnum::IntType(_), Op::Plus) => {
-                            let lhs = lhs.into_int_value();
-                            let rhs = rhs.into_int_value();
-                            self.build
-                                .build_int_add(lhs, rhs, "tmp_iadd")
-                                .as_any_value_enum()
-                        }
-                        (AnyTypeEnum::IntType(_), Op::Greater) => self
-                            .build
-                            .build_int_compare(
-                                IntPredicate::SGT,
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_greater_than_cmp",
-                            )
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Less) => self
-                            .build
-                            .build_int_compare(
-                                IntPredicate::SLT,
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_less_than_cmp",
-                            )
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Equal) => self
-                            .build
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_eq_cmp",
-                            )
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::GreaterEq) => self
-                            .build
-                            .build_int_compare(
-                                IntPredicate::SGE,
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_greater_than_eq_cmp",
-                            )
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::NEqual) => self
-                            .build
-                            .build_int_compare(
-                                IntPredicate::NE,
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_not_eq_cmp",
-                            )
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::LessEq) => self
-                            .build
-                            .build_int_compare(
-                                IntPredicate::SLE,
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_less_than_eq_cmp",
-                            )
-                            .as_any_value_enum(),
-
-                        (AnyTypeEnum::IntType(_), Op::And) => self
-                            .build
-                            .build_and(lhs.into_int_value(), rhs.into_int_value(), "bit_and")
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Or) => self
-                            .build
-                            .build_or(lhs.into_int_value(), rhs.into_int_value(), "bit_or")
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Xor) => self
-                            .build
-                            .build_xor(lhs.into_int_value(), rhs.into_int_value(), "bit_xor")
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Star) => self
-                            .build
-                            .build_int_mul(lhs.into_int_value(), rhs.into_int_value(), "int_mul")
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Divide) => self
-                            .build
-                            .build_int_signed_div(
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_div",
-                            )
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Modulo) => self
-                            .build
-                            .build_int_signed_rem(
-                                lhs.into_int_value(),
-                                rhs.into_int_value(),
-                                "int_modulo",
-                            )
-                            .as_any_value_enum(),
-                        (AnyTypeEnum::IntType(_), Op::Minus) => self
-                            .build
-                            .build_int_sub(lhs.into_int_value(), rhs.into_int_value(), "int_sub")
-                            .as_any_value_enum(),
-
-                        (AnyTypeEnum::IntType(_), Op::AndAnd) => {
-                            let lhs = self.build.build_int_compare(
-                                IntPredicate::SGT,
-                                lhs.into_int_value(),
-                                self.ctx.bool_type().const_zero(),
-                                "and_and_cond_check_lhs",
-                            );
-                            let rhs = self.build.build_int_compare(
-                                IntPredicate::SGT,
-                                rhs.into_int_value(),
-                                self.ctx.bool_type().const_zero(),
-                                "and_and_cond_check_rhs",
-                            );
-                            self.build
-                                .build_and(lhs, rhs, "cond_and_and_cmp")
-                                .as_any_value_enum()
-                        }
-                        (AnyTypeEnum::IntType(_), Op::OrOr) => {
-                            let lhs = self.build.build_int_compare(
-                                IntPredicate::SGT,
-                                lhs.into_int_value(),
-                                self.ctx.bool_type().const_zero(),
-                                "or_or_cond_check_lhs",
-                            );
-                            let rhs = self.build.build_int_compare(
-                                IntPredicate::SGT,
-                                rhs.into_int_value(),
-                                self.ctx.bool_type().const_zero(),
-                                "or_or_cond_check_rhs",
-                            );
-                            self.build
-                                .build_or(lhs, rhs, "cond_or_or_cmp")
-                                .as_any_value_enum()
-                        },
-
-                        //---------- Pointer Operations
-                        (AnyTypeEnum::PointerType(ptr), op) => {
-                            let lhs = self.build.build_ptr_to_int(lhs.into_pointer_value(), self.ctx.i64_type(), "ptr_cmp_cast_lhs");
-                            let rhs = self.build.build_ptr_to_int(rhs.into_pointer_value(), self.ctx.i64_type(), "ptr_cmp_cast_rhs");
-
-                            match op {
-                                Op::NEqual => self.build.build_int_compare(IntPredicate::NE, lhs, rhs, "ptr_nequal_cmp").as_any_value_enum(),
-                                Op::Equal => self.build.build_int_compare(IntPredicate::NE, lhs, rhs, "ptr_equal_cmp").as_any_value_enum(),
-
-                                Op::Plus => self.build.build_int_to_ptr(self.build.build_int_add(lhs, rhs, "ptr_add"), ptr, "ptr_add_cast_back_to_ptr").as_any_value_enum(),
-                                Op::Minus => self.build.build_int_to_ptr(self.build.build_int_sub(lhs, rhs, "ptr_sub"), ptr, "ptr_sub_cast_back_to_ptr").as_any_value_enum(),
-                                Op::Star => self.build.build_int_to_ptr(self.build.build_int_mul(lhs, rhs, "ptr_mul"), ptr, "ptr_mul_cast_back_to_ptr").as_any_value_enum(),
-                                Op::Divide => self.build.build_int_to_ptr(self.build.build_int_unsigned_div(lhs, rhs, "ptr_div"), ptr, "ptr_div_cast_back_to_ptr").as_any_value_enum(),
-                                other => panic!("Cannot use operator {} on pointers", other),
-                            }
-                        }
-                        other => panic!("Unable to use operator '{}' on type {:?}", op, other),
-                    }
-                }
-            },
+            Ast::Bin(lhs, op, rhs) => self.gen_bin(lhs, rhs, op),
             other => unimplemented!("No {:?}", other),
         }
     }
