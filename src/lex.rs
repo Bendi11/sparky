@@ -63,6 +63,9 @@ pub enum Key {
 
     /// The `using` keyword is used to add a namespace to the list of used namesapces
     Using,
+
+    /// The `type` keyword is used to alias types with an identifier
+    Type,
 }
 
 impl fmt::Display for Key {
@@ -83,6 +86,7 @@ impl fmt::Display for Key {
             Self::Cast => write!(f, "cast"),
             Self::Ns => write!(f, "ns"),
             Self::Using => write!(f, "using"),
+            Self::Type => write!(f, "type"),
         }
     }
 }
@@ -107,6 +111,7 @@ impl convert::TryFrom<&str> for Key {
             "cast" => Ok(Self::Cast),
             "ns" => Ok(Self::Ns),
             "using" => Ok(Self::Using),
+            "type" => Ok(Self::Type),
             _ => Err(()),
         }
     }

@@ -31,6 +31,7 @@ extern {
         "cast"  => TokenType::Key(Key::Cast),
         "ns"    => TokenType::Key(Key::Ns),
         "using" => TokenType::Key(Key::Using),
+        "type"  => TokenType::Key(Key::Type),
         Op => TokenType::Op(<Op>),
 
         ";" => TokenType::Semicolon,
@@ -45,7 +46,7 @@ extern {
 //A program is made up of declarations
 pub Program: Vec<Ast> = {
     <ds:Decl*> => ds,
-}
+};
 
 Decl: Ast = {
     <s:FunProto> ";" => Ast::FunProto(s),
@@ -54,14 +55,20 @@ Decl: Ast = {
     <u:UnionDef> => Ast::UnionDef(u),
     <ns:NsDecl> => ns,
     <using:UsingDecl> => using,
-}
+    <typedef:TypeDef> => typedef,
+};
 
 NsDecl: Ast = {
-    "ns" <name:Ident> "{" <decs:Decl*> "}" => Ast::Namespace(name, decs),
+    "ns" <names:CommaList<Ident>> "{" <decs:Decl*> "}" => Ast::Namespace(names, decs),
 };
 
 UsingDecl: Ast = {
-    "using" <name:Ident> ";" => Ast::Using(name),
+    "using" "ns" <name:Ident> ";" => Ast::Using(true, name),
+    "using" <name:Ident> ";" => Ast::Using(false, name),
+};
+
+TypeDef: Ast = {
+    "type" <name:Ident> <ty:Typename> ";" => Ast::TypeDef(name, ty),
 };
 
 FunProto: ast::FunProto = {

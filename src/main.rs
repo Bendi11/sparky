@@ -194,7 +194,7 @@ fn main() {
             fn read_dir(path: &str, list: &mut Vec<String>) {
                 std::fs::read_dir(path).unwrap().fold(list, |list, s| match s {
                     Ok(entry) if entry.path().extension().unwrap_or(OsStr::new("")) == "sprk" => {
-                        list.push(entry.file_name().into_string().unwrap());
+                        list.push(entry.path().to_str().unwrap().to_owned());
                         list
                     }
                     Ok(entry) if entry.file_type().unwrap().is_dir() => {

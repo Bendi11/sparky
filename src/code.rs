@@ -4,6 +4,35 @@ use crate::{CompileOpts, OutFormat, Type, ast::{Ast, FunProto, Attributes}, lex:
 use hashbrown::HashMap;
 use inkwell::{IntPredicate, OptimizationLevel, builder::Builder, context::Context, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
+/// The `namespace` struct holds an amount of items and serves to namespace them
+#[derive(Clone, Default)]
+struct Namespace<'c> {
+    /// A hash map of identifiers to defined struct types
+    pub struct_types: HashMap<String, (StructType<'c>, Container)>,
+
+    /// A hash map of identifiers to defined union types
+    pub union_types: HashMap<String, (StructType<'c>, Container)>,
+
+    /// A map of function names to function prototypes
+    pub funs: HashMap<String, (FunctionValue<'c>, FunProto)>,
+
+    /// The name of this namespace
+    pub name: String,
+
+    /// Further nested namespaces
+    nested: HashMap<String, Namespace<'c>>,
+
+    /// A list of currently used namespaces
+    pub using: Vec<String>,
+
+    /// A map of identifiers imported to the fully qualified names of the identifiers
+    pub used_items: HashMap<String, String>,
+
+    /// A map of user - defined type definitions to real types
+    pub typedefs: HashMap<String, Type>,
+}
+
+
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
 pub struct Compiler<'c> {
     /// The LLVM context
@@ -33,6 +62,12 @@ pub struct Compiler<'c> {
     /// A list of currently used namespaces
     using: Vec<String>,
 
+    /// A map of identifiers imported to the fully qualified names of the identifiers
+    used_items: HashMap<String, String>,
+
+    /// A map of user - defined type definitions to real types
+    typedefs: HashMap<String, Type>,
+
     /// The stack of namespaces that we are currently in
     ns: Vec<String>,
 
@@ -55,6 +90,8 @@ impl<'c> Compiler<'c> {
             current_proto: None,
             ns: Vec::new(),
             using: Vec::new(),
+            typedefs: HashMap::new(),
+            used_items: HashMap::new(),
         }
     }
 
@@ -81,11 +118,12 @@ impl<'c> Compiler<'c> {
                 Some(u_ty) => u_ty.0.as_basic_type_enum(),
                 None => panic!("Unknown union type {}", name),
             },
-            Type::Unknown(name) => match (self.get_union(name), self.get_struct(name)) {
-                (Some(_), Some(_)) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
-                (Some(u), _) => u.0.as_basic_type_enum(),
-                (_, Some(s)) => s.0.as_basic_type_enum(),
-                (None, None) => panic!("Unknown union or struct type {}", name),
+            Type::Unknown(name) => match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
+                (Some(_), Some(_), _) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
+                (Some(u), _, _) => u.0.as_basic_type_enum(),
+                (_, Some(s), _) => s.0.as_basic_type_enum(),
+                (_, _, Some(ty)) => self.llvm_type(&ty),
+                (None, None, None) => panic!("Unknown union or struct type {}", name),
             },
             Type::Void => panic!("Cannot create void type in LLVM!"),
         }
@@ -367,17 +405,38 @@ impl<'c> Compiler<'c> {
 
     /// Get a function by name from our hashmap, searching used namespaces if the function is not found
     fn get_fun(&self, name: impl AsRef<str>) -> Option<(FunctionValue<'c>, FunProto)> {
-        let name = name.as_ref();
-        match self.funs.get(name) {
+        let mut name = name.as_ref().to_owned();
+        //See if we have a fully qualified imported name
+        if let Some(item) = self.used_items.get(&name) {
+            name = item.clone();
+        }
+        match self.funs.get(&name) {
             Some(val) => Some(val.clone()),
             None => self.resolve(name, &self.funs),
         }
     }
 
+    /// Search for a typedef by name 
+    fn get_typedef(&self, name: impl AsRef<str>) -> Option<Type> {
+        let mut name = name.as_ref().to_owned();
+        //See if we have a fully qualified imported name
+        if let Some(item) = self.used_items.get(&name) {
+            name = item.clone();
+        }
+        match self.typedefs.get(&name) {
+            Some(val) => Some(val.clone()),
+            None => self.resolve(name, &self.typedefs),
+        }
+    }
+
     /// Get a struct type, resolving not found errors with namespace lookup
     fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
-        let name = name.as_ref();
-        match self.struct_types.get(name) {
+        let mut name = name.as_ref().to_owned();
+        //See if we have a fully qualified imported name
+        if let Some(item) = self.used_items.get(&name) {
+            name = item.clone();
+        }
+        match self.struct_types.get(&name) {
             Some(val) => Some(val.clone()),
             None => self.resolve(name, &self.struct_types),
         }
@@ -385,8 +444,12 @@ impl<'c> Compiler<'c> {
 
     /// Get a union type, resolving not found errors with namespace lookup
     fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
-        let name = name.as_ref();
-        match self.union_types.get(name) {
+        let mut name = name.as_ref().to_owned();
+        //See if we have a fully qualified imported name
+        if let Some(item) = self.used_items.get(&name) {
+            name = item.clone();
+        }
+        match self.union_types.get(&name) {
             Some(val) => Some(val.clone()),
             None => self.resolve(name, &self.union_types),
         }
@@ -755,17 +818,30 @@ impl<'c> Compiler<'c> {
                     );
                     None
                 },
-                Ast::Namespace(name, body) => {
-                    self.enter_ns(&name); //Add the namespace
+                //Insert a user-defined typedef
+                Ast::TypeDef(name, ty) => {
+                    self.typedefs.insert(self.apply_ns(name), ty); 
+                    None
+                },
+                Ast::Namespace(names, body) => {
+                    for name in names.iter() {
+                        self.enter_ns(name); //Add the namespace
+                    }
+
                     let usings = self.using.clone(); //Get a list of used namesapces inside this namespace
                     self.get_type_decls(body.clone()); //Get all function prototypes in the namespace, applying the namespace
                     self.using = usings; //Stop using nested namespace's used namespaces
-                    self.ns.pop(); //Pop the namespace from our namespace stack
-                    Some(Ast::Namespace(name, body))
+                    for _ in names.iter() {
+                        self.ns.pop(); //Pop the namespace from our stack
+                    } //Pop the namespace from our namespace stack
+                    Some(Ast::Namespace(names, body))
                 },
-                Ast::Using(namespace) => {
-                    self.using.push(namespace.clone());
-                    Some(Ast::Using(namespace))
+                Ast::Using(all, item) => {
+                    match all {
+                        true => { self.using.push(item.clone()); },
+                        false => { self.used_items.insert(item.clone().split("::").last().unwrap().to_owned(), item.clone()); },
+                    };
+                    Some(Ast::Using(all, item))
                 }
                 other => Some(other),
             })
@@ -784,16 +860,23 @@ impl<'c> Compiler<'c> {
                     self.gen_fundef(&proto, &body);
                     None
                 }
-                Ast::Namespace(name, body) => {
-                    self.enter_ns(name); //Add the namespace
+                Ast::Namespace(names, body) => {
+                    for name in names.iter() {
+                        self.enter_ns(name); //Add the namespace
+                    }
                     let usings = self.using.clone(); //Get a list of used namesapces inside this namespace
                     self.get_fn_protos(body); //Get all function prototypes in the namespace, applying the namespace
                     self.using = usings; //Stop using the namespaces of nested namespaces
-                    self.ns.pop(); //Pop the namespace from our stack
+                    for _ in names.iter() {
+                        self.ns.pop(); //Pop the namespace from our stack
+                    }
                     None
                 },
-                Ast::Using(namespace) => {
-                    self.using.push(namespace.clone());
+                Ast::Using(all, item) => {
+                    match all {
+                        true => { self.using.push(item.clone()); },
+                        false => { self.used_items.insert(item.clone().split("::").last().unwrap().to_owned(), item); },
+                    };
                     None
                 },
                 other => Some(other),

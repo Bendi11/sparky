@@ -118,11 +118,16 @@ pub enum Ast {
     },
 
     /// A new namespace declaration with the body of expressions inside the namespace
-    Namespace(String, Vec<Ast>),
+    Namespace(Vec<String>, Vec<Ast>),
 
-    /// Using a namespace 
-    Using(String),
+    /// Using a namespace (true) or an item (false)
+    Using(bool, String),
+
+    /// A type definition aliasing an identifier to a typename
+    TypeDef(String, Type),
 }
+
+
 
 impl Ast {
     /// Get the type of this expression, if any
