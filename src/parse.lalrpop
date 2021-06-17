@@ -29,6 +29,7 @@ extern {
         "var"   => TokenType::Key(Key::Var),
         "void"  => TokenType::Key(Key::Void),
         "cast"  => TokenType::Key(Key::Cast),
+        "ns"    => TokenType::Key(Key::Ns),
         Op => TokenType::Op(<Op>),
 
         ";" => TokenType::Semicolon,
@@ -50,7 +51,12 @@ Decl: Ast = {
     <d:FunDef> => d,
     <s:StructDef> => Ast::StructDef(s),
     <u:UnionDef> => Ast::UnionDef(u),
+    <ns:NsDecl> => ns,
 }
+
+NsDecl: Ast = {
+    "ns" <name:Ident> "{" <decs:Decl*> "}" => Ast::Namespace(name, decs),
+};
 
 FunProto: ast::FunProto = {
     "fun" <attrs:Attributes> <name:Ident> "(" <args:CommaList<(Typename Ident?)>> ")" <ret:Typename> => ast::FunProto {

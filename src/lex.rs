@@ -57,6 +57,9 @@ pub enum Key {
 
     /// The `void` keyword is used to indicate no type
     Void,
+
+    /// The `ns` keyword is used to denote namespaces
+    Ns,
 }
 
 impl fmt::Display for Key {
@@ -75,6 +78,7 @@ impl fmt::Display for Key {
             Self::Var => write!(f, "var"),
             Self::Void => write!(f, "void"),
             Self::Cast => write!(f, "cast"),
+            Self::Ns => write!(f, "ns"),
         }
     }
 }
@@ -97,6 +101,7 @@ impl convert::TryFrom<&str> for Key {
             "var" => Ok(Self::Var),
             "void" => Ok(Self::Void),
             "cast" => Ok(Self::Cast),
+            "ns" => Ok(Self::Ns),
             _ => Err(()),
         }
     }
@@ -323,7 +328,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         let mut ident = String::from(first); //Create a string from the first char given
         while match self.chars.peek() {
             //Push alphabetic characters to the string
-            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' => {
+            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' || c == &':' => {
                 ident.push(self.chars.next().unwrap().unwrap());
                 true
             }
@@ -495,7 +500,11 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                         },
                         ('/', '/') => {
                             self.chars.next();
-                            while self.chars.next().unwrap().unwrap() != '\n' {} //Skip the comment
+                            while match self.chars.next() {
+                                Some(Ok('\n')) => false,
+                                None => false,
+                                _ => true,
+                            } {} //Skip the comment
                             self.line += 1;
                             return self.token() //Get the next token
                         }

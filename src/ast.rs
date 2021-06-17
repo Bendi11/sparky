@@ -116,6 +116,9 @@ pub enum Ast {
         /// The block to loop over
         block: Vec<Ast>,
     },
+
+    /// A new namespace declaration with the body of expressions inside the namespace
+    Namespace(String, Vec<Ast>),
 }
 
 impl Ast {

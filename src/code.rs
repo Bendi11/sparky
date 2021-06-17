@@ -1,17 +1,8 @@
 use std::{convert::TryFrom, ops::Deref, path::Path, process::Command};
 
-use crate::{CompileOpts, OutFormat, Type, ast::{Ast, FunProto}, lex::Op, types::Container};
+use crate::{CompileOpts, OutFormat, Type, ast::{Ast, FunProto, Attributes}, lex::Op, types::Container};
 use hashbrown::HashMap;
-use inkwell::{
-    builder::Builder,
-    context::Context,
-    module::Module,
-    passes::PassManager,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
-    values::{AnyValue, AnyValueEnum, BasicValueEnum, FunctionValue, PointerValue},
-    IntPredicate, OptimizationLevel,
-};
+use inkwell::{IntPredicate, OptimizationLevel, builder::Builder, context::Context, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
 pub struct Compiler<'c> {
@@ -39,6 +30,9 @@ pub struct Compiler<'c> {
     /// The signature of the current function
     current_proto: Option<FunProto>,
 
+    /// The stack of namespaces that we are currently in
+    ns: Vec<String>,
+
     /// A map of variable / argument names to LLVM values
     vars: HashMap<String, (PointerValue<'c>, Type)>,
 }
@@ -56,6 +50,7 @@ impl<'c> Compiler<'c> {
             funs: HashMap::new(),
             vars: HashMap::new(),
             current_proto: None,
+            ns: Vec::new(),
         }
     }
 
@@ -93,7 +88,10 @@ impl<'c> Compiler<'c> {
     }
 
     /// Generate code for a function prototype
-    pub fn gen_fun_proto(&mut self, proto: FunProto) -> Result<FunctionValue<'c>, String> {
+    pub fn gen_fun_proto(&mut self, mut proto: FunProto) -> Result<FunctionValue<'c>, String> {
+        if !proto.attrs.contains(Attributes::EXT) {
+            proto.name = self.apply_ns(proto.name); //Apply namespacing if the function is not defined as external
+        }
         if self.module.get_function(proto.name.as_str()).is_some() {
             return Err(format!("Function {} defined twice", proto.name));
         }
@@ -134,6 +132,18 @@ impl<'c> Compiler<'c> {
             self.funs.insert(proto.name, (fun, proto_clone));
             Ok(fun)
         }
+    }
+
+    /// Apply all namespaces to an identifier
+    pub fn apply_ns(&self, name: impl AsRef<str>) -> String {
+        let base = self.ns.clone().join("::"); //Get the base namespace
+        base + "::" + name.as_ref() //Append the identifier to the namespace base
+    }
+
+    /// Enter a namespace and generate identifiers for the namespace
+    #[inline(always)]
+    pub fn enter_ns(&mut self, name: impl ToString) {
+        self.ns.push(name.to_string());
     }
 
     /// Build an alloca for a variable in the current function
@@ -441,7 +451,14 @@ impl<'c> Compiler<'c> {
 
                 let old_vars = self.vars.clone();
 
-                let f = match self.module.get_function(proto.name.as_str()) {
+                //Apply namespacing if the function isn't extern
+                let name = if !proto.attrs.contains(Attributes::EXT) {
+                    self.apply_ns(proto.name.clone())
+                } else {
+                    proto.name.clone()
+                };
+                
+                let f = match self.module.get_function(name.as_str()) {
                     Some(f) => f,
                     None => self.gen_fun_proto(proto.clone()).unwrap(),
                 };
@@ -546,44 +563,74 @@ impl<'c> Compiler<'c> {
                         &self.vars,
                     )
                     .expect("Failed to get type of lhs when accessing member of struct or union");
-                let (_, s_ty) = match col {
-                    Type::UnknownStruct(name) => self
+                let (_, s_ty, is_struct) = match col {
+                    Type::UnknownStruct(name) => {
+                        let (ref s_ty, con) = self
                         .struct_types
                         .get(&name)
-                        .unwrap_or_else(|| panic!("Using unknown struct type {}", name)),
-                    Type::UnknownUnion(name) => self
+                        .unwrap_or_else(|| panic!("Using unknown struct type {}", name));
+                        (s_ty, con, true)
+                    },
+                    Type::UnknownUnion(name) => {
+                        let (s_ty, con) = self
                         .union_types
                         .get(&name)
-                        .unwrap_or_else(|| panic!("Using unknown union type {}", name)),
-                    Type::Unknown(name) => self.struct_types.get(&name).unwrap_or_else(|| {
-                        self.union_types
+                        .unwrap_or_else(|| panic!("Using unknown union type {}", name));
+                        (s_ty, con, false)
+                    }
+                    Type::Unknown(name) => match self.struct_types.get(&name) {
+                        Some((s_ty, con)) => (s_ty, con, true),
+                        None => {
+                            let (ref u_ty, ref con) = self.union_types
                             .get(&name)
-                            .unwrap_or_else(|| panic!("Using unknown type {}", name))
-                    }),
+                            .unwrap_or_else(|| panic!("Using unknown type {}", name));
+                            (u_ty, con, false)
+                        },
+                    },
                     _ => panic!("Not a structure type"),
                 };
 
-                let field_idx = s_ty
-                    .fields
-                    .iter()
-                    .position(|(name, _)| name == field)
-                    .unwrap_or_else(|| {
-                        panic!("Struct type {} has no field named {}", s_ty.name, field)
-                    });
-                let s = self.gen(val, true);
-                let field = self
-                    .build
-                    .build_struct_gep(s.into_pointer_value(), field_idx as u32, "struct_gep")
-                    .unwrap();
+                match is_struct {
+                    true => {
+                        let field_idx = s_ty
+                        .fields
+                        .iter()
+                        .position(|(name, _)| name == field)
+                        .unwrap_or_else(|| {
+                            panic!("Struct type {} has no field named {}", s_ty.name, field)
+                        });
+                        let s = self.gen(val, true);
+                        let field = self
+                            .build
+                            .build_struct_gep(s.into_pointer_value(), field_idx as u32, "struct_gep")
+                            .unwrap();
 
-                //Return the pointer value if we are generating an assignment
-                match lval {
-                    false => self
-                        .build
-                        .build_load(field, "load_struct_field")
-                        .as_any_value_enum(),
-                    true => field.as_any_value_enum(),
+                        //Return the pointer value if we are generating an assignment
+                        match lval {
+                            false => self
+                                .build
+                                .build_load(field, "load_struct_field")
+                                .as_any_value_enum(),
+                            true => field.as_any_value_enum(),
+                        }
+                    },
+                    false => {
+                        let (_, field_ty) = s_ty.fields.iter().find(|(name, _)| name == field).unwrap_or_else(|| panic!("Union type {} has no field named {}", s_ty.name, field));
+                        let field_ty = self.llvm_type(field_ty);
+                        match lval {
+                            true => {
+                                let u = self.gen(val, true);
+                                self.build.build_pointer_cast(u.into_pointer_value(), field_ty.ptr_type(inkwell::AddressSpace::Generic), "union_member_access_lval_cast").as_any_value_enum()
+                            },
+                            false => {
+                                let u = self.gen(val, false);
+                                self.build.build_bitcast(u.into_struct_value().as_basic_value_enum(), field_ty, "union_member_access_rval_cast").as_any_value_enum()
+                            }
+                        }
+                    }
                 }
+
+                
             }
             Ast::StrLiteral(string) => {
                 let s = self
@@ -640,12 +687,14 @@ impl<'c> Compiler<'c> {
     fn get_type_decls(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
         ast.into_iter()
             .filter_map(|node| match node {
-                Ast::StructDef(c) => {
+                Ast::StructDef(mut c) => {
+                    c.name = self.apply_ns(c.name);
                     let ty = self.llvm_type(&Type::Struct(c.clone())).into_struct_type();
                     self.struct_types.insert(c.name.clone(), (ty, c));
                     None
-                }
-                Ast::UnionDef(c) => {
+                },
+                Ast::UnionDef(mut c) => {
+                    c.name = self.apply_ns(c.name);
                     self.union_types.insert(
                         c.name.clone(),
                         (
@@ -654,7 +703,13 @@ impl<'c> Compiler<'c> {
                         ),
                     );
                     None
-                }
+                },
+                Ast::Namespace(name, body) => {
+                    self.enter_ns(&name); //Add the namespace
+                    self.get_type_decls(body.clone()); //Get all function prototypes in the namespace, applying the namespace
+                    self.ns.pop(); //Pop the namespace from our namespace stack
+                    Some(Ast::Namespace(name, body))
+                },
                 other => Some(other),
             })
             .collect::<Vec<_>>()
@@ -671,6 +726,12 @@ impl<'c> Compiler<'c> {
                 Ast::FunDef(proto, body) => {
                     self.gen_fun_proto(proto.clone()).unwrap();
                     Some(Ast::FunDef(proto, body))
+                },
+                Ast::Namespace(name, body) => {
+                    self.enter_ns(name); //Add the namespace
+                    self.get_fn_protos(body); //Get all function prototypes in the namespace, applying the namespace
+                    self.ns.pop(); //Pop the namespace from our stack
+                    None
                 }
                 other => Some(other),
             })
