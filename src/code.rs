@@ -183,6 +183,17 @@ impl<'c> Compiler<'c> {
                 }
                 None => panic!("Calling unknown function {}", name),
             },
+            Ast::AssocFunAccess(item, name, args) => match self.module.get_function(name.as_str()) {
+                Some(f) => {
+                    let item = BasicValueEnum::try_from(self.gen(item.deref(), false)).unwrap(); //Generate code for the first expression 
+                    let mut real_args = vec![item];
+                    real_args.extend(args.iter().map(|n| BasicValueEnum::try_from(self.gen(n, false)).expect("Failed to convert any value enum to basic value enum when calling function")) );
+                    self.build
+                        .build_call(f, real_args.as_ref(), "tmp_fncall")
+                        .as_any_value_enum()
+                }
+                None => panic!("Calling unknown associated function {}", name),
+            },
             Ast::If {
                 cond,
                 true_block,
@@ -434,9 +445,13 @@ impl<'c> Compiler<'c> {
                 Op::And => self.gen(val, true),
                 Op::Star => {
                     let ptr = self.gen(val, false).into_pointer_value();
-                    self.build
+                    match lval {
+                        false => self.build
                         .build_load(ptr, "deref_pointer_load")
-                        .as_any_value_enum()
+                        .as_any_value_enum(),
+                        true => ptr.as_any_value_enum(),
+                    }
+                    
                 }
                 other => panic!("Unknown unary operator {} being applied", other),
             },

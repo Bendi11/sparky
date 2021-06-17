@@ -301,7 +301,7 @@ impl<'a> Lexer<'a, BufReader<&'a [u8]>> {
     #[inline]
     pub fn new(reader: &'a mut BufReader<&'a [u8]>) -> Self {
         Self {
-            line: 0,
+            line: 1,
             chars: reader.chars().peekable(),
         }
     }
@@ -373,6 +373,29 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             ',' => Some(Token::new(self.line, TokenType::Comma)),
             ';' => Some(Token::new(self.line, TokenType::Semicolon)),
             '.' => Some(Token::new(self.line, TokenType::Dot)),
+
+            //Character integer literal
+            '\'' => {
+                let first = self.chars.next().and_then(|o| o.ok())?; //Get the first character to check for escape sequences
+                let character = if first == '\\' {
+                    let second = self.chars.next().and_then(|o| o.ok())?;
+                    Token::new(self.line, TokenType::NumLiteral(match second {
+                        '\\' => '\\' as u8,
+                        'n' => '\n' as u8,
+                        't' => '\t' as u8,
+                        other => return Some(Token::new(self.line, TokenType::Error(format!("Unknown escape sequence \\{}", other))))
+                    }.to_string()))
+                }
+                else {
+                    Token::new(self.line, TokenType::NumLiteral((first as u8).to_string()))
+                };
+                if self.chars.next().and_then(|o| o.ok())? != '\'' {
+                    return Some(Token::new(self.line, TokenType::Error("Character literal missing terminating \' character".to_owned())))
+                }
+                else {
+                    Some(character)
+                }
+            },
 
             //Lex a number literal from the input
             c if c.is_numeric() => {

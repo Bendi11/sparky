@@ -93,6 +93,7 @@ Expr: Ast = {
 
 PrimaryExpr: Ast = {
     <e:PrimaryExpr> "." <n:Ident> => Ast::MemberAccess(Box::new(e), n),
+    <e:PrimaryExpr> "." <f:FunCall> => Ast::AssocFunAccess(Box::new(e), f.0, f.1),
     //A constant number literal 
     <n:NumLiteral> <ty:IntegerType?> => Ast::NumLiteral(ty.unwrap_or(Type::Integer{width: 32, signed: true}), n),
     VarDecl,
