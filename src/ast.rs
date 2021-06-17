@@ -119,6 +119,9 @@ pub enum Ast {
 
     /// A new namespace declaration with the body of expressions inside the namespace
     Namespace(String, Vec<Ast>),
+
+    /// Using a namespace 
+    Using(String),
 }
 
 impl Ast {

@@ -30,6 +30,9 @@ pub struct Compiler<'c> {
     /// The signature of the current function
     current_proto: Option<FunProto>,
 
+    /// A list of currently used namespaces
+    using: Vec<String>,
+
     /// The stack of namespaces that we are currently in
     ns: Vec<String>,
 
@@ -51,6 +54,7 @@ impl<'c> Compiler<'c> {
             vars: HashMap::new(),
             current_proto: None,
             ns: Vec::new(),
+            using: Vec::new(),
         }
     }
 
@@ -69,15 +73,15 @@ impl<'c> Compiler<'c> {
                 let largest = con.fields.iter().max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size())).expect("Union type with no fields!");
                 self.ctx.struct_type(&[self.llvm_type(&largest.1)], false).as_basic_type_enum()
             },
-            Type::UnknownStruct(name) => match self.struct_types.get(name) {
+            Type::UnknownStruct(name) => match self.get_struct(name) {
                 Some(s_ty) => s_ty.0.as_basic_type_enum(),
                 None => panic!("Unknown struct type {}", name),
             },
-            Type::UnknownUnion(name) => match self.union_types.get(name) {
+            Type::UnknownUnion(name) => match self.get_union(name) {
                 Some(u_ty) => u_ty.0.as_basic_type_enum(),
                 None => panic!("Unknown union type {}", name),
             },
-            Type::Unknown(name) => match (self.union_types.get(name), self.struct_types.get(name)) {
+            Type::Unknown(name) => match (self.get_union(name), self.get_struct(name)) {
                 (Some(_), Some(_)) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
                 (Some(u), _) => u.0.as_basic_type_enum(),
                 (_, Some(s)) => s.0.as_basic_type_enum(),
@@ -135,9 +139,30 @@ impl<'c> Compiler<'c> {
     }
 
     /// Apply all namespaces to an identifier
+    #[inline]
     pub fn apply_ns(&self, name: impl AsRef<str>) -> String {
         let base = self.ns.clone().join("::"); //Get the base namespace
         base + "::" + name.as_ref() //Append the identifier to the namespace base
+    }
+
+    /// Attempt to search used namespaces for a value in a hashmap
+    fn resolve<T: Clone>(&self, name: impl AsRef<str>, map: &HashMap<String, T>) -> Option<T> {
+        let name = name.as_ref();
+        let self_ns = self.ns.join("::") + "::" + name; //See if we are using a function from the current namespace
+        match map.get(&self_ns) {
+            //We have this function in our current namespace, return it
+            Some(val) => Some(val.clone()),
+            //Try all used namespaces to see if we have this function in another namesapce
+            None => {
+                for namespace in self.using.iter() {
+                    let using_ns = namespace.clone() + "::" + name;
+                    if let Some(val) = map.get(&using_ns) {
+                        return Some(val.clone())
+                    }
+                }
+                None
+            }
+        }
     }
 
     /// Enter a namespace and generate identifiers for the namespace
@@ -340,6 +365,33 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    /// Get a function by name from our hashmap, searching used namespaces if the function is not found
+    fn get_fun(&self, name: impl AsRef<str>) -> Option<(FunctionValue<'c>, FunProto)> {
+        let name = name.as_ref();
+        match self.funs.get(name) {
+            Some(val) => Some(val.clone()),
+            None => self.resolve(name, &self.funs),
+        }
+    }
+
+    /// Get a struct type, resolving not found errors with namespace lookup
+    fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
+        let name = name.as_ref();
+        match self.struct_types.get(name) {
+            Some(val) => Some(val.clone()),
+            None => self.resolve(name, &self.struct_types),
+        }
+    }
+
+     /// Get a union type, resolving not found errors with namespace lookup
+     fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
+        let name = name.as_ref();
+        match self.union_types.get(name) {
+            Some(val) => Some(val.clone()),
+            None => self.resolve(name, &self.union_types),
+        }
+    }
+
     /// Generate code for one expression
     pub fn gen(&mut self, node: &Ast, lval: bool) -> AnyValueEnum<'c> {
         match node {
@@ -360,22 +412,22 @@ impl<'c> Compiler<'c> {
                     }
                 }
             }
-            Ast::FunCall(name, args) => match self.module.get_function(name.as_str()) {
-                Some(f) => {
+            Ast::FunCall(name, args) => match self.get_fun(&name) {
+                Some((f, _)) => {
                     let args = args.iter().map(|n| BasicValueEnum::try_from(self.gen(n, false)).expect("Failed to convert any value enum to basic value enum when calling function")).collect::<Vec<_>>();
                     self.build
-                        .build_call(f, args.as_ref(), "tmp_fncall")
+                        .build_call(f.clone(), args.as_ref(), "tmp_fncall")
                         .as_any_value_enum()
                 }
                 None => panic!("Calling unknown function {}", name),
             },
-            Ast::AssocFunAccess(item, name, args) => match self.module.get_function(name.as_str()) {
-                Some(f) => {
+            Ast::AssocFunAccess(item, name, args) => match self.get_fun(name.as_str()) {
+                Some((f, _)) => {
                     let item = BasicValueEnum::try_from(self.gen(item.deref(), false)).unwrap(); //Generate code for the first expression 
                     let mut real_args = vec![item];
                     real_args.extend(args.iter().map(|n| BasicValueEnum::try_from(self.gen(n, false)).expect("Failed to convert any value enum to basic value enum when calling function")) );
                     self.build
-                        .build_call(f, real_args.as_ref(), "tmp_fncall")
+                        .build_call(f.clone(), real_args.as_ref(), "tmp_assoc_fncall")
                         .as_any_value_enum()
                 }
                 None => panic!("Calling unknown associated function {}", name),
@@ -518,7 +570,7 @@ impl<'c> Compiler<'c> {
                 ),
             },
             Ast::StructLiteral { name, fields } => {
-                let (ty, def) = self.struct_types.get(name).unwrap_or_else(|| {
+                let (ty, def) = self.get_struct(name).unwrap_or_else(|| {
                     panic!(
                         "Using unknown struct type {} when defining struct literal",
                         name
@@ -706,10 +758,16 @@ impl<'c> Compiler<'c> {
                 },
                 Ast::Namespace(name, body) => {
                     self.enter_ns(&name); //Add the namespace
+                    let usings = self.using.clone(); //Get a list of used namesapces inside this namespace
                     self.get_type_decls(body.clone()); //Get all function prototypes in the namespace, applying the namespace
+                    self.using = usings; //Stop using nested namespace's used namespaces
                     self.ns.pop(); //Pop the namespace from our namespace stack
                     Some(Ast::Namespace(name, body))
                 },
+                Ast::Using(namespace) => {
+                    self.using.push(namespace.clone());
+                    Some(Ast::Using(namespace))
+                }
                 other => Some(other),
             })
             .collect::<Vec<_>>()
@@ -729,10 +787,16 @@ impl<'c> Compiler<'c> {
                 },
                 Ast::Namespace(name, body) => {
                     self.enter_ns(name); //Add the namespace
+                    let usings = self.using.clone(); //Get a list of used namesapces inside this namespace
                     self.get_fn_protos(body); //Get all function prototypes in the namespace, applying the namespace
+                    self.using = usings; //Stop using the namespaces of nested namespaces
                     self.ns.pop(); //Pop the namespace from our stack
                     None
-                }
+                },
+                Ast::Using(namespace) => {
+                    self.using.push(namespace.clone());
+                    None
+                },
                 other => Some(other),
             })
             .collect::<Vec<_>>()

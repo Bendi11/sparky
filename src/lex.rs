@@ -60,6 +60,9 @@ pub enum Key {
 
     /// The `ns` keyword is used to denote namespaces
     Ns,
+
+    /// The `using` keyword is used to add a namespace to the list of used namesapces
+    Using,
 }
 
 impl fmt::Display for Key {
@@ -79,6 +82,7 @@ impl fmt::Display for Key {
             Self::Void => write!(f, "void"),
             Self::Cast => write!(f, "cast"),
             Self::Ns => write!(f, "ns"),
+            Self::Using => write!(f, "using"),
         }
     }
 }
@@ -102,6 +106,7 @@ impl convert::TryFrom<&str> for Key {
             "void" => Ok(Self::Void),
             "cast" => Ok(Self::Cast),
             "ns" => Ok(Self::Ns),
+            "using" => Ok(Self::Using),
             _ => Err(()),
         }
     }
