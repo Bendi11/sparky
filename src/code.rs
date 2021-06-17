@@ -383,8 +383,8 @@ impl<'c> Compiler<'c> {
         }
     }
 
-     /// Get a union type, resolving not found errors with namespace lookup
-     fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
+    /// Get a union type, resolving not found errors with namespace lookup
+    fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
         let name = name.as_ref();
         match self.union_types.get(name) {
             Some(val) => Some(val.clone()),
@@ -392,7 +392,54 @@ impl<'c> Compiler<'c> {
         }
     }
 
-    /// Generate code for one expression
+    fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<Ast>) {
+        if self.current_fn.is_some() {
+            panic!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
+        }
+
+        let old_vars = self.vars.clone();
+
+        //Apply namespacing if the function isn't extern
+        let name = if !proto.attrs.contains(Attributes::EXT) {
+            self.apply_ns(proto.name.clone())
+        } else {
+            proto.name.clone()
+        };
+        
+        let f = match self.module.get_function(name.as_str()) {
+            Some(f) => f,
+            None => self.gen_fun_proto(proto.clone()).unwrap(),
+        };
+        self.current_fn = Some(f);
+        self.current_proto = Some(proto.clone());
+
+        let bb = self.ctx.append_basic_block(f, "fn_entry"); //Add the first basic block
+        self.build.position_at_end(bb); //Start inserting into the function
+
+        //Add argument names to the list of variables we can use
+        for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
+            let alloca = self.entry_alloca(
+                proto_arg.clone().unwrap_or("".to_owned()).as_str(),
+                self.llvm_type(ty),
+            );
+            self.build.build_store(alloca, arg); //Store the initial value in the function parameters
+
+            if let Some(name) = proto_arg {
+                self.vars.insert(name.clone(), (alloca, ty.clone()));
+            }
+        }
+
+        //Generate code for the function body
+        for ast in body {
+            self.gen(ast, false);
+        }
+
+        self.vars = old_vars; //Reset the variables
+        self.current_fn = None;
+        self.current_proto = None;
+    }
+
+    /// Generate code for one expression, only used for generating function bodies, no delcarations
     pub fn gen(&mut self, node: &Ast, lval: bool) -> AnyValueEnum<'c> {
         match node {
             Ast::NumLiteral(ty, num) => self
@@ -495,54 +542,6 @@ impl<'c> Compiler<'c> {
                 let br = self.build.build_unconditional_branch(cond_bb); //Branch back to the condition to check it
                 self.build.position_at_end(after_bb); //Continue condegen after the loop block
                 br.as_any_value_enum()
-            }
-            Ast::FunDef(proto, body) => {
-                if self.current_fn.is_some() {
-                    panic!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
-                }
-
-                let old_vars = self.vars.clone();
-
-                //Apply namespacing if the function isn't extern
-                let name = if !proto.attrs.contains(Attributes::EXT) {
-                    self.apply_ns(proto.name.clone())
-                } else {
-                    proto.name.clone()
-                };
-                
-                let f = match self.module.get_function(name.as_str()) {
-                    Some(f) => f,
-                    None => self.gen_fun_proto(proto.clone()).unwrap(),
-                };
-                self.current_fn = Some(f);
-                self.current_proto = Some(proto.clone());
-
-                let bb = self.ctx.append_basic_block(f, "fn_entry"); //Add the first basic block
-                self.build.position_at_end(bb); //Start inserting into the function
-
-                //Add argument names to the list of variables we can use
-                for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
-                    let alloca = self.entry_alloca(
-                        proto_arg.clone().unwrap_or("".to_owned()).as_str(),
-                        self.llvm_type(ty),
-                    );
-                    self.build.build_store(alloca, arg); //Store the initial value in the function parameters
-
-                    if let Some(name) = proto_arg {
-                        self.vars.insert(name.clone(), (alloca, ty.clone()));
-                    }
-                }
-
-                //Generate code for the function body
-                for ast in body {
-                    self.gen(ast, false);
-                }
-
-                self.vars = old_vars; //Reset the variables
-                self.current_fn = None;
-                self.current_proto = None;
-
-                f.as_any_value_enum()
             }
             Ast::VarDecl { ty, name, attrs: _ } => {
                 let var = self.entry_alloca(name.as_str(), self.llvm_type(ty));
@@ -731,7 +730,7 @@ impl<'c> Compiler<'c> {
                 other => panic!("Unknown unary operator {} being applied", other),
             },
             Ast::Bin(lhs, op, rhs) => self.gen_bin(lhs, rhs, op),
-            other => unimplemented!("No {:?}", other),
+            other => unimplemented!("Cannot use expression {:?} inside of a function", other),
         }
     }
 
@@ -782,9 +781,9 @@ impl<'c> Compiler<'c> {
                     None
                 }
                 Ast::FunDef(proto, body) => {
-                    self.gen_fun_proto(proto.clone()).unwrap();
-                    Some(Ast::FunDef(proto, body))
-                },
+                    self.gen_fundef(&proto, &body);
+                    None
+                }
                 Ast::Namespace(name, body) => {
                     self.enter_ns(name); //Add the namespace
                     let usings = self.using.clone(); //Get a list of used namesapces inside this namespace
