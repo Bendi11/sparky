@@ -3,6 +3,7 @@ pub mod code;
 pub mod lex;
 pub mod types;
 use std::{ffi::OsStr, panic::PanicInfo, path::PathBuf, str::FromStr};
+pub mod namespace;
 
 use clap::{App, AppSettings, Arg};
 use console::style;
@@ -28,7 +29,7 @@ impl FromStr for OptLvl {
             "0" | "debug" => Ok(Self::Debug),
             "1" => Ok(Self::Medium),
             "2" | "release" => Ok(Self::Aggressive),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
@@ -48,28 +49,28 @@ impl FromStr for OutFormat {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "exec" => Ok(Self::Exe),
-            "lib"  => Ok(Self::Lib),
-            "ll" | "ir"   => Ok(Self::IR),
+            "lib" => Ok(Self::Lib),
+            "ll" | "ir" => Ok(Self::IR),
             "asm" => Ok(Self::Asm),
             "obj" => Ok(Self::Obj),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
 
 /// Compiler options that are changed with command line switches and arguments
-#[derive(Debug, Clone, )]
+#[derive(Debug, Clone)]
 pub struct CompileOpts {
     /// A list of libraries to link to when linking an exe
     libraries: Vec<String>,
 
     /// Optimization level
-    opt_lvl: OptLvl,    
+    opt_lvl: OptLvl,
 
     /// The output file format
     output_ty: OutFormat,
 
-    /// The output file 
+    /// The output file
     out_file: PathBuf,
 }
 
@@ -181,28 +182,30 @@ fn main() {
         );
     let args = app.get_matches(); //Get argument matches from environment args
 
-    
-
     //Get a list of files to parse into an AST
     let input_files: Vec<String> = match args.values_of("input-files") {
         Some(v) => v.map(|s| s.to_owned()).collect(),
         None => {
             let dir = args.value_of("input-dir").unwrap();
             let mut list = Vec::new();
-            
+
             /// Recursively search a directory for .sprk files
             fn read_dir(path: &str, list: &mut Vec<String>) {
-                std::fs::read_dir(path).unwrap().fold(list, |list, s| match s {
-                    Ok(entry) if entry.path().extension().unwrap_or(OsStr::new("")) == "sprk" => {
-                        list.push(entry.path().to_str().unwrap().to_owned());
-                        list
-                    }
-                    Ok(entry) if entry.file_type().unwrap().is_dir() => {
-                        read_dir(entry.path().to_str().unwrap(), list);
-                        list
-                    }
-                    _ => list, 
-                });
+                std::fs::read_dir(path)
+                    .unwrap()
+                    .fold(list, |list, s| match s {
+                        Ok(entry)
+                            if entry.path().extension().unwrap_or(OsStr::new("")) == "sprk" =>
+                        {
+                            list.push(entry.path().to_str().unwrap().to_owned());
+                            list
+                        }
+                        Ok(entry) if entry.file_type().unwrap().is_dir() => {
+                            read_dir(entry.path().to_str().unwrap(), list);
+                            list
+                        }
+                        _ => list,
+                    });
             }
 
             read_dir(dir, &mut list);
@@ -217,7 +220,11 @@ fn main() {
     for file in input_files.iter() {
         let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
         let lexer = lex::Lexer::from_reader(&mut file);
-        ast.extend(parse::ProgramParser::new().parse(lexer).unwrap_or_else(|e| panic!("Error when parsing: {}", e)) ); //Parse the file and add it to the AST
+        ast.extend(
+            parse::ProgramParser::new()
+                .parse(lexer)
+                .unwrap_or_else(|e| panic!("Error when parsing: {}", e)),
+        ); //Parse the file and add it to the AST
     }
 
     let ctx = Context::create();
@@ -227,7 +234,7 @@ fn main() {
     let opts = CompileOpts {
         libraries: match args.values_of("library") {
             Some(l) => l.map(|s| s.to_owned()).collect(),
-            None => Vec::new()
+            None => Vec::new(),
         },
         opt_lvl: args.value_of("optimization").unwrap().parse().unwrap(),
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),

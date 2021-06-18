@@ -15,6 +15,10 @@ regex = "1"
 clap = "2.33" # For command line arguments
 console = "0.14" # For command line styling
 
+generational-arena = "0.2.8" # For keeping a pool of namespaces
+parking_lot = "0.11.1" # For thread safe access to a global arena allocator
+lazy_static = "1.4.0" # For global arena allocator
+
 hashbrown = "0.11.2" # For mapping strings to values throughout the compiler
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] } # For actual code generation
 utf8-chars = "1" # For reading a BufReader character by character without reading entire file to string
