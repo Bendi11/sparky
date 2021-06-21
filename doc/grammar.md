@@ -73,8 +73,7 @@ The operators and their purposes:
         | "static"
         
 (*Top level expressions are the ones that must be parsed in functions first, expressions are parsed in them*)
-<topexpr> ::= ("let" | <typename>) <attr>* <ident> ("=" <expr>)?
-	| <var> "=" <expr>
+<topexpr> ::= "let" <typename> <attr>* <ident> ("=" <expr>)?
 	| <funcall>
     | "if" <expr> <body> ("else" <body>)?
     | "while" <expr> <body>
@@ -83,10 +82,11 @@ The operators and their purposes:
 (*The body of a function or if statement*)
 <body> ::= "{" (<topexpr> ";")* "}"
 
-<expr> ::= <literal> | <var> | <prefix> | <binary> | <cast>
+<expr> ::= <literal> | <prefix> | <binary> | <cast> | <unary>
 
 <binary> ::= <expr> <operator> <expr>
-<cast>   ::= "("<typename>")"<expr>
+<unary> ::= <operator> <expr>
+<cast>   ::= "{"<typename>"}"<expr>
 
 <literal> ::= <numberliteral> | "\"" <ident> "\"" | <structliteral>
 <structliteral> ::= "struct" <ident> "{" (<ident> "=" <expr> ",")* (<ident> "=" <expr>)? } 

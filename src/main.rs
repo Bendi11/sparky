@@ -10,8 +10,6 @@ use console::style;
 use inkwell::{context::Context};
 pub use types::Type;
 
-use crate::code::Compiler;
-
 
 /// Optimization level that can be given as a command line argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,29 +212,24 @@ fn main() {
     };
 
     //Parse all files into an AST
-    let mut modules = Vec::new();
+    //let mut modules = Vec::new();
     let ctx = Context::create();
     
 
     //Parse every file
     for file in input_files.iter() {
         let code = code::Compiler::new(&ctx);
-        let mut opts = opts.clone();
-        opts.output_ty = OutFormat::Obj;
-        opts.out_file = PathBuf::from(file.clone() + ".obj");
-        opts.libraries = vec![];
-
         let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
         let lexer = lex::Lexer::from_reader(&mut file);
         let ast = 
-            parse::ProgramParser::new()
-                .parse(lexer)
+            parser::Parser::new(lexer.into_iter())
+                .parse()
                 .unwrap_or_else(|e| panic!("Error when parsing: {}", e));//Parse the file
         code.compile(ast, opts.clone()); //Compile to an obj
-        modules.push(opts.out_file);
+        //modules.push(opts.out_file);
     }    
 
-    const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
+    /*const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
 
 
     let out = format!("/OUT:{}", opts.out_file.display());
@@ -258,5 +251,5 @@ fn main() {
     println!(
         "{}",
         String::from_utf8(cmd.wait_with_output().unwrap().stdout).unwrap()
-    );
+    );*/
 }

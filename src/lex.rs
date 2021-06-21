@@ -57,6 +57,15 @@ pub enum Key {
 
     /// The `type` keyword is used to alias types with an identifier
     Type,
+
+    /// The `static` keyword is used to define a function that is local to an object file
+    Static,
+
+    /// The `true` keyword is used for the literal true value
+    True,
+
+    /// The `false` keyword is used for the literal false value
+    False,
 }
 
 impl fmt::Display for Key {
@@ -75,6 +84,9 @@ impl fmt::Display for Key {
             Self::Let => write!(f, "let"),
             Self::Void => write!(f, "void"),
             Self::Type => write!(f, "type"),
+            Self::Static => write!(f, "static"),
+            Self::True => write!(f, "true"),
+            Self::False => write!(f, "false"),
         }
     }
 }
@@ -96,10 +108,10 @@ impl convert::TryFrom<&str> for Key {
             "while" => Ok(Self::While),
             "let" => Ok(Self::Let),
             "void" => Ok(Self::Void),
-            "cast" => Ok(Self::Cast),
-            "ns" => Ok(Self::Ns),
-            "using" => Ok(Self::Using),
             "type" => Ok(Self::Type),
+            "static" => Ok(Self::Static),
+            "true" => Ok(Self::True),
+            "false" => Ok(Self::False),
             _ => Err(()),
         }
     }

@@ -11,6 +11,8 @@ bitflags! {
         const CONST = 0b00000001;
         /// The item is defined elsewhere and is only being declared
         const EXT   = 0b00000010;
+        /// The function is local to its object file
+        const STATIC = 0b00000100;
     }
 }
 
@@ -48,10 +50,10 @@ pub enum Ast {
     Bin(Box<Ast>, Op, Box<Ast>),
 
     /// A struct definition with the defined type
-    StructDec(String, Option<types::Container>),
+    StructDec(types::Container),
 
     /// A union type definition
-    UnionDec(String, types::Container),
+    UnionDec(types::Container),
 
     /// A constant struct literal
     StructLiteral {
@@ -134,7 +136,7 @@ impl Ast {
             }
             Self::MemberAccess(first, item) => match first.get_type(compiler)? {
                 Type::Struct(col) | Type::Union(col) => {
-                    col.fields.iter().find(|(name, _)| name == item)?.1.clone()
+                    col.fields.unwrap().iter().find(|(name, _)| name == item)?.1.clone()
                 }
                 _ => return None,
             },

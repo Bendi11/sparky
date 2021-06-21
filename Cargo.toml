@@ -3,7 +3,6 @@ name = "sparkc"
 version = "0.2.0"
 authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
-build = "build.rs"
 
 [dependencies]
 clap = "2.33" # For command line arguments

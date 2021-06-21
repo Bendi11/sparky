@@ -76,21 +76,14 @@ impl<'c> Compiler<'c> {
                 signed: _
             } => self.ctx.custom_width_int_type(*width as u32).as_basic_type_enum(),
             Type::Ptr(internal) => self.llvm_type(internal).ptr_type(inkwell::AddressSpace::Generic).as_basic_type_enum(),
-            Type::Struct(con) => {
-                self.ctx.struct_type(con.fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), true).as_basic_type_enum()
+            Type::Struct(Container{name: _, fields: Some(fields)}) => {
+                self.ctx.struct_type(fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), true).as_basic_type_enum()
             },
             Type::Union(con) => {
-                let largest = con.fields.iter().max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size())).expect("Union type with no fields!");
+                let largest = con.fields.as_ref().unwrap().iter().max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size())).expect("Union type with no fields!");
                 self.ctx.struct_type(&[self.llvm_type(&largest.1)], false).as_basic_type_enum()
             },
-            Type::UnknownStruct(name) => match self.get_struct(name) {
-                Some(s_ty) => s_ty.0.as_basic_type_enum(),
-                None => panic!("Unknown struct type {}", name),
-            },
-            Type::UnknownUnion(name) => match self.get_union(name) {
-                Some(u_ty) => u_ty.0.as_basic_type_enum(),
-                None => panic!("Unknown union type {}", name),
-            },
+            Type::Struct(Container{name, fields: None}) => self.ctx.opaque_struct_type(name.as_str()).as_basic_type_enum(),
             Type::Unknown(name) => match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
                 (Some(_), Some(_), _) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
                 (Some(u), _, _) => u.0.as_basic_type_enum(),
@@ -583,12 +576,15 @@ impl<'c> Compiler<'c> {
                 });
                 let ty = ty.clone();
                 let def = def.clone();
+                if def.fields.is_none() {
+                    panic!("Cannot have literal of opaque struct type {}", def.name)
+                }   
+                let def_fields = def.fields.as_ref().unwrap();
 
-                let mut pos_vals = Vec::with_capacity(def.fields.len());
-                unsafe { pos_vals.set_len(def.fields.len()) };
+                let mut pos_vals = Vec::with_capacity(def_fields.len());
+                unsafe { pos_vals.set_len(def_fields.len()) };
                 for field in fields {
-                    let pos = def
-                        .fields
+                    let pos = def_fields
                         .iter()
                         .position(|s| s.0 == field.0)
                         .unwrap_or_else(|| {
@@ -620,18 +616,6 @@ impl<'c> Compiler<'c> {
                     .get_type(self)
                     .expect("Failed to get type of lhs when accessing member of struct or union");
                 let (_, s_ty, is_struct) = match col {
-                    Type::UnknownStruct(name) => {
-                        let (s_ty, con) = self
-                            .get_struct(name.clone())
-                            .unwrap_or_else(|| panic!("Using unknown struct type {}", name));
-                        (s_ty, con, true)
-                    }
-                    Type::UnknownUnion(name) => {
-                        let (s_ty, con) = self
-                            .get_union(name.clone())
-                            .unwrap_or_else(|| panic!("Using unknown union type {}", name));
-                        (s_ty, con, false)
-                    }
                     Type::Unknown(name) => match self.get_struct(&name) {
                         Some((s_ty, con)) => (s_ty, con, true),
                         None => {
@@ -648,6 +632,8 @@ impl<'c> Compiler<'c> {
                     true => {
                         let field_idx = s_ty
                             .fields
+                            .as_ref()
+                            .unwrap()
                             .iter()
                             .position(|(name, _)| name == field)
                             .unwrap_or_else(|| {
@@ -675,6 +661,8 @@ impl<'c> Compiler<'c> {
                     false => {
                         let (_, field_ty) = s_ty
                             .fields
+                            .as_ref()
+                            .unwrap()
                             .iter()
                             .find(|(name, _)| name == field)
                             .unwrap_or_else(|| {
@@ -762,19 +750,14 @@ impl<'c> Compiler<'c> {
     fn get_decls(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
         ast.into_iter()
             .filter_map(|node| match node {
-                Ast::StructDec(name, body) => {
-                    //Make opaque if no body is given
-                    match body {
-                        Some(c) => {
-                            let ty = self.llvm_type(&Type::Struct(c.clone())).into_struct_type();
-                            self.struct_types.insert(c.name.clone(), (ty, c));
-                            None
-                        },
-                        None => self.struct_types.insert(k, v)
-                    }
+                Ast::StructDec(c) => {
+                    //Make opaque if no body is given  
+                    let ty = self.llvm_type(&Type::Struct(c.clone())).into_struct_type();
+                    self.struct_types.insert(c.name.clone(), (ty, c));
+                    None
                     
                 }
-                Ast::UnionDec(name, body) => {
+                Ast::UnionDec(c) => {
                     let ty = self.llvm_type(&Type::Union(c.clone())).into_struct_type();
                     self
                         .union_types
@@ -812,7 +795,7 @@ impl<'c> Compiler<'c> {
     }
 
     /// Compile the code into an executable file
-    pub fn compile(mut self, ast: Vec<Ast>, opts: CompileOpts) {
+    pub fn compile(self, ast: Vec<Ast>, opts: CompileOpts) {
         const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
         use std::process::Stdio;
 
