@@ -737,6 +737,10 @@ impl<'c> Compiler<'c> {
                         .build
                         .build_ptr_to_int(lhs.into_pointer_value(), ity, "ptr_to_int_cast")
                         .as_any_value_enum(),
+                    (AnyTypeEnum::PointerType(_), BasicTypeEnum::PointerType(ptr2)) => self
+                        .build
+                        .build_pointer_cast(lhs.into_pointer_value(), ptr2, "ptr_to_ptr_cast")
+                        .as_any_value_enum(),
                     (one, two) => panic!("Cannot cast type {:?} to {:?}", one, two),
                 }
             }
