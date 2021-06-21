@@ -41,8 +41,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(_, TokenType::Key(Key::Struct)) => {
                 self.toks.next(); //Consume the struct keyword
                 let name = self.expect_next_ident()?;
-                match self.toks.peek().eof()? {
-                    Token(_, TokenType::LeftBrace('{')) => {
+                match self.toks.peek() {
+                    Some(Token(_, TokenType::LeftBrace('{'))) => {
                         let body = self.parse_struct_def_body()?;
                         Ok(Ast::StructDec(Container {
                             name,
@@ -188,14 +188,23 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             },
 
             //Variable assignment or function calls can be top level expressions
-            Token(_, TokenType::Ident(name)) => {
-                let name = name.clone();
+            Token(_, TokenType::Ident(_)) => {
+                let mut prefix = self.parse_prefix()?;
+                
                 match self.toks.peek().eof()? {
-                    Token(_, TokenType::LeftBrace('(')) => self.parse_funcall(name.clone()),
+                    //This is a member item access
+                    Token(_, TokenType::Dot) => {
+                        self.toks.next(); //Consume the token
+                        let val = self.expect_next_ident()?; //Get the identifier from the next token
+                        prefix = Ast::MemberAccess(Box::new(prefix), val);
+                    },
+                    _ => ()
+                };
+                match self.toks.peek().eof()? {
                     _ => {
                         self.expect_next(TokenType::Op(Op::Assign))?; //Expect the assignment operator
                         let assigned = self.parse_expr()?; //Get the assigned value
-                        Ok(Ast::Bin(Box::new(Ast::VarAccess(name)), Op::Assign, Box::new(assigned)))
+                        Ok(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)))
                     },
                 }
             },
@@ -328,6 +337,35 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             | Token(_, TokenType::Key(Key::True)) 
             | Token(_, TokenType::Key(Key::False)) => self.parse_numliteral(), 
 
+            //Struct literal
+            Token(_, TokenType::Key(Key::Struct)) => {
+                self.toks.next(); //Consume the struct keyword
+                let name = self.expect_next_ident()?; 
+                self.expect_next(TokenType::LeftBrace('{'))?;
+                let mut fields = Vec::new();
+                loop {
+                    match self.toks.next().eof()? {
+                        Token(_, TokenType::RightBrace('}')) => break,
+                        Token(_, TokenType::Ident(name)) => {
+                            self.expect_next(TokenType::Op(Op::Assign))?;
+                            let val = self.parse_expr()?;
+                            fields.push((name, val));
+                        },
+                        Token(_, TokenType::Comma) => continue,
+                        Token(line, other) => return Err(ParseErr::UnexpectedToken(line, other, vec![
+                            TokenType::RightBrace('}'),
+                            TokenType::Ident(String::new()),
+                            TokenType::Comma,
+                        ]))
+                    }
+                }
+
+                Ok(Ast::StructLiteral{
+                    name, 
+                    fields,
+                })
+            }
+
 
             Token(line, unexpected) => Err(ParseErr::UnexpectedToken(*line, unexpected.clone(), 
             vec![
@@ -456,7 +494,7 @@ pub enum ParseErr {
     #[error("Unexpected End-Of-File")]
     UnexpectedEOF,
 
-    #[error("Unexpected token {} on line {}, expecting one of {:?}", .0, .1, .2)]
+    #[error("Unexpected token {} on line {}, expecting one of {:?}", .1, .0, .2)]
     UnexpectedToken(usize, TokenType, Vec<TokenType>),
 }
 

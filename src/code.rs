@@ -7,16 +7,7 @@ use crate::{
     CompileOpts, OutFormat, Type,
 };
 use hashbrown::HashMap;
-use inkwell::{
-    builder::Builder,
-    context::Context,
-    module::Module,
-    passes::PassManager,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
-    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
-    IntPredicate, OptimizationLevel,
-};
+use inkwell::{IntPredicate, OptimizationLevel, builder::Builder, context::Context, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
 pub struct Compiler<'c> {
@@ -453,6 +444,9 @@ impl<'c> Compiler<'c> {
                     Type::Void => self.build.build_return(None).as_any_value_enum(),
                     _ => {
                         let ret = self.gen(node.deref().as_ref().unwrap(), false);
+                        if ret.get_type() != self.current_fn.unwrap().get_type().get_return_type().unwrap().as_any_type_enum() {
+                            panic!("In function {}: Returning the incorrect type", self.current_fn.unwrap().get_name().to_str().unwrap())
+                        }
                         self.build
                             .build_return(Some(&BasicValueEnum::try_from(ret).unwrap()))
                             .as_any_value_enum()
