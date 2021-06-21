@@ -7,7 +7,16 @@ use crate::{
     CompileOpts, OutFormat, Type,
 };
 use hashbrown::HashMap;
-use inkwell::{IntPredicate, OptimizationLevel, builder::Builder, context::Context, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::Module,
+    passes::PassManager,
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
+    types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
+    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
+    IntPredicate, OptimizationLevel,
+};
 
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
 pub struct Compiler<'c> {
@@ -444,8 +453,19 @@ impl<'c> Compiler<'c> {
                     Type::Void => self.build.build_return(None).as_any_value_enum(),
                     _ => {
                         let ret = self.gen(node.deref().as_ref().unwrap(), false);
-                        if ret.get_type() != self.current_fn.unwrap().get_type().get_return_type().unwrap().as_any_type_enum() {
-                            panic!("In function {}: Returning the incorrect type", self.current_fn.unwrap().get_name().to_str().unwrap())
+                        if ret.get_type()
+                            != self
+                                .current_fn
+                                .unwrap()
+                                .get_type()
+                                .get_return_type()
+                                .unwrap()
+                                .as_any_type_enum()
+                        {
+                            panic!(
+                                "In function {}: Returning the incorrect type",
+                                self.current_fn.unwrap().get_name().to_str().unwrap()
+                            )
                         }
                         self.build
                             .build_return(Some(&BasicValueEnum::try_from(ret).unwrap()))
@@ -572,7 +592,7 @@ impl<'c> Compiler<'c> {
                 let def = def.clone();
                 if def.fields.is_none() {
                     panic!("Cannot have literal of opaque struct type {}", def.name)
-                }   
+                }
                 let def_fields = def.fields.as_ref().unwrap();
 
                 let mut pos_vals = Vec::with_capacity(def_fields.len());
@@ -735,7 +755,7 @@ impl<'c> Compiler<'c> {
                 other => panic!("Unknown unary operator {} being applied", other),
             },
             Ast::Bin(lhs, op, rhs) => self.gen_bin(lhs, rhs, op),
-            
+
             other => unimplemented!("Cannot use expression {:?} inside of a function", other),
         }
     }
@@ -745,17 +765,14 @@ impl<'c> Compiler<'c> {
         ast.into_iter()
             .filter_map(|node| match node {
                 Ast::StructDec(c) => {
-                    //Make opaque if no body is given  
+                    //Make opaque if no body is given
                     let ty = self.llvm_type(&Type::Struct(c.clone())).into_struct_type();
                     self.struct_types.insert(c.name.clone(), (ty, c));
                     None
-                    
                 }
                 Ast::UnionDec(c) => {
                     let ty = self.llvm_type(&Type::Union(c.clone())).into_struct_type();
-                    self
-                        .union_types
-                        .insert(c.name.clone(), (ty, c.clone()));
+                    self.union_types.insert(c.name.clone(), (ty, c.clone()));
                     None
                 }
 
@@ -776,7 +793,7 @@ impl<'c> Compiler<'c> {
                 other => Some(other),
             })
             .collect::<Vec<_>>()
-    }  
+    }
 
     /// Generate all code for a LLVM module and return it
     pub fn finish(mut self, ast: Vec<Ast>) -> Module<'c> {

@@ -31,7 +31,6 @@ pub struct FunProto {
 }
 
 /// The `Ast` enum is what is parsed from the lexer's token stream and consumed by the code generator to produce an executable
-///
 #[derive(Debug, Clone)]
 pub enum Ast {
     /// A function prototype with all needed information to call the function
@@ -135,9 +134,13 @@ impl Ast {
                 Type::Struct(compiler.get_struct(name)?.1.clone())
             }
             Self::MemberAccess(first, item) => match first.get_type(compiler)? {
-                Type::Struct(col) | Type::Union(col) => {
-                    col.fields.unwrap().iter().find(|(name, _)| name == item)?.1.clone()
-                }
+                Type::Struct(col) | Type::Union(col) => col
+                    .fields
+                    .unwrap()
+                    .iter()
+                    .find(|(name, _)| name == item)?
+                    .1
+                    .clone(),
                 _ => return None,
             },
             Self::NumLiteral(ty, _) => ty.clone(),

@@ -7,3 +7,7 @@
 *.c
 *.sprk
 paths.txt
+.vscode
+.vscode-test
+*.vsix
+vsc-ex

@@ -569,11 +569,9 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     /// in memory and only work with tokens.
     #[inline(always)]
     pub fn into_vec(self) -> Vec<Token> {
-        self.into_iter()
-            .collect::<Vec<Token>>()
+        self.into_iter().collect::<Vec<Token>>()
     }
 }
-
 
 impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
     type Item = Token;

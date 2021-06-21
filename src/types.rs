@@ -66,9 +66,21 @@ impl Type {
     pub fn size(&self) -> usize {
         match self {
             Self::Integer { signed: _, width } => (width / 8) as usize,
-            Self::Struct(s) => s.fields.as_ref().unwrap().iter().fold(0, |acc, (_, ty)| acc + ty.size()),
+            Self::Struct(s) => s
+                .fields
+                .as_ref()
+                .unwrap()
+                .iter()
+                .fold(0, |acc, (_, ty)| acc + ty.size()),
             Self::Ptr(_) => 8,
-            Self::Union(s) => s.fields.as_ref().unwrap().iter().map(|(_, ty)| ty.size()).max().unwrap_or(0),
+            Self::Union(s) => s
+                .fields
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|(_, ty)| ty.size())
+                .max()
+                .unwrap_or(0),
             Self::Unknown(name) => panic!("Unknown type {}", name),
             Self::Void => panic!("Void type"),
         }

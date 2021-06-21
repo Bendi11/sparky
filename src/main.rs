@@ -1,15 +1,19 @@
 pub mod ast;
 pub mod code;
 pub mod lex;
-pub mod types;
 pub mod parser;
-use std::{panic::PanicInfo, path::PathBuf, process::{Command, Stdio}, str::FromStr};
+pub mod types;
+use std::{
+    panic::PanicInfo,
+    path::PathBuf,
+    process::{Command, Stdio},
+    str::FromStr,
+};
 
 use clap::{App, AppSettings, Arg};
 use console::style;
-use inkwell::{context::Context};
+use inkwell::context::Context;
 pub use types::Type;
-
 
 /// Optimization level that can be given as a command line argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +98,6 @@ pub fn panic_handler(p: &PanicInfo) {
     }
     std::process::exit(-1);
 }
-
 
 fn main() {
     std::panic::set_hook(Box::new(panic_handler));
@@ -206,7 +209,7 @@ fn main() {
 
             read_dir(dir, &mut list);
 
-            
+
             list
         }*/
     };
@@ -214,20 +217,18 @@ fn main() {
     //Parse all files into an AST
     //let mut modules = Vec::new();
     let ctx = Context::create();
-    
 
     //Parse every file
     for file in input_files.iter() {
         let code = code::Compiler::new(&ctx);
         let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
         let lexer = lex::Lexer::from_reader(&mut file);
-        let ast = 
-            parser::Parser::new(lexer.into_iter())
-                .parse()
-                .unwrap_or_else(|e| panic!("Error when parsing: {}", e));//Parse the file
+        let ast = parser::Parser::new(lexer.into_iter())
+            .parse()
+            .unwrap_or_else(|e| panic!("Error when parsing: {}", e)); //Parse the file
         code.compile(ast, opts.clone()); //Compile to an obj
-        //modules.push(opts.out_file);
-    }    
+                                         //modules.push(opts.out_file);
+    }
 
     /*const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
 
