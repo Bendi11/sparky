@@ -173,7 +173,7 @@ VarDecl: Ast = {
 };
 
 BinExpr: Ast = {
-    <lhs:PrimaryExpr> <o:Op> <rhs:Expr> => Ast::Bin(Box::new(lhs), o, Box::new(rhs))
+    <lhs:PrimaryExpr> <o:Op> <rhs:PrimaryExpr> => Ast::Bin(Box::new(lhs), o, Box::new(rhs))
 };
 
 CommaList<T>: Vec<T> = {

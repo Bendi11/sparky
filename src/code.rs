@@ -106,6 +106,7 @@ impl<'c> Compiler<'c> {
 
     /// Generate code for a function prototype
     pub fn gen_fun_proto(&mut self, mut proto: FunProto) -> Result<FunctionValue<'c>, String> {
+        let original_name = proto.name.clone(); //Get the original name without namespacing to store in our current namespace
         if !proto.attrs.contains(Attributes::EXT) {
             proto.name = self.apply_ns(proto.name); //Apply namespacing if the function is not defined as external
         }
@@ -128,7 +129,7 @@ impl<'c> Compiler<'c> {
                 ),
                 None,
             );
-            self.ns().funs.insert(proto.name, (fun, proto_clone));
+            self.ns().funs.insert(original_name, (fun, proto_clone));
             Ok(fun)
         } else {
             let proto_clone = proto.clone();
@@ -145,7 +146,7 @@ impl<'c> Compiler<'c> {
                 ),
                 None,
             );
-            self.ns().funs.insert(proto.name, (fun, proto_clone));
+            self.ns().funs.insert(original_name, (fun, proto_clone));
             Ok(fun)
         }
     }
@@ -929,7 +930,9 @@ impl<'c> Compiler<'c> {
 
     /// Get all struct and union type declarations from the top level of the AST and remove them
     fn get_type_decls(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
-        ast.into_iter()
+        let mut ast = ast;
+        loop {
+            ast = ast.into_iter()
             .filter_map(|node| match node {
                 Ast::StructDef(mut c) => {
                     let original_name = c.name.clone();
@@ -946,6 +949,20 @@ impl<'c> Compiler<'c> {
                         .insert(c.name.clone(), (ty, c.clone()));
                     None
                 }
+
+                Ast::FunProto(p) => {
+                    self.gen_fun_proto(p).unwrap();
+                    None
+                }
+                Ast::FunDef(proto, body) => {
+                    if self.ns_ref().funs.contains_key(&proto.name) {
+                        return Some(Ast::FunDef(proto, body));
+                    }
+                    self.gen_fun_proto(proto.clone()).unwrap();
+                    Some(Ast::FunDef(proto, body))
+                    //None
+                }
+
                 //Insert a user-defined typedef
                 Ast::TypeDef(name, ty) => {
                     let name = self.apply_ns(name);
@@ -962,12 +979,64 @@ impl<'c> Compiler<'c> {
                     for _ in names.iter() {
                         self.ns = self.ns().parent.unwrap();
                     }
-                    Some(Ast::Namespace(names, body))
+                    //Some(Ast::Namespace(names, body))
+                    None
+                }
+                Ast::Using(all, item) => {
+                    let item_name = item.split("::").last().unwrap().to_owned();
+                    let mut remaining: VecDeque<_> = item.split("::").collect();
+                    remaining.pop_back();
+                    match all {
+                        true => {
+                            let ns = self.ns_ref()
+                            .get_child_ns(
+                                item.split("::").map(|c| c.to_owned()).collect(),
+                                &self.ns_arena,
+                            )
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "Using unknown namespace {} in namespace {}",
+                                    item,
+                                    self.ns().name,
+                                )
+                            });
+                            self.ns().nested.insert(
+                                item_name,
+                                ns
+                            );
+                            None
+                        }
+                        false => {
+                            match (
+                                self.get_fun(item.clone()),
+                                self.get_struct(item.clone()),
+                                self.get_union(item.clone()),
+                            ) {
+                                (Some(fun), _, _) => {
+                                    self.ns().funs.insert(item_name, fun);
+                                }
+                                (_, Some(struct_), _) => {
+                                    self.ns().struct_types.insert(item_name, struct_);
+                                }
+                                (_, _, Some(union_)) => {
+                                    self.ns().union_types.insert(item_name, union_);
+                                }
+                                (None, None, None) => return Some(Ast::Using(all, item)),
+                            }
+                            Option::<Ast>::None
+                        }
+                    }
                 }
 
                 other => Some(other),
             })
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+
+            if !ast.iter().any(|e| matches!(e, Ast::Using(_, _))) {
+                return ast;
+            }
+        }
+        
     }
 
     /// Filter the AST, adding function prototypes to the module ahead of time
@@ -1043,10 +1112,11 @@ impl<'c> Compiler<'c> {
             .collect::<Vec<_>>()
     }
 
+
     /// Generate all code for a LLVM module and return it
     pub fn finish(mut self, ast: Vec<Ast>) -> Module<'c> {
         let ast = self.get_type_decls(ast);
-        let ast = self.get_fn_protos(ast);
+        //let ast = self.get_fn_protos(ast);
         for node in ast {
             self.gen(&node, false);
         }
