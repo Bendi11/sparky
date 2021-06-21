@@ -99,7 +99,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             },
             Token(_, TokenType::IntType(ty)) => ty,
             Token(_, TokenType::Key(Key::Void)) => Type::Void,
-            Token(line, tok) => return Err(ParseErr::UnexpectedToken(line, tok, vec![TokenType::Ident(String::new()), TokenType::Key(Key::Void)]))
+            Token(line, tok) => return Err(ParseErr::UnexpectedToken(line, tok, vec![TokenType::Ident(String::new()), TokenType::Key(Key::Void), TokenType::IntType(Type::Void)]))
         };
         while match self.toks.peek() {
             Some(Token(_, TokenType::Key(Key::Ptr))) => {
@@ -200,13 +200,13 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     },
                     _ => ()
                 };
-                match self.toks.peek().eof()? {
-                    _ => {
-                        self.expect_next(TokenType::Op(Op::Assign))?; //Expect the assignment operator
-                        let assigned = self.parse_expr()?; //Get the assigned value
-                        Ok(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)))
-                    },
-                }
+                
+                if !matches!(prefix, Ast::FunCall(_, _)) {
+                    self.expect_next(TokenType::Op(Op::Assign))?; //Expect the assignment operator
+                    let assigned = self.parse_expr()?; //Get the assigned value
+                    return Ok(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)))
+                }    
+                Ok(prefix)
             },
 
             Token(line, unexpected) => Err(ParseErr::UnexpectedToken(*line, unexpected.clone(), vec![
@@ -248,7 +248,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(line, tok) => return Err(ParseErr::UnexpectedToken(line, tok, vec![TokenType::NumLiteral(String::new()), TokenType::Key(Key::True), TokenType::Key(Key::False)])),
         };
         match self.toks.peek().eof()? {
-            Token(_, TokenType::IntType(ty)) => Ok(Ast::NumLiteral(ty.clone(), num)),
+            Token(_, TokenType::IntType(ty)) => {
+                let ty = ty.clone();
+                self.toks.next();
+                Ok(Ast::NumLiteral(ty.clone(), num))
+            }
             _ => Ok(Ast::NumLiteral(Type::Integer{signed: true, width: 32}, num))
         }
     }
@@ -279,7 +283,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     /// Parse a prefix expression like variable access or function calls
     fn parse_prefix(&mut self) -> ParseRes<Ast> {
         match self.toks.next().eof()? {
-            Token(_, TokenType::LeftBrace(')')) => {
+            Token(_, TokenType::LeftBrace('(')) => {
                 let expr = self.parse_expr()?; 
                 self.expect_next(TokenType::RightBrace(')'))?;
                 Ok(expr)
@@ -290,7 +294,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     _ => Ok(Ast::VarAccess(name.clone())),
                 }
             },
-            _ => unreachable!(),
+            _ => unreachable!()
         }
     }
     
@@ -412,16 +416,26 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             match self.toks.next().eof()? {
                 Token(_, TokenType::Ident(ident)) => {
                     args.push((ty, Some(ident))); //Add the argument
-                    continue
+                    match self.toks.next().eof()? {
+                        Token(_, TokenType::Comma) => continue,
+                        Token(_, TokenType::RightBrace(')')) => break,
+                        Token(line, other) => return Err(ParseErr::UnexpectedToken(line, other, vec![
+                            TokenType::Comma,
+                            TokenType::RightBrace(')'),
+                        ]))
+
+                    }
                 }, 
                 Token(_, TokenType::Comma) => {
                     args.push((ty, None));
+                    continue
                 },
                 Token(_, TokenType::RightBrace(')')) => {
                     args.push((ty, None));
                     break
                 },
-                Token(line, tok) => return Err(ParseErr::UnexpectedToken(line, tok, vec![TokenType::Ident(String::new()), TokenType::Comma, TokenType::RightBrace(')')]))
+                _ => continue,
+                //Token(line, tok) => return Err(ParseErr::UnexpectedToken(line, tok, vec![TokenType::Ident(String::new()), TokenType::Comma, TokenType::RightBrace(')')]))
             };
         }
 
@@ -474,6 +488,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     attrs.insert(Attributes::CONST);
                     true
                 },
+                Key::Ext => {
+                    self.toks.next();
+                    attrs.insert(Attributes::EXT);
+                    true
+                }
                 Key::Static => {
                     self.toks.next();
                     attrs.insert(Attributes::STATIC);

@@ -326,7 +326,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     /// Create a lexer from a buffered reader, this is more memory efficient for larger files
     pub fn from_reader(reader: &'a mut R) -> Self {
         Self {
-            line: 0,
+            line: 1,
             chars: reader.chars().peekable(),
         }
     }
