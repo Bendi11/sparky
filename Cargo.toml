@@ -5,15 +5,10 @@ authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
 build = "build.rs"
 
-[build-dependencies]
-lalrpop = "0.19.6"
-
 [dependencies]
-lalrpop-util = "0.19.6"
-regex = "1"
-
 clap = "2.33" # For command line arguments
 console = "0.14" # For command line styling
+thiserror = "1.0" # For error handling
 
 generational-arena = "0.2.8" # For keeping a pool of namespaces
 parking_lot = "0.11.1" # For thread safe access to a global arena allocator

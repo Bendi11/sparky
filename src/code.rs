@@ -1,13 +1,11 @@
-use std::{collections::VecDeque, convert::TryFrom, ops::Deref, path::Path, process::Command};
+use std::{convert::TryFrom, ops::Deref, path::Path, process::Command};
 
-use crate::namespace::Namespace;
 use crate::{
-    ast::{Ast, Attributes, FunProto},
+    ast::{Ast, FunProto},
     lex::Op,
     types::Container,
     CompileOpts, OutFormat, Type,
 };
-use generational_arena::{Arena, Index};
 use hashbrown::HashMap;
 use inkwell::{
     builder::Builder,
@@ -25,11 +23,17 @@ pub struct Compiler<'c> {
     /// The LLVM context
     ctx: &'c Context,
 
-    /// An arena allocator of namespaces
-    ns_arena: Arena<Namespace<'c>>,
+    /// A hash map of identifiers to defined struct types
+    pub struct_types: HashMap<String, (StructType<'c>, Container)>,
 
-    /// The current root namespace
-    root: Index,
+    /// A hash map of identifiers to defined union types
+    pub union_types: HashMap<String, (StructType<'c>, Container)>,
+
+    /// A map of function names to function prototypes
+    pub funs: HashMap<String, (FunctionValue<'c>, FunProto)>,
+
+    /// A map of user - defined type definitions to real types
+    pub typedefs: HashMap<String, Type>,
 
     /// The LLVM module that we will be writing code to
     module: Module<'c>,
@@ -43,9 +47,6 @@ pub struct Compiler<'c> {
     /// The signature of the current function
     current_proto: Option<FunProto>,
 
-    /// The current namespace
-    ns: Index,
-
     /// A map of variable / argument names to LLVM values
     pub vars: HashMap<String, (PointerValue<'c>, Type)>,
 }
@@ -53,10 +54,6 @@ pub struct Compiler<'c> {
 impl<'c> Compiler<'c> {
     /// Create a new `Compiler` from an LLVM context struct
     pub fn new(ctx: &'c Context) -> Self {
-        let mut ns_arena = Arena::new();
-        let root = ns_arena.insert(Namespace::root());
-        let mut ns = HashMap::new();
-        ns.insert("root".to_owned(), root);
         Self {
             ctx,
             build: ctx.create_builder(),
@@ -64,9 +61,10 @@ impl<'c> Compiler<'c> {
             current_fn: None,
             vars: HashMap::new(),
             current_proto: None,
-            ns: root,
-            root,
-            ns_arena,
+            funs: HashMap::new(),
+            struct_types: HashMap::new(),
+            union_types: HashMap::new(),
+            typedefs: HashMap::new(),
         }
     }
 
@@ -105,11 +103,7 @@ impl<'c> Compiler<'c> {
     }
 
     /// Generate code for a function prototype
-    pub fn gen_fun_proto(&mut self, mut proto: FunProto) -> Result<FunctionValue<'c>, String> {
-        let original_name = proto.name.clone(); //Get the original name without namespacing to store in our current namespace
-        if !proto.attrs.contains(Attributes::EXT) {
-            proto.name = self.apply_ns(proto.name); //Apply namespacing if the function is not defined as external
-        }
+    pub fn gen_fun_proto(&mut self, proto: FunProto) -> Result<FunctionValue<'c>, String> {
         if self.module.get_function(proto.name.as_str()).is_some() {
             return Err(format!("Function {} defined twice", proto.name));
         }
@@ -129,7 +123,7 @@ impl<'c> Compiler<'c> {
                 ),
                 None,
             );
-            self.ns().funs.insert(original_name, (fun, proto_clone));
+            self.funs.insert(proto.name.clone(), (fun, proto_clone));
             Ok(fun)
         } else {
             let proto_clone = proto.clone();
@@ -146,169 +140,33 @@ impl<'c> Compiler<'c> {
                 ),
                 None,
             );
-            self.ns().funs.insert(original_name, (fun, proto_clone));
+            self.funs.insert(proto.name.clone(), (fun, proto_clone));
             Ok(fun)
         }
-    }
-
-    /// Apply all namespaces to an identifier
-    #[inline]
-    pub fn apply_ns(&self, name: impl AsRef<str>) -> String {
-        let base = self
-            .ns_ref()
-            .path
-            .iter()
-            .fold(String::new(), |acc, part| acc + "::" + part); //Get the base namespace
-        base + "::" + name.as_ref() //Append the identifier to the namespace base
     }
 
     /// Get a struct type from the given path
     pub fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
         let name = name.as_ref();
-        let mut path: VecDeque<String> = name.split("::").map(|s| s.to_owned()).collect();
-        println!("Path: {:#?}", path);
-        let final_part = path.pop_back().expect("No final element of path!"); //Get the last item from the path
-        println!("Path: {:#?}", path);
-
-        //Try to get from the root namespace
-        match (
-            self.root_ref().get_child_ns(path.clone(), &self.ns_arena),
-            path.len() > 0,
-        ) {
-            (Some(ns), true) => self
-                .ns_arena
-                .get(ns)
-                .unwrap()
-                .struct_types
-                .get(&final_part)
-                .cloned(),
-            (None, true) => match self.ns_ref().get_child_ns(path, &self.ns_arena) {
-                Some(ns) => self
-                    .ns_arena
-                    .get(ns)
-                    .unwrap()
-                    .struct_types
-                    .get(&final_part)
-                    .cloned(),
-                None => None,
-            },
-            (_, false) => self.ns_ref().struct_types.get(&final_part).cloned(),
-        }
+        self.struct_types.get(name).cloned()
     }
 
     /// Get a union type from the given path
     pub fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
         let name = name.as_ref();
-        let mut path: VecDeque<String> = name.split("::").map(|s| s.to_owned()).collect();
-        let final_part = path.pop_back().expect("No final element of path!"); //Get the last item from the path
-                                                                              //Try to get from the root namespace
-                                                                              //Try to get from the root namespace
-        match (
-            self.root_ref().get_child_ns(path.clone(), &self.ns_arena),
-            path.len() > 0,
-        ) {
-            (Some(ns), true) => self
-                .ns_arena
-                .get(ns)
-                .unwrap()
-                .union_types
-                .get(&final_part)
-                .cloned(),
-            (None, true) => match self.ns_ref().get_child_ns(path, &self.ns_arena) {
-                Some(ns) => self
-                    .ns_arena
-                    .get(ns)
-                    .unwrap()
-                    .union_types
-                    .get(&final_part)
-                    .cloned(),
-                None => None,
-            },
-            (_, false) => self.ns_ref().union_types.get(&final_part).cloned(),
-        }
+        self.union_types.get(name).cloned()
     }
 
     /// Get a typedef'd type from the given path
     pub fn get_typedef(&self, name: impl AsRef<str>) -> Option<Type> {
         let name = name.as_ref();
-        let mut path: VecDeque<String> = name.split("::").map(|s| s.to_owned()).collect();
-        let final_part = path.pop_back().expect("No final element of path!"); //Get the last item from the path
-                                                                              //Try to get from the root namespace
-                                                                              //Try to get from the root namespace
-        match (
-            self.root_ref().get_child_ns(path.clone(), &self.ns_arena),
-            path.len() > 0,
-        ) {
-            (Some(ns), true) => self
-                .ns_arena
-                .get(ns)
-                .unwrap()
-                .typedefs
-                .get(&final_part)
-                .cloned(),
-            (None, true) => match self.ns_ref().get_child_ns(path, &self.ns_arena) {
-                Some(ns) => self
-                    .ns_arena
-                    .get(ns)
-                    .unwrap()
-                    .typedefs
-                    .get(&final_part)
-                    .cloned(),
-                None => None,
-            },
-            (_, false) => self.ns_ref().typedefs.get(&final_part).cloned(),
-        }
+        self.typedefs.get(name).cloned()
     }
 
     /// Get a struct type from the given path
     pub fn get_fun(&self, name: impl AsRef<str>) -> Option<(FunctionValue<'c>, FunProto)> {
         let name = name.as_ref();
-        let mut path: VecDeque<String> = name.split("::").map(|s| s.to_owned()).collect();
-        let final_part = path.pop_back().expect("No final element of path!"); //Get the last item from the path
-                                                                              //Try to get from the root namespace
-        match self.root_ref().get_child_ns(path.clone(), &self.ns_arena) {
-            Some(ns) => self
-                .ns_arena
-                .get(ns)
-                .unwrap()
-                .funs
-                .get(&final_part)
-                .cloned(),
-            None => match self.ns_ref().get_child_ns(path, &self.ns_arena) {
-                Some(ns) => self
-                    .ns_arena
-                    .get(ns)
-                    .unwrap()
-                    .funs
-                    .get(&final_part)
-                    .cloned(),
-                None => None,
-            },
-        }
-    }
-
-    /// Enter a namespace and generate identifiers for the namespace
-    #[inline(always)]
-    pub fn enter_ns(&mut self, name: impl ToString) {
-        let name = name.to_string();
-        match self
-            .ns_ref()
-            .get_child_ns(VecDeque::from(vec![name.clone()]), &self.ns_arena)
-        {
-            Some(ns) => self.ns = ns,
-            None => {
-                let new_ns = Namespace::new(
-                    name.clone(),
-                    Some(self.ns),
-                    self.ns().path.clone(),
-                    &mut self.ns_arena,
-                );
-                self.ns().add_child(new_ns, name.clone());
-                let mut path = self.ns().path.clone();
-                path.push_back(name);
-                self.ns = new_ns;
-            }
-        }
+        self.funs.get(name).cloned()
     }
 
     /// Build an alloca for a variable in the current function
@@ -550,14 +408,7 @@ impl<'c> Compiler<'c> {
 
         let old_vars = self.vars.clone();
 
-        //Apply namespacing if the function isn't extern
-        let name = if !proto.attrs.contains(Attributes::EXT) {
-            self.apply_ns(proto.name.clone())
-        } else {
-            proto.name.clone()
-        };
-
-        let f = match self.module.get_function(name.as_str()) {
+        let f = match self.module.get_function(proto.name.as_str()) {
             Some(f) => f,
             None => self.gen_fun_proto(proto.clone()).unwrap(),
         };
@@ -902,49 +753,30 @@ impl<'c> Compiler<'c> {
                 other => panic!("Unknown unary operator {} being applied", other),
             },
             Ast::Bin(lhs, op, rhs) => self.gen_bin(lhs, rhs, op),
+            
             other => unimplemented!("Cannot use expression {:?} inside of a function", other),
         }
     }
 
-    /// Get a reference to the current namespace's data
-    #[inline(always)]
-    fn ns(&mut self) -> &mut Namespace<'c> {
-        self.ns_arena.get_mut(self.ns).unwrap()
-    }
-
-    #[inline(always)]
-    fn root(&mut self) -> &mut Namespace<'c> {
-        self.ns_arena.get_mut(self.root).unwrap()
-    }
-
-    /// Get a reference to the current namespace's data
-    #[inline(always)]
-    fn ns_ref(&self) -> &Namespace<'c> {
-        self.ns_arena.get(self.ns).unwrap()
-    }
-
-    #[inline(always)]
-    fn root_ref(&self) -> &Namespace<'c> {
-        self.ns_arena.get(self.root).unwrap()
-    }
-
     /// Get all struct and union type declarations from the top level of the AST and remove them
-    fn get_type_decls(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
-        let mut ast = ast;
-        loop {
-            ast = ast.into_iter()
+    fn get_decls(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
+        ast.into_iter()
             .filter_map(|node| match node {
-                Ast::StructDef(mut c) => {
-                    let original_name = c.name.clone();
-                    c.name = self.apply_ns(c.name);
-                    let ty = self.llvm_type(&Type::Struct(c.clone())).into_struct_type();
-                    self.ns().struct_types.insert(original_name, (ty, c));
-                    None
+                Ast::StructDec(name, body) => {
+                    //Make opaque if no body is given
+                    match body {
+                        Some(c) => {
+                            let ty = self.llvm_type(&Type::Struct(c.clone())).into_struct_type();
+                            self.struct_types.insert(c.name.clone(), (ty, c));
+                            None
+                        },
+                        None => self.struct_types.insert(k, v)
+                    }
+                    
                 }
-                Ast::UnionDef(mut c) => {
-                    c.name = self.apply_ns(c.name);
+                Ast::UnionDec(name, body) => {
                     let ty = self.llvm_type(&Type::Union(c.clone())).into_struct_type();
-                    self.ns()
+                    self
                         .union_types
                         .insert(c.name.clone(), (ty, c.clone()));
                     None
@@ -955,167 +787,23 @@ impl<'c> Compiler<'c> {
                     None
                 }
                 Ast::FunDef(proto, body) => {
-                    if self.ns_ref().funs.contains_key(&proto.name) {
-                        return Some(Ast::FunDef(proto, body));
-                    }
-                    self.gen_fun_proto(proto.clone()).unwrap();
-                    Some(Ast::FunDef(proto, body))
-                    //None
+                    self.gen_fundef(&proto, &body);
+                    None
                 }
 
                 //Insert a user-defined typedef
                 Ast::TypeDef(name, ty) => {
-                    let name = self.apply_ns(name);
-                    self.ns().typedefs.insert(name, ty);
+                    self.typedefs.insert(name, ty);
                     None
-                }
-                Ast::Namespace(names, body) => {
-                    for name in names.iter() {
-                        self.enter_ns(name); //Add the namespace
-                    }
-
-                    self.get_type_decls(body.clone()); //Get all function prototypes in the namespace, applying the namespace
-
-                    for _ in names.iter() {
-                        self.ns = self.ns().parent.unwrap();
-                    }
-                    //Some(Ast::Namespace(names, body))
-                    None
-                }
-                Ast::Using(all, item) => {
-                    let item_name = item.split("::").last().unwrap().to_owned();
-                    let mut remaining: VecDeque<_> = item.split("::").collect();
-                    remaining.pop_back();
-                    match all {
-                        true => {
-                            let ns = self.ns_ref()
-                            .get_child_ns(
-                                item.split("::").map(|c| c.to_owned()).collect(),
-                                &self.ns_arena,
-                            )
-                            .unwrap_or_else(|| {
-                                panic!(
-                                    "Using unknown namespace {} in namespace {}",
-                                    item,
-                                    self.ns().name,
-                                )
-                            });
-                            self.ns().nested.insert(
-                                item_name,
-                                ns
-                            );
-                            None
-                        }
-                        false => {
-                            match (
-                                self.get_fun(item.clone()),
-                                self.get_struct(item.clone()),
-                                self.get_union(item.clone()),
-                            ) {
-                                (Some(fun), _, _) => {
-                                    self.ns().funs.insert(item_name, fun);
-                                }
-                                (_, Some(struct_), _) => {
-                                    self.ns().struct_types.insert(item_name, struct_);
-                                }
-                                (_, _, Some(union_)) => {
-                                    self.ns().union_types.insert(item_name, union_);
-                                }
-                                (None, None, None) => return Some(Ast::Using(all, item)),
-                            }
-                            Option::<Ast>::None
-                        }
-                    }
-                }
-
-                other => Some(other),
-            })
-            .collect::<Vec<_>>();
-
-            if !ast.iter().any(|e| matches!(e, Ast::Using(_, _))) {
-                return ast;
-            }
-        }
-        
-    }
-
-    /// Filter the AST, adding function prototypes to the module ahead of time
-    fn get_fn_protos(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
-        ast.into_iter()
-            .filter_map(|node| match node {
-                Ast::FunProto(p) => {
-                    self.gen_fun_proto(p).unwrap();
-                    None
-                }
-                Ast::FunDef(proto, body) => {
-                    self.gen_fun_proto(proto.clone()).unwrap();
-                    Some(Ast::FunDef(proto, body))
-                }
-                Ast::Namespace(names, body) => {
-                    for name in names.iter() {
-                        self.enter_ns(name); //Add the namespace
-                    }
-                    self.get_fn_protos(body); //Get all function prototypes in the namespace, applying the namespace
-
-                    for _ in names.iter() {
-                        self.ns = self.ns().parent.unwrap();
-                    }
-                    None
-                }
-                Ast::Using(all, item) => {
-                    let item_name = item.split("::").last().unwrap().to_owned();
-                    let mut remaining: VecDeque<_> = item.split("::").collect();
-                    remaining.pop_back();
-                    match all {
-                        true => {
-                            let ns = self.ns_ref()
-                            .get_child_ns(
-                                item.split("::").map(|c| c.to_owned()).collect(),
-                                &self.ns_arena,
-                            )
-                            .unwrap_or_else(|| {
-                                panic!(
-                                    "Using unknown namespace {} in namespace {}",
-                                    item,
-                                    self.ns().name,
-                                )
-                            });
-                            self.ns().nested.insert(
-                                item_name,
-                                ns
-                            );
-                            None
-                        }
-                        false => {
-                            match (
-                                self.get_fun(item.clone()),
-                                self.get_struct(item.clone()),
-                                self.get_union(item),
-                            ) {
-                                (Some(fun), _, _) => {
-                                    self.ns().funs.insert(item_name, fun);
-                                }
-                                (_, Some(struct_), _) => {
-                                    self.ns().struct_types.insert(item_name, struct_);
-                                }
-                                (_, _, Some(union_)) => {
-                                    self.ns().union_types.insert(item_name, union_);
-                                }
-                                (None, None, None) => panic!("Unknown imported item {}", item_name),
-                            }
-                            Option::<Ast>::None
-                        }
-                    }
                 }
                 other => Some(other),
             })
             .collect::<Vec<_>>()
-    }
-
+    }  
 
     /// Generate all code for a LLVM module and return it
     pub fn finish(mut self, ast: Vec<Ast>) -> Module<'c> {
-        let ast = self.get_type_decls(ast);
+        let ast = self.get_decls(ast);
         //let ast = self.get_fn_protos(ast);
         for node in ast {
             self.gen(&node, false);
@@ -1124,11 +812,12 @@ impl<'c> Compiler<'c> {
     }
 
     /// Compile the code into an executable file
-    pub fn compile(self, ast: Vec<Ast>, opts: CompileOpts) {
+    pub fn compile(mut self, ast: Vec<Ast>, opts: CompileOpts) {
         const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
         use std::process::Stdio;
 
-        let module = self.finish(ast); //Compile the actual AST into LLVM IR
+        let module = self.finish(ast);
+
         module
             .verify()
             .unwrap_or_else(|e| panic!("Failed to verify the LLVM module: {}", e));

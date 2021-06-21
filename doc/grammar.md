@@ -31,6 +31,7 @@ The keywords and their purposes are:
 - `const`: Attributes for variables and functions
 - `ext`: Mark a function or global variable as externally defined
 - `ptr`: Express a pointer type
+- `let`: Declare a variable whose type will be inferred
 
 ## Operators
 The operators and their purposes: 
@@ -52,103 +53,83 @@ The operators and their purposes:
 - `>=`: Check if the left hand side is greater than or equal to the right hand side
 
 
-## Grammar in Extended Backus-Naur Form
-```ebnf
-(*A program is made of declarations only*)
-program = { declaration } ;
+## Grammar in Backus-Naur Form
+```bnf 
+(*A program is made up of declarations*)
+<program> ::= <decl>*
+(*A declaration can be either a type definition or function definition*)
+<decl> ::= "fun" <attr>* <ident> "(" (<typename> <ident> ",")* (<typename> <ident>)? ")" <typename> <body>?
+		| <structdecl>
+        | <uniondecl>
+        | "type" <typename> <ident>
 
-declaration = function declaration 
-            | struct declaration 
-            | union declaration ;
+(*If a struct declaration has no definition, it is parsed as an opaque type*)
+<structdecl> ::= "struct" <ident> ( "{" (<typename> <ident> ",")* (<typename> <ident>)? "}" )?
+(*Union types have no reason to ever be opaque types so always must have a definition*)
+<uniondecl> ::= "union" <ident> "{" (<typename> <ident> ",")* (<typename> <ident>)? "}"
+        
+<attr> ::= "ext" 
+		| "const"
+        | "static"
+        
+(*Top level expressions are the ones that must be parsed in functions first, expressions are parsed in them*)
+<topexpr> ::= ("let" | <typename>) <attr>* <ident> ("=" <expr>)?
+	| <var> "=" <expr>
+	| <funcall>
+    | "if" <expr> <body> ("else" <body>)?
+    | "while" <expr> <body>
 
-function declaration = 'fun' , { attribute } , identifier , '(' , { type , [ identifier ] , ',' } , ')' , type , [ body ] ;
 
-(*Struct type declaration that declares data type that the struct holds*)
-struct declaration = 'struct' , identifier , '{' , { type , ident , ',' } , '}' ;
+(*The body of a function or if statement*)
+<body> ::= "{" (<topexpr> ";")* "}"
 
+<expr> ::= <literal> | <var> | <prefix> | <binary> | <cast>
 
-union declaration = 'union' , ident , '{' , { type , ident , ',' } , '}' ;
+<binary> ::= <expr> <operator> <expr>
+<cast>   ::= "("<typename>")"<expr>
 
-identifier = character , [{ character | number }] ;
-character = ?Any ASCII alphabetic character? | '_' ;
-number = ?Any digit 0-9? ;
+<literal> ::= <numberliteral> | "\"" <ident> "\"" | <structliteral>
+<structliteral> ::= "struct" <ident> "{" (<ident> "=" <expr> ",")* (<ident> "=" <expr>)? } 
+<numberliteral> ::= <digit>+ <inttype>? | "true" | "false"
 
-type = int type
-    | struct type
-    | union type 
-    | type , 'ptr' 
-    | bool type 
-    ;
+<typename> ::= <inttype> | <ident> 
+<inttype> ::= ("i" | "u") ("8" | "16" | "32" | "64") | "bool"
+<var> ::= <ident> | <prefix> "." <ident> 
 
-bool type = 'bool' ;
-int type = ( 'i' | 'u' ) , ( '8' | '16' | '32' | '64' ) ;
-struct type = 'struct' , ident ;
-union type = 'union' , ident ;
+(*Prefix expressions are expressions that can come before a member access with the "." operator*)
+<prefix> ::= <var> | <funcall> | "(" <expr> ")"
 
-(*A body is a list of expressions enclosed in curly braces*)
-body = '{' , { complete expression } , '}' ;
+<funcall> ::= <ident> "(" <args> ")" 
+<args> ::= (<expr> ",")* <expr>?
 
-(*Primary expressions are expressions that must be parsed first, and then binary operators can combine them into binary expressions*)
-primary expression = variable declaration 
-                    | literal 
-                    | function call 
-                    | unary expression 
-                    | variable access
-                    ;
-unary expression = operator , expression ;
-
-function call = ident , '(' { expression , ',' } , ')' 
-              | variable access , '.' , function call (*Calling an associated function of a type using a value*)
-              ;
-
-variable access = ident 
-                | ident , '.' , ident (*Accessing a field of a struct or union*)
-                ;
-
-(*A typename followed by an identifier is a variable declaration*)
-variable declaration = type , { attribute } , ident ;
-
-literal = string literal 
-        | int literal
-        | struct literal
-        | union literal 
-        | bool literal 
-        ;
-
-bool literal = 'true' | 'false' ;
-string literal = '"' , ?Any text excluding '"'? , '"' ;
-int literal = { number } , [ int type ] ; 
-struct literal = struct type , '{' { ident , '=' , expression , ',' } , '}' ;
-union literal = union type , '{' ident '=' , expression , '}' ;
-
-attribute = 'ext' | 'const' ;
-
-binary expression = expression , operator , expression ;
-operator = '+' 
-        | '/' 
-        | '*' 
-        | '-'
-        | '&' 
-        | '^' 
-        | '%'
-        | '|'
-        | '||'
-        | '&&'
-        | '='
-        | '=='
-        ;
+<operator> ::= "+" 
+	| "-"
+    | "*"
+    | "/"
+    | "%"
+    | "="
+    | "=="
+    | "^"
+    | "&"
+    | "|"
+    | "&&"
+    | "||" 
+    | ">" 
+    | "<"
+    | "<="
+    | "<="
     
-expression = binary expression 
-            | primary expression
-            | '(' , expression , ')' 
-            | 'ret' , expression 
-            | if expression
-            | while expression
-            ;
+<ident> ::= <letter>+ (<letter> | <digit> | "_")* 
+    
+<letter> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G"
+       | "H" | "I" | "J" | "K" | "L" | "M" | "N"
+       | "O" | "P" | "Q" | "R" | "S" | "T" | "U"
+       | "V" | "W" | "X" | "Y" | "Z" | "a" | "b"
+       | "c" | "d" | "e" | "f" | "g" | "h" | "i"
+       | "j" | "k" | "l" | "m" | "n" | "o" | "p"
+       | "q" | "r" | "s" | "t" | "u" | "v" | "w"
+       | "x" | "y" | "z" 
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" 
 
-if expression = 'if' , expression , body , [ 'else' , body ] ;
-while expression = 'while' , expression , body ;
 
-(*Complete semicolon terminated expression*)
-complete expression = expression , ';' ;
 ```

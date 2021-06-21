@@ -48,10 +48,10 @@ pub enum Ast {
     Bin(Box<Ast>, Op, Box<Ast>),
 
     /// A struct definition with the defined type
-    StructDef(types::Container),
+    StructDec(String, Option<types::Container>),
 
     /// A union type definition
-    UnionDef(types::Container),
+    UnionDec(String, types::Container),
 
     /// A constant struct literal
     StructLiteral {
@@ -112,12 +112,6 @@ pub enum Ast {
         /// The block to loop over
         block: Vec<Ast>,
     },
-
-    /// A new namespace declaration with the body of expressions inside the namespace
-    Namespace(Vec<String>, Vec<Ast>),
-
-    /// Using a namespace (true) or an item (false)
-    Using(bool, String),
 
     /// A type definition aliasing an identifier to a typename
     TypeDef(String, Type),

@@ -49,20 +49,11 @@ pub enum Key {
     /// The `while` keyword performs looping based on a condition
     While,
 
-    /// The `var` keyword is used to declare variables
-    Var,
-
-    /// The `cast` keyword is used to cast an expression to a different type
-    Cast,
+    /// The `let` keyword is used to declare variables
+    Let,
 
     /// The `void` keyword is used to indicate no type
     Void,
-
-    /// The `ns` keyword is used to denote namespaces
-    Ns,
-
-    /// The `using` keyword is used to add a namespace to the list of used namesapces
-    Using,
 
     /// The `type` keyword is used to alias types with an identifier
     Type,
@@ -81,11 +72,8 @@ impl fmt::Display for Key {
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
             Self::While => write!(f, "while"),
-            Self::Var => write!(f, "var"),
+            Self::Let => write!(f, "let"),
             Self::Void => write!(f, "void"),
-            Self::Cast => write!(f, "cast"),
-            Self::Ns => write!(f, "ns"),
-            Self::Using => write!(f, "using"),
             Self::Type => write!(f, "type"),
         }
     }
@@ -106,7 +94,7 @@ impl convert::TryFrom<&str> for Key {
             "if" => Ok(Self::If),
             "else" => Ok(Self::Else),
             "while" => Ok(Self::While),
-            "var" => Ok(Self::Var),
+            "let" => Ok(Self::Let),
             "void" => Ok(Self::Void),
             "cast" => Ok(Self::Cast),
             "ns" => Ok(Self::Ns),
@@ -338,7 +326,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         let mut ident = String::from(first); //Create a string from the first char given
         while match self.chars.peek() {
             //Push alphabetic characters to the string
-            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' || c == &':' => {
+            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' => {
                 ident.push(self.chars.next().unwrap().unwrap());
                 true
             }
@@ -535,11 +523,6 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                             self.line += 1;
                             return self.token(); //Get the next token
                         }
-
-                        //Negative number
-                        //('-', n) if n.is_numeric() => {
-                        //
-                        //}
                         _ => (),
                     }
                 }
@@ -575,32 +558,16 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     #[inline(always)]
     pub fn into_vec(self) -> Vec<Token> {
         self.into_iter()
-            .map(|t| {
-                let t = t.unwrap();
-                Token(t.0, t.1)
-            })
             .collect::<Vec<Token>>()
     }
 }
 
-//impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
-//    type Item = Token;
-//    ///Lex tokens from the input stream until there are none left
-//    fn next(&mut self) -> Option<Self::Item> {
-//        self.token()
-//    }
-//}
 
-type Spanned<Tok, Loc, E> = Result<(Loc, Tok, Loc), E>;
 impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
-    type Item = Spanned<TokenType, usize, String>;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.token() {
-            Some(Token(_, TokenType::Error(s))) => Some(Err(s)),
-            Some(tok) => Some(Ok((tok.0, tok.1, self.line))),
-            None => None,
-        }
+        self.token()
     }
 }
 
