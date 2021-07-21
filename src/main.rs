@@ -1,17 +1,19 @@
 pub mod ast;
 pub mod code;
 pub mod lex;
+pub mod parser;
 pub mod types;
-use std::{ffi::OsStr, panic::PanicInfo, path::PathBuf, str::FromStr};
+use std::{
+    panic::PanicInfo,
+    path::PathBuf,
+    process::{Command, Stdio},
+    str::FromStr,
+};
 
 use clap::{App, AppSettings, Arg};
 use console::style;
 use inkwell::context::Context;
 pub use types::Type;
-
-use lalrpop_util::lalrpop_mod;
-
-lalrpop_mod!(pub parse);
 
 /// Optimization level that can be given as a command line argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +30,7 @@ impl FromStr for OptLvl {
             "0" | "debug" => Ok(Self::Debug),
             "1" => Ok(Self::Medium),
             "2" | "release" => Ok(Self::Aggressive),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
@@ -48,28 +50,28 @@ impl FromStr for OutFormat {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "exec" => Ok(Self::Exe),
-            "lib"  => Ok(Self::Lib),
-            "ll" | "ir"   => Ok(Self::IR),
+            "lib" => Ok(Self::Lib),
+            "ll" | "ir" => Ok(Self::IR),
             "asm" => Ok(Self::Asm),
             "obj" => Ok(Self::Obj),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
 
 /// Compiler options that are changed with command line switches and arguments
-#[derive(Debug, Clone, )]
+#[derive(Debug, Clone)]
 pub struct CompileOpts {
     /// A list of libraries to link to when linking an exe
     libraries: Vec<String>,
 
     /// Optimization level
-    opt_lvl: OptLvl,    
+    opt_lvl: OptLvl,
 
     /// The output file format
     output_ty: OutFormat,
 
-    /// The output file 
+    /// The output file
     out_file: PathBuf,
 }
 
@@ -125,20 +127,6 @@ fn main() {
             .required_unless("input-dir")
             .conflicts_with("input-dir")
         )
-        .arg(Arg::with_name("input-dir")
-            .short("d")
-            .long("input-directory")
-            .help("A path to a directory containing multiple Spark (.sprk) source code files")
-            .long_help("A full or relative path to a directory that contains multiple .sprk Spark source code files. The directory will be recursively searched and all source files will be parsed into one Abstract Syntax Tree")
-            .required_unless("input-files")
-            .conflicts_with("input-files")
-            .takes_value(true)
-            .validator(|arg| match PathBuf::from(arg) {
-                p if p.exists() => Ok(()),
-                arg => Err(format!("The specified directory {} does not exist", arg.display()))
-            })
-            .max_values(1)
-        )
         .arg(Arg::with_name("library")
             .short("l")
             .multiple(true)
@@ -181,57 +169,88 @@ fn main() {
         );
     let args = app.get_matches(); //Get argument matches from environment args
 
-    
-
-    //Get a list of files to parse into an AST
-    let input_files: Vec<String> = match args.values_of("input-files") {
-        Some(v) => v.map(|s| s.to_owned()).collect(),
-        None => {
-            let dir = args.value_of("input-dir").unwrap();
-            let mut list = Vec::new();
-            
-            /// Recursively search a directory for .sprk files
-            fn read_dir(path: &str, list: &mut Vec<String>) {
-                std::fs::read_dir(path).unwrap().fold(list, |list, s| match s {
-                    Ok(entry) if entry.path().extension().unwrap_or(OsStr::new("")) == "sprk" => {
-                        list.push(entry.path().to_str().unwrap().to_owned());
-                        list
-                    }
-                    Ok(entry) if entry.file_type().unwrap().is_dir() => {
-                        read_dir(entry.path().to_str().unwrap(), list);
-                        list
-                    }
-                    _ => list, 
-                });
-            }
-
-            read_dir(dir, &mut list);
-            list
-        }
-    };
-
-    //Parse all files into an AST
-    let mut ast = Vec::new();
-
-    //Parse every file
-    for file in input_files.iter() {
-        let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
-        let lexer = lex::Lexer::from_reader(&mut file);
-        ast.extend(parse::ProgramParser::new().parse(lexer).unwrap_or_else(|e| panic!("Error when parsing: {}", e)) ); //Parse the file and add it to the AST
-    }
-
-    let ctx = Context::create();
-    let code = code::Compiler::new(&ctx);
-
     //Get the given compilation options
     let opts = CompileOpts {
         libraries: match args.values_of("library") {
             Some(l) => l.map(|s| s.to_owned()).collect(),
-            None => Vec::new()
+            None => Vec::new(),
         },
         opt_lvl: args.value_of("optimization").unwrap().parse().unwrap(),
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),
         out_file: PathBuf::from(args.value_of("output-file").unwrap()),
     };
-    code.compile(ast, opts);
+
+    //Get a list of files to parse into an AST
+    let input_files: Vec<String> = match args.values_of("input-files") {
+        Some(v) => v.map(|s| s.to_owned()).collect(),
+        None => unreachable!(),
+        /*None => {
+            let dir = args.value_of("input-dir").unwrap();
+            let mut list = Vec::new();
+
+            /// Recursively search a directory for .sprk files
+            fn read_dir(path: &str, list: &mut Vec<String>) {
+                std::fs::read_dir(path)
+                    .unwrap()
+                    .fold(list, |list, s| match s {
+                        Ok(entry)
+                            if entry.path().extension().unwrap_or(OsStr::new("")) == "sprk" =>
+                        {
+                            list.push(entry.path().to_str().unwrap().to_owned());
+                            list
+                        }
+                        Ok(entry) if entry.file_type().unwrap().is_dir() => {
+                            read_dir(entry.path().to_str().unwrap(), list);
+                            list
+                        }
+                        _ => list,
+                    });
+            }
+
+            read_dir(dir, &mut list);
+
+
+            list
+        }*/
+    };
+
+    //Parse all files into an AST
+    //let mut modules = Vec::new();
+    let ctx = Context::create();
+
+    //Parse every file
+    for file in input_files.iter() {
+        let code = code::Compiler::new(&ctx);
+        let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
+        let lexer = lex::Lexer::from_reader(&mut file);
+        let ast = parser::Parser::new(lexer.into_iter())
+            .parse()
+            .unwrap_or_else(|e| panic!("Error when parsing: {}", e)); //Parse the file
+        code.compile(ast, opts.clone()); //Compile to an obj
+                                         //modules.push(opts.out_file);
+    }
+
+    /*const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
+
+
+    let out = format!("/OUT:{}", opts.out_file.display());
+    let mut args = vec![
+        "/ENTRY:main",
+        "/SUBSYSTEM:console",
+        "/NOLOGO",
+        out.as_str(),
+    ];
+    args.extend(modules.iter().map(|s| s.to_str().unwrap()));
+    args.extend(opts.libraries.iter().map(|s| s.as_str())); //Add all linked libraries
+
+    let cmd = Command::new(PathBuf::from(LINKER))
+        .args(args)
+        .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap(); //Link the file into a library
+    println!(
+        "{}",
+        String::from_utf8(cmd.wait_with_output().unwrap().stdout).unwrap()
+    );*/
 }

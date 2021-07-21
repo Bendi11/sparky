@@ -1,60 +1,7 @@
-# Grammar
-The grammar of Spark is roughly standard curly braces semicolon terminated, like C or Rust. It features 
-- Unions of values
-- Structs that hold a collection of data
-- Functions with the fun keyword
+# spark 
+Syntax highlighing for the `spark` programming language. The language was a summer project for fun, its grammar can be found here: 
 
-Examples 
-```
-struct Structure {
-    i32 num,
-    u8 ptr string,
-}
-
-fun main() i32 {
-    struct Structure s = struct Structure {
-        num = 10,
-        string = "testing",
-    };
-}
-```
-
-## Keywords
-The keywords and their purposes are: 
-- `fun`: Declare a function
-- `struct`: Declare a structure or a structure typename
-- `union`: Declare a union or a union typename
-- `ret`: Return from a function
-- `if`: Control flow checking conditions
-- `else`: Control flow following a failed if check
-- `while`: Looping with conditional checking
-- `const`: Attributes for variables and functions
-- `ext`: Mark a function or global variable as externally defined
-- `ptr`: Express a pointer type
-- `let`: Declare a variable whose type will be inferred
-
-## Operators
-The operators and their purposes: 
-- `+`: Add two expressions
-- `-`: Subtract the right hand side expression from the left hand side expression
-- `*`: Multiply two expressions or dereference a pointer 
-- `/`: Divide the left hand by the right hand expresion
-- `%`: Perform modulus of the left and right hand side expressions
-- `=`: Assign the right hand side expression to the left hand side
-- `==`: Check if the left hand side expression is equivalent to the right hand side
-- `^`: Exclusive OR the right and left hand side expressions
-- `&`: AND the left and right hand expressions
-- `|`: OR the right and left hand expressions
-- `&&`: Ensure that both the left and right hand expressions are true
-- `||`: Check if either the left or right hand expression is true
-- `>`: Check if the left hand side is greater than the right hand side
-- `<`: Check if the left hand side is less than the right hand side
-- `<=`: Check if the left hand side if less than or equal to the right hand side
-- `>=`: Check if the left hand side is greater than or equal to the right hand side
-
-
-## Grammar in Backus-Naur Form
-```bnf 
+```bnf
 (*A program is made up of declarations*)
 <program> ::= <decl>*
 (*A declaration can be either a type definition or function definition*)
@@ -130,6 +77,4 @@ The operators and their purposes:
        | "q" | "r" | "s" | "t" | "u" | "v" | "w"
        | "x" | "y" | "z" 
 <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" 
-
-
 ```

@@ -6,8 +6,8 @@ pub struct Container {
     /// The name of the struct / union type
     pub name: String,
 
-    /// The contained data in the struct / union
-    pub fields: Vec<(String, Type)>,
+    /// The contained data in the struct / union or `None` if the type is opaque
+    pub fields: Option<Vec<(String, Type)>>,
 }
 
 /// The `Type` enum enumerates all possible types for expressions like integer, pointer, struct, and union types
@@ -21,12 +21,6 @@ pub enum Type {
 
     /// A user - defined union type
     Union(Container),
-
-    /// An unknown struct type with name only
-    UnknownStruct(String),
-
-    /// An unknown union type with name only
-    UnknownUnion(String),
 
     /// An unknown union or struct type
     Unknown(String),
@@ -72,11 +66,21 @@ impl Type {
     pub fn size(&self) -> usize {
         match self {
             Self::Integer { signed: _, width } => (width / 8) as usize,
-            Self::Struct(s) => s.fields.iter().fold(0, |acc, (_, ty)| acc + ty.size()),
+            Self::Struct(s) => s
+                .fields
+                .as_ref()
+                .unwrap()
+                .iter()
+                .fold(0, |acc, (_, ty)| acc + ty.size()),
             Self::Ptr(_) => 8,
-            Self::Union(s) => s.fields.iter().map(|(_, ty)| ty.size()).max().unwrap_or(0),
-            Self::UnknownStruct(_) => panic!("Unknown struct"),
-            Self::UnknownUnion(_) => panic!("Unknown union"),
+            Self::Union(s) => s
+                .fields
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|(_, ty)| ty.size())
+                .max()
+                .unwrap_or(0),
             Self::Unknown(name) => panic!("Unknown type {}", name),
             Self::Void => panic!("Void type"),
         }
@@ -98,8 +102,6 @@ impl fmt::Display for Type {
             Self::Ptr(ty) => write!(f, "pointer to {}", ty),
             Self::Struct(s) => write!(f, "Struct {}: {{\n{:#?}\n}}", s.name, s.fields),
             Self::Union(s) => write!(f, "Union {}: {{\n{:#?}\n}}", s.name, s.fields),
-            Self::UnknownStruct(s) => write!(f, "Unknown struct {}", s),
-            Self::UnknownUnion(s) => write!(f, "Unknown union {}", s),
             Self::Unknown(name) => write!(f, "Unknown type {}", name),
             Self::Void => write!(f, "void"),
         }

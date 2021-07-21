@@ -1,13 +1,9 @@
 use std::ops::Deref;
 
-use crate::{
-    lex::Op,
-    types::{self, Container},
-};
+use crate::{code::Compiler, lex::Op, types};
 
 use super::Type;
 use bitflags::bitflags;
-use hashbrown::HashMap;
 
 bitflags! {
     pub struct Attributes: u8 {
@@ -15,6 +11,8 @@ bitflags! {
         const CONST = 0b00000001;
         /// The item is defined elsewhere and is only being declared
         const EXT   = 0b00000010;
+        /// The function is local to its object file
+        const STATIC = 0b00000100;
     }
 }
 
@@ -33,7 +31,6 @@ pub struct FunProto {
 }
 
 /// The `Ast` enum is what is parsed from the lexer's token stream and consumed by the code generator to produce an executable
-///
 #[derive(Debug, Clone)]
 pub enum Ast {
     /// A function prototype with all needed information to call the function
@@ -52,10 +49,10 @@ pub enum Ast {
     Bin(Box<Ast>, Op, Box<Ast>),
 
     /// A struct definition with the defined type
-    StructDef(types::Container),
+    StructDec(types::Container),
 
     /// A union type definition
-    UnionDef(types::Container),
+    UnionDec(types::Container),
 
     /// A constant struct literal
     StructLiteral {
@@ -117,41 +114,33 @@ pub enum Ast {
         block: Vec<Ast>,
     },
 
-    /// A new namespace declaration with the body of expressions inside the namespace
-    Namespace(Vec<String>, Vec<Ast>),
-
-    /// Using a namespace (true) or an item (false)
-    Using(bool, String),
-
     /// A type definition aliasing an identifier to a typename
     TypeDef(String, Type),
 }
 
-
-
 impl Ast {
     /// Get the type of this expression, if any
-    pub fn get_type<'a, U, U1, U2, U3>(
-        &'a self,
-        funs: &'a HashMap<String, (U, FunProto)>,
-        structs: &'a HashMap<String, (U1, Container)>,
-        unions: &'a HashMap<String, (U2, Container)>,
-        vars: &'a HashMap<String, (U3, Type)>,
-    ) -> Option<Type> {
+    pub fn get_type<'a, 'b, 'c>(&'a self, compiler: &'b mut Compiler<'c>) -> Option<Type> {
         Some(match self {
-            Self::FunCall(name, _) => funs.get(name)?.1.ret.clone(),
+            Self::FunCall(name, _) => compiler.get_fun(name)?.1.ret.clone(),
             Self::VarDecl {
                 name: _,
                 ty,
                 attrs: _,
             } => ty.clone(),
             Self::Cast(_, ty) => ty.clone(),
-            Self::VarAccess(name) => vars.get(name)?.1.clone(),
-            Self::StructLiteral { name, fields: _ } => Type::Struct(structs.get(name)?.1.clone()),
-            Self::MemberAccess(first, item) => match first.get_type(funs, structs, unions, vars)? {
-                Type::Struct(col) | Type::Union(col) => {
-                    col.fields.iter().find(|(name, _)| name == item)?.1.clone()
-                }
+            Self::VarAccess(name) => compiler.vars.get(name)?.1.clone(),
+            Self::StructLiteral { name, fields: _ } => {
+                Type::Struct(compiler.get_struct(name)?.1.clone())
+            }
+            Self::MemberAccess(first, item) => match first.get_type(compiler)? {
+                Type::Struct(col) | Type::Union(col) => col
+                    .fields
+                    .unwrap()
+                    .iter()
+                    .find(|(name, _)| name == item)?
+                    .1
+                    .clone(),
                 _ => return None,
             },
             Self::NumLiteral(ty, _) => ty.clone(),
@@ -160,17 +149,11 @@ impl Ast {
                 signed: false,
             })), //char pointer for string literals
             Self::Unary(op, val) => match op {
-                Op::Star => val
-                    .deref()
-                    .get_type(funs, structs, unions, vars)?
-                    .deref_type()?,
-                Op::And => val
-                    .deref()
-                    .get_type(funs, structs, unions, vars)?
-                    .ptr_type(),
+                Op::Star => val.deref().get_type(compiler)?.deref_type()?,
+                Op::And => val.deref().get_type(compiler)?.ptr_type(),
                 _ => return None,
             },
-            Self::Bin(lhs, _, _) => lhs.get_type(funs, structs, unions, vars)?,
+            Self::Bin(lhs, _, _) => lhs.get_type(compiler)?,
             _ => return None,
         })
     }

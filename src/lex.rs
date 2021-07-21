@@ -49,23 +49,23 @@ pub enum Key {
     /// The `while` keyword performs looping based on a condition
     While,
 
-    /// The `var` keyword is used to declare variables
-    Var,
-
-    /// The `cast` keyword is used to cast an expression to a different type
-    Cast,
+    /// The `let` keyword is used to declare variables
+    Let,
 
     /// The `void` keyword is used to indicate no type
     Void,
 
-    /// The `ns` keyword is used to denote namespaces
-    Ns,
-
-    /// The `using` keyword is used to add a namespace to the list of used namesapces
-    Using,
-
     /// The `type` keyword is used to alias types with an identifier
     Type,
+
+    /// The `static` keyword is used to define a function that is local to an object file
+    Static,
+
+    /// The `true` keyword is used for the literal true value
+    True,
+
+    /// The `false` keyword is used for the literal false value
+    False,
 }
 
 impl fmt::Display for Key {
@@ -81,12 +81,12 @@ impl fmt::Display for Key {
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
             Self::While => write!(f, "while"),
-            Self::Var => write!(f, "var"),
+            Self::Let => write!(f, "let"),
             Self::Void => write!(f, "void"),
-            Self::Cast => write!(f, "cast"),
-            Self::Ns => write!(f, "ns"),
-            Self::Using => write!(f, "using"),
             Self::Type => write!(f, "type"),
+            Self::Static => write!(f, "static"),
+            Self::True => write!(f, "true"),
+            Self::False => write!(f, "false"),
         }
     }
 }
@@ -106,12 +106,12 @@ impl convert::TryFrom<&str> for Key {
             "if" => Ok(Self::If),
             "else" => Ok(Self::Else),
             "while" => Ok(Self::While),
-            "var" => Ok(Self::Var),
+            "let" => Ok(Self::Let),
             "void" => Ok(Self::Void),
-            "cast" => Ok(Self::Cast),
-            "ns" => Ok(Self::Ns),
-            "using" => Ok(Self::Using),
             "type" => Ok(Self::Type),
+            "static" => Ok(Self::Static),
+            "true" => Ok(Self::True),
+            "false" => Ok(Self::False),
             _ => Err(()),
         }
     }
@@ -326,7 +326,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     /// Create a lexer from a buffered reader, this is more memory efficient for larger files
     pub fn from_reader(reader: &'a mut R) -> Self {
         Self {
-            line: 0,
+            line: 1,
             chars: reader.chars().peekable(),
         }
     }
@@ -338,7 +338,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         let mut ident = String::from(first); //Create a string from the first char given
         while match self.chars.peek() {
             //Push alphabetic characters to the string
-            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' || c == &':' => {
+            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' => {
                 ident.push(self.chars.next().unwrap().unwrap());
                 true
             }
@@ -394,23 +394,40 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                 let first = self.chars.next().and_then(|o| o.ok())?; //Get the first character to check for escape sequences
                 let character = if first == '\\' {
                     let second = self.chars.next().and_then(|o| o.ok())?;
-                    Token::new(self.line, TokenType::NumLiteral(match second {
-                        '\\' => '\\' as u8,
-                        'n' => '\n' as u8,
-                        't' => '\t' as u8,
-                        other => return Some(Token::new(self.line, TokenType::Error(format!("Unknown escape sequence \\{}", other))))
-                    }.to_string()))
-                }
-                else {
+                    Token::new(
+                        self.line,
+                        TokenType::NumLiteral(
+                            match second {
+                                '\\' => '\\' as u8,
+                                'n' => '\n' as u8,
+                                't' => '\t' as u8,
+                                other => {
+                                    return Some(Token::new(
+                                        self.line,
+                                        TokenType::Error(format!(
+                                            "Unknown escape sequence \\{}",
+                                            other
+                                        )),
+                                    ))
+                                }
+                            }
+                            .to_string(),
+                        ),
+                    )
+                } else {
                     Token::new(self.line, TokenType::NumLiteral((first as u8).to_string()))
                 };
                 if self.chars.next().and_then(|o| o.ok())? != '\'' {
-                    return Some(Token::new(self.line, TokenType::Error("Character literal missing terminating \' character".to_owned())))
-                }
-                else {
+                    return Some(Token::new(
+                        self.line,
+                        TokenType::Error(
+                            "Character literal missing terminating \' character".to_owned(),
+                        ),
+                    ));
+                } else {
                     Some(character)
                 }
-            },
+            }
 
             //Lex a number literal from the input
             c if c.is_numeric() => {
@@ -503,11 +520,11 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                         ('|', '|') => {
                             self.chars.next();
                             return Some(Token(self.line, TokenType::Op(Op::OrOr)));
-                        },
+                        }
                         ('!', '=') => {
                             self.chars.next();
                             return Some(Token(self.line, TokenType::Op(Op::NEqual)));
-                        },
+                        }
                         ('/', '/') => {
                             self.chars.next();
                             while match self.chars.next() {
@@ -516,13 +533,8 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                                 _ => true,
                             } {} //Skip the comment
                             self.line += 1;
-                            return self.token() //Get the next token
+                            return self.token(); //Get the next token
                         }
-
-                        //Negative number
-                        //('-', n) if n.is_numeric() => {
-                        //    
-                        //}
                         _ => (),
                     }
                 }
@@ -557,34 +569,15 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
     /// in memory and only work with tokens.
     #[inline(always)]
     pub fn into_vec(self) -> Vec<Token> {
-        self.into_iter()
-            .map(|t| {
-                let t = t.unwrap();
-                Token(t.0, t.1)
-            })
-            .collect::<Vec<Token>>()
+        self.into_iter().collect::<Vec<Token>>()
     }
 }
 
-//impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
-//    type Item = Token;
-//    ///Lex tokens from the input stream until there are none left
-//    fn next(&mut self) -> Option<Self::Item> {
-//        self.token()
-//    }
-//}
-
-type Spanned<Tok, Loc, E> = Result<(Loc, Tok, Loc), E>;
 impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
-    type Item = Spanned<TokenType, usize, String>;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.token()
-        {   
-            Some(Token(_, TokenType::Error(s))) => Some(Err(s)),
-            Some(tok) => Some(Ok((tok.0, tok.1, self.line))),
-            None => None,
-        }
+        self.token()
     }
 }
 
