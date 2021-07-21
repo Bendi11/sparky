@@ -2,16 +2,17 @@
 //! a number of popular linkers
 
 use std::process::Command;
+use std::io;
 
 pub use crate::OutFormat;
 
 /// The `Linker` trait provides a generic interface for any linker
 pub trait Linker: Default + Sized {
     /// Add an object file by path to the linker's input
-    fn add_object_file(&mut self, obj: &str);
+    fn add_object_file(&mut self, obj: impl AsRef<std::path::Path>);
 
     /// Add a library to the linker's input files
-    fn add_library(&mut self, lib: &str) {
+    fn add_library(&mut self, lib: impl AsRef<std::path::Path>) {
         self.add_object_file(lib)
     }
 
@@ -22,10 +23,10 @@ pub trait Linker: Default + Sized {
     fn set_entry(&mut self, entry: Option<&str>);
 
     /// Set the output file name
-    fn set_output_file(&mut self, output: &str);
+    fn set_output_file(&mut self, output: impl AsRef<std::path::Path>);
 
-    /// Link using the given input files by spawning a process
-    fn link(self) -> Result<(), String>;
+    ///Link using the given input files by spawning a process
+    fn link(self) -> io::Result<()>;
 }
 
 /// An interface to the windows native LINK tool from visual studio build tools
@@ -59,8 +60,8 @@ impl Default for WinLink {
 }
 
 impl Linker for WinLink {
-    fn add_object_file(&mut self, obj: &str) {
-        self.input_files.push(obj.to_owned())
+    fn add_object_file(&mut self, obj: impl AsRef<std::path::Path>) {
+        self.input_files.push(obj.as_ref().to_str().unwrap().to_owned())
     }
 
     fn set_format(&mut self, format: OutFormat) {
@@ -71,19 +72,34 @@ impl Linker for WinLink {
         self.entry = entry.map(|s| s.to_owned())
     }
 
-    fn set_output_file(&mut self, output: &str) {
-        self.output = output.to_owned()
+    fn set_output_file(&mut self, output: impl AsRef<std::path::Path>) {
+        self.output = output.as_ref().to_str().unwrap().to_owned()
     }
 
-    fn link(mut self) -> Result<(), String> {
-        let out = format!("/OUT:{}", self.output);
-        let mut cmd = Command::new(self.linker_path)
-            .arg("/NOLOGO")
-            .args(self.input_files)
-            .arg(out);
+    fn link(self) -> io::Result<()> {
+        use std::process::Stdio;
+        let mut args = self.input_files;
+        args.push("/NOLOGO".to_owned());
+
         if let Some(entry) = self.entry {
-            cmd = cmd.arg(format!("/ENTRY:{}", entry));
+            args.push(format!("/ENTRY:{}", entry));
         }
+
+        args.push(format!("/OUT:{}", self.output + match self.format {
+            OutFormat::Exe => ".exe",
+            OutFormat::Lib => ".lib",
+            OutFormat::Obj => ".obj",
+            _ => unreachable!()
+        }));
+
+        let _ = Command::new(self.linker_path)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output()?;
+        
+        
         Ok(())
     }
 }
