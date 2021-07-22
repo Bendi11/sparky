@@ -12,7 +12,7 @@ struct Structure {
 }
 
 fun main() i32 {
-    struct Structure s = struct Structure {
+    let Structure s = struct Structure {
         num = 10,
         string = "testing",
     };
@@ -54,7 +54,7 @@ The operators and their purposes:
 
 
 ## Grammar in Backus-Naur Form
-```bnf 
+```ebnf 
 (*A program is made up of declarations*)
 <program> ::= <decl>*
 (*A declaration can be either a type definition or function definition*)
