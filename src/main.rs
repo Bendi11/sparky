@@ -103,7 +103,7 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
         .chain(fern::Dispatch::new()
             .filter(|meta| {
                 // Reject messages with the `Error` log level.
-                meta.level() != log::LevelFilter::Error || meta.level() != log::LevelFilter::Warn
+                meta.level() == log::LevelFilter::Error || meta.level() == log::LevelFilter::Warn
             })
             .format(|out, message, record| {
                 out.finish(format_args!(

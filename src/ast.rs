@@ -4,6 +4,8 @@ use crate::{code::Compiler, lex::{Op, Pos}, types};
 
 use super::Type;
 use bitflags::bitflags;
+use inkwell::types::StructType;
+use log::debug;
 
 bitflags! {
     pub struct Attributes: u8 {
@@ -131,8 +133,8 @@ impl AstPos {
 
 impl Ast {
     /// Get the type of this expression, if any
-    pub fn get_type<'a, 'b, 'c>(&'a self, compiler: &'b mut Compiler<'c>) -> Option<Type> {
-        Some(match self {
+    pub fn get_type<'a, 'b, 'c>(&'a self, compiler: &'b mut Compiler<'c>) -> Option<(Type, Option<StructType<'c>>)> {
+        match match self {
             Self::FunCall(name, _) => compiler.get_fun(name)?.1.ret.clone(),
             Self::VarDecl {
                 name: _,
@@ -144,15 +146,28 @@ impl Ast {
             Self::StructLiteral { name, fields: _ } => {
                 Type::Struct(compiler.get_struct(name)?.1.clone())
             },
-            Self::MemberAccess(first, item) => match first.0.get_type(compiler)? {
-                Type::Struct(col) | Type::Union(col) => col
+            Self::MemberAccess(first, item) => match first.0.get_type(compiler) {
+                Some((Type::Struct(col), _)) | Some((Type::Union(col), _)) => match col
                     .fields
                     .unwrap()
                     .iter()
-                    .find(|(name, _)| name == item)?
+                    .find(|(name, _)| name == item) {
+                        Some(field) => field,
+                        None => {
+                            debug!("Failed to get field {} type because the field does not exist (in member access expression)", item);
+                            return None
+                        }
+                    }
                     .1
                     .clone(),
-                _ => return None,
+                None => {
+                    debug!("Failed to get type of prefix expression in member access expression, prefix is {:?}", first);
+                    return None
+                }
+                Some(other) => {
+                    debug!("Failed to get type of prefix expression in member access, type is {:?}, which is not a struct type", other);
+                    return None
+                }
             },
             Self::NumLiteral(ty, _) => ty.clone(),
             Self::StrLiteral(_) => Type::Ptr(Box::new(Type::Integer {
@@ -160,12 +175,23 @@ impl Ast {
                 signed: false,
             })), //char pointer for string literals
             Self::Unary(op, val) => match op {
-                Op::Star => val.deref().0.get_type(compiler)?.deref_type()?,
-                Op::And => val.deref().0.get_type(compiler)?.ptr_type(),
+                Op::Star => val.deref().0.get_type(compiler)?.0.deref_type()?,
+                Op::And => val.deref().0.get_type(compiler)?.0.ptr_type(),
                 _ => return None,
             },
-            Self::Bin(lhs, _, _) => lhs.0.get_type(compiler)?,
+            Self::Bin(lhs, _, _) => return lhs.0.get_type(compiler),
             _ => return None,
-        })
+        } {
+            Type::Unknown(name) => Some(match (compiler.get_struct(&name), compiler.get_union(&name), compiler.get_typedef(&name)) {
+                (Some((ty, c)), _, _) => (Type::Struct(c), Some(ty)),
+                (_, Some((ty, c)), _) => (Type::Union(c), Some(ty)),
+                (_, _, Some(ty)) => (ty, None),
+                (None, None, None) => {
+                    debug!("Failed to get type of prefix expression in member access because the struct, union or typedef'd type {} does not exist", name);
+                    return None
+                }
+            }),
+            other => Some((other, None))
+        }
     }
 }

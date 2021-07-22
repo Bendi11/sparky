@@ -4,6 +4,10 @@ use crate::ast::AstPos;
 
 use super::*;
 
+pub enum Either<A, B> {
+    This(A),
+    That(B)
+}
 
 impl<'c> Compiler<'c> {
     /// Get a struct type from the given path

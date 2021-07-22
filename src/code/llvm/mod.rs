@@ -108,7 +108,7 @@ impl<'c> Compiler<'c> {
                 let lhs_ty = lhs.ast().get_type(self);
                 let rhs_ty = rhs.ast().get_type(self);
                 if discriminant(&lhs_ty) != discriminant(&rhs_ty) {
-                    error!("{}: Left hand side of '{}' expression does not match types with right hand side! LHS: {:?}, RHS: {:?}", lhs.1, op, lhs_ty, rhs_ty);
+                    error!("{}: Left hand side of '{}' expression does not match types with right hand side! LHS: {:?}, RHS: {:?}", lhs.1, op, lhs.ast(), rhs_ty);
                     return None
                 }
                 let pos = lhs.1.clone();
@@ -532,15 +532,8 @@ impl<'c> Compiler<'c> {
                     .get_type(self)
                     .expect("Failed to get type of lhs when accessing member of struct or union");
                 let (_, s_ty, is_struct) = match col {
-                    Type::Unknown(name) => match self.get_struct(&name) {
-                        Some((s_ty, con)) => (s_ty, con, true),
-                        None => {
-                            let (u_ty, con) = self
-                                .get_union(name.clone())
-                                .unwrap_or_else(|| panic!("Using unknown type {}", name));
-                            (u_ty, con, false)
-                        }
-                    },
+                    (Type::Struct(con), Some(s_ty)) => (s_ty, con, true), 
+                    (Type::Union(con), Some(u_ty))  => (u_ty, con, false),
                     _ => panic!("Not a structure type"),
                 };
 
