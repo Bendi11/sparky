@@ -10,16 +10,19 @@ use super::Compiler;
 impl<'c> Compiler<'c> {
     /// Generate all code for a LLVM module and return it
     pub fn finish(mut self, ast: Vec<Ast>) -> Module<'c> {
-        let ast = self.get_decls(ast);
+        let ast = self.scan_decls(ast);
         //let ast = self.get_fn_protos(ast);
         for node in ast {
-            self.gen(&node, false);
+            match node {
+                Ast::FunDef(ref proto, ref body) => self.gen_fundef(proto, body),
+                other => panic!("Invalid top level expression {:?}", other),
+            }
         }
         self.module
     }
 
     /// Compile the code into an executable / library file
-    pub fn compile<L: Linker>(self, ast: Vec<Ast>, opts: CompileOpts, linker: L) {
+    pub fn compile<L: Linker>(self, ast: Vec<Ast>, opts: CompileOpts, mut linker: L) {
         const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
         use std::process::Stdio;
 

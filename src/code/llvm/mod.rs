@@ -72,75 +72,6 @@ impl<'c> Compiler<'c> {
         }
     }
 
-    /// Convert the AST types to LLVM types
-    pub fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'c> {
-        match ty {
-            Type::Integer{
-                width, 
-                signed: _
-            } => self.ctx.custom_width_int_type(*width as u32).as_basic_type_enum(),
-            Type::Ptr(internal) => self.llvm_type(internal).ptr_type(inkwell::AddressSpace::Generic).as_basic_type_enum(),
-            Type::Struct(Container{name: _, fields: Some(fields)}) => {
-                self.ctx.struct_type(fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), true).as_basic_type_enum()
-            },
-            Type::Union(con) => {
-                let largest = con.fields.as_ref().unwrap().iter().max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size())).expect("Union type with no fields!");
-                self.ctx.struct_type(&[self.llvm_type(&largest.1)], false).as_basic_type_enum()
-            },
-            Type::Struct(Container{name, fields: None}) => self.ctx.opaque_struct_type(name.as_str()).as_basic_type_enum(),
-            Type::Unknown(name) => match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
-                (Some(_), Some(_), _) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
-                (Some(u), _, _) => u.0.as_basic_type_enum(),
-                (_, Some(s), _) => s.0.as_basic_type_enum(),
-                (_, _, Some(ty)) => self.llvm_type(&ty),
-                (None, None, None) => panic!("Unknown union or struct type {}", name),
-            },
-            Type::Void => panic!("Cannot create void type in LLVM!"),
-        }
-    }
-
-    /// Generate code for a function prototype
-    pub fn gen_fun_proto(&mut self, proto: FunProto) -> Result<FunctionValue<'c>, String> {
-        if self.module.get_function(proto.name.as_str()).is_some() {
-            return Err(format!("Function {} defined twice", proto.name));
-        }
-
-        if proto.ret == Type::Void {
-            let proto_clone = proto.clone();
-            let fun = self.module.add_function(
-                proto.name.as_str(),
-                self.ctx.void_type().fn_type(
-                    proto
-                        .args
-                        .iter()
-                        .map(|(ty, _)| self.llvm_type(ty))
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                    false,
-                ),
-                None,
-            );
-            self.funs.insert(proto.name.clone(), (fun, proto_clone));
-            Ok(fun)
-        } else {
-            let proto_clone = proto.clone();
-            let fun = self.module.add_function(
-                proto.name.as_str(),
-                self.llvm_type(&proto.ret).fn_type(
-                    proto
-                        .args
-                        .iter()
-                        .map(|(ty, _)| self.llvm_type(ty))
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                    false,
-                ),
-                None,
-            );
-            self.funs.insert(proto.name.clone(), (fun, proto_clone));
-            Ok(fun)
-        }
-    }
     /// Build an alloca for a variable in the current function
     fn entry_alloca(&self, name: &str, ty: BasicTypeEnum<'c>) -> PointerValue<'c> {
         let entry_builder = self.ctx.create_builder();
@@ -371,46 +302,6 @@ impl<'c> Compiler<'c> {
                 }
             }
         }
-    }
-
-    fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<Ast>) {
-        if self.current_fn.is_some() {
-            panic!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
-        }
-
-        let old_vars = self.vars.clone();
-
-        let f = match self.module.get_function(proto.name.as_str()) {
-            Some(f) => f,
-            None => self.gen_fun_proto(proto.clone()).unwrap(),
-        };
-        self.current_fn = Some(f);
-        self.current_proto = Some(proto.clone());
-
-        let bb = self.ctx.append_basic_block(f, "fn_entry"); //Add the first basic block
-        self.build.position_at_end(bb); //Start inserting into the function
-
-        //Add argument names to the list of variables we can use
-        for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
-            let alloca = self.entry_alloca(
-                proto_arg.clone().unwrap_or("".to_owned()).as_str(),
-                self.llvm_type(ty),
-            );
-            self.build.build_store(alloca, arg); //Store the initial value in the function parameters
-
-            if let Some(name) = proto_arg {
-                self.vars.insert(name.clone(), (alloca, ty.clone()));
-            }
-        }
-
-        //Generate code for the function body
-        for ast in body {
-            self.gen(ast, false);
-        }
-
-        self.vars = old_vars; //Reset the variables
-        self.current_fn = None;
-        self.current_proto = None;
     }
 
     /// Generate code for one expression, only used for generating function bodies, no delcarations
@@ -741,41 +632,6 @@ impl<'c> Compiler<'c> {
 
             other => unimplemented!("Cannot use expression {:?} inside of a function", other),
         }
-    }
-
-    /// Get all struct and union type declarations from the top level of the AST and remove them
-    fn get_decls(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
-        ast.into_iter()
-            .filter_map(|node| match node {
-                Ast::StructDec(c) => {
-                    //Make opaque if no body is given
-                    let ty = self.llvm_type(&Type::Struct(c.clone())).into_struct_type();
-                    self.struct_types.insert(c.name.clone(), (ty, c));
-                    None
-                }
-                Ast::UnionDec(c) => {
-                    let ty = self.llvm_type(&Type::Union(c.clone())).into_struct_type();
-                    self.union_types.insert(c.name.clone(), (ty, c.clone()));
-                    None
-                }
-
-                Ast::FunProto(p) => {
-                    self.gen_fun_proto(p).unwrap();
-                    None
-                }
-                Ast::FunDef(proto, body) => {
-                    self.gen_fundef(&proto, &body);
-                    None
-                }
-
-                //Insert a user-defined typedef
-                Ast::TypeDef(name, ty) => {
-                    self.typedefs.insert(name, ty);
-                    None
-                }
-                other => Some(other),
-            })
-            .collect::<Vec<_>>()
     }
     
 }

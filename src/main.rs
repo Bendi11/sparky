@@ -3,16 +3,14 @@ pub mod code;
 pub mod lex;
 pub mod parser;
 pub mod types;
-use std::{
-    panic::PanicInfo,
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{ffi::OsStr, panic::PanicInfo, path::PathBuf, str::FromStr};
 
 use clap::{App, AppSettings, Arg};
 use console::style;
 use inkwell::context::Context;
 pub use types::Type;
+
+use crate::code::{Compiler, linker};
 
 /// Optimization level that can be given as a command line argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,8 +180,7 @@ fn main() {
     //Get a list of files to parse into an AST
     let input_files: Vec<String> = match args.values_of("input-files") {
         Some(v) => v.map(|s| s.to_owned()).collect(),
-        None => unreachable!(),
-        /*None => {
+        None => {
             let dir = args.value_of("input-dir").unwrap();
             let mut list = Vec::new();
 
@@ -210,46 +207,25 @@ fn main() {
 
 
             list
-        }*/
+        }
     };
 
+    let mut ast = vec![];
+
     //Parse all files into an AST
-    //let mut modules = Vec::new();
     let ctx = Context::create();
 
     //Parse every file
     for file in input_files.iter() {
-        let code = code::Compiler::new(&ctx);
         let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
         let lexer = lex::Lexer::from_reader(&mut file);
-        let ast = parser::Parser::new(lexer.into_iter())
+        ast.extend(parser::Parser::new(lexer.into_iter())
             .parse()
-            .unwrap_or_else(|e| panic!("Error when parsing: {}", e)); //Parse the file
-        code.compile(ast, opts.clone()); //Compile to an obj
-                                         //modules.push(opts.out_file);
+            .unwrap_or_else(|e| panic!("Error when parsing: {}", e))
+        ); //Parse the file and add it to the AST
     }
 
-    /*const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
-
-
-    let out = format!("/OUT:{}", opts.out_file.display());
-    let mut args = vec![
-        "/ENTRY:main",
-        "/SUBSYSTEM:console",
-        "/NOLOGO",
-        out.as_str(),
-    ];
-    args.extend(modules.iter().map(|s| s.to_str().unwrap()));
-    args.extend(opts.libraries.iter().map(|s| s.as_str())); //Add all linked libraries
-
-    let cmd = Command::new(PathBuf::from(LINKER))
-        .args(args)
-        .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap(); //Link the file into a library
-    println!(
-        "{}",
-        String::from_utf8(cmd.wait_with_output().unwrap().stdout).unwrap()
-    );*/
+    let compiler = Compiler::new(&ctx, "spark".to_owned());
+    
+    compiler.compile(ast, opts, linker::WinLink::default())
 }
