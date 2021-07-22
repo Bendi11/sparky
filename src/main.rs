@@ -105,6 +105,17 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                 // Reject messages with the `Error` log level.
                 meta.level() != log::LevelFilter::Error || meta.level() != log::LevelFilter::Warn
             })
+            .format(|out, message, record| {
+                out.finish(format_args!(
+                    "[{}] {}",
+                    match record.level() {
+                        log::Level::Warn => "WARNING",
+                        log::Level::Error => "ERROR",
+                        _ => unreachable!(),
+                    },
+                    message
+                ))
+            })
             .chain(std::io::stderr())
         )
         .chain(fern::Dispatch::new()

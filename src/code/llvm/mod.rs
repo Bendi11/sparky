@@ -88,25 +88,34 @@ impl<'c> Compiler<'c> {
     }
 
     /// Generate code for a binary expression
-    fn gen_bin(&mut self, lhs: &AstPos, rhs: &AstPos, op: &Op) -> AnyValueEnum<'c> {
+    fn gen_bin(&mut self, lhs: &AstPos, rhs: &AstPos, op: &Op) -> Option<AnyValueEnum<'c>> {
         match op {
             //Handle assignment separately
             Op::Assign => {
-                let lhs = self.gen(lhs, true).into_pointer_value();
-                let rhs = BasicValueEnum::try_from(self.gen(rhs, false))
-                    .expect("Right hand side of assignment expression is not a basic type!");
+                let lhs = self.gen(lhs, true)?.into_pointer_value();
+                let rhs = match BasicValueEnum::try_from(self.gen(rhs, false)?) {
+                    Ok(val) => val,
+                    Err(()) => {
+                        error!("{}: Failed to generate code for assignment expression; the right hand side is not a basic value", rhs.1);
+                        return None
+                    }
+                };
 
-                self.build.build_store(lhs, rhs).as_any_value_enum()
+                Some(self.build.build_store(lhs, rhs).as_any_value_enum())
             }
             op => {
                 use std::mem::discriminant;
-                let lhs = self.gen(lhs, false);
-                let rhs = self.gen(rhs, false);
-                if discriminant(&lhs.get_type()) != discriminant(&rhs.get_type()) {
-                    panic!("Left hand side of '{}' expression does not match types with right hand side! LHS: {:?}, RHS: {:?}", op, lhs.get_type(), rhs.get_type());
+                let lhs_ty = lhs.ast().get_type(self);
+                let rhs_ty = rhs.ast().get_type(self);
+                if discriminant(&lhs_ty) != discriminant(&rhs_ty) {
+                    error!("{}: Left hand side of '{}' expression does not match types with right hand side! LHS: {:?}, RHS: {:?}", lhs.1, op, lhs_ty, rhs_ty);
+                    return None
                 }
+                let pos = lhs.1.clone();
+                let lhs = self.gen(lhs, false)?;
+                let rhs = self.gen(rhs, false)?;
                 let ty = lhs.get_type();
-                match (ty, op) {
+                Some(match (ty, op) {
                     (AnyTypeEnum::IntType(_), Op::Plus) => {
                         let lhs = lhs.into_int_value();
                         let rhs = rhs.into_int_value();
@@ -292,24 +301,32 @@ impl<'c> Compiler<'c> {
                                     "ptr_div_cast_back_to_ptr",
                                 )
                                 .as_any_value_enum(),
-                            other => panic!("Cannot use operator {} on pointers", other),
+                            other => {
+                                error!("{}: Cannot use operator {} when operand types are pointer types", pos, other);
+                                return None
+                            }
                         }
                     }
-                    other => panic!("Unable to use operator '{}' on type {:?}", op, other),
-                }
+                    other => {
+                        error!("{}: Cannot use operator '{}' with operand type {:?}", pos, other.1, lhs_ty);
+                        return None
+                    }
+                })
             }
         }
     }
 
-    /// Generate code for one expression, only used for generating function bodies, no delcarations
-    pub fn gen(&mut self, node: &AstPos, lval: bool) -> AnyValueEnum<'c> {
+    /// Generate code for one expression, only used for generating function bodies, no delcarations.
+    /// ## Note 
+    /// Returns [None] on error, and writes error message to stderr
+    pub fn gen(&mut self, node: &AstPos, lval: bool) -> Option<AnyValueEnum<'c>> {
         match node.ast() {
-            Ast::NumLiteral(ty, num) => self
+            Ast::NumLiteral(ty, num) => Some(self
                 .llvm_type(ty)
                 .into_int_type()
                 .const_int_from_string(num.as_str(), inkwell::types::StringRadix::Decimal)
                 .unwrap()
-                .as_any_value_enum(),
+                .as_any_value_enum()),
             Ast::Ret(node) => {
                 match self
                     .current_proto
@@ -317,9 +334,9 @@ impl<'c> Compiler<'c> {
                     .expect("Must be in a function to return from one!")
                     .ret
                 {
-                    Type::Void => self.build.build_return(None).as_any_value_enum(),
+                    Type::Void => Some(self.build.build_return(None).as_any_value_enum()),
                     _ => {
-                        let ret = self.gen(&node.deref().as_ref().unwrap(), false);
+                        let ret = self.gen(&node.deref().as_ref().unwrap(), false)?;
                         if ret.get_type()
                             != self
                                 .current_fn
@@ -334,39 +351,60 @@ impl<'c> Compiler<'c> {
                                 self.current_fn.unwrap().get_name().to_str().unwrap()
                             )
                         }
-                        self.build
+                        Some(self.build
                             .build_return(Some(&BasicValueEnum::try_from(ret).unwrap()))
-                            .as_any_value_enum()
+                            .as_any_value_enum())
                     }
                 }
             }
             Ast::FunCall(name, args) => match self.get_fun(&name) {
                 Some((f, _)) => {
-                    let args = args.iter().map(|n| BasicValueEnum::try_from(self.gen(n, false)).expect("Failed to convert any value enum to basic value enum when calling function")).collect::<Vec<_>>();
-                    self.build
+                    let args = args
+                        .iter()
+                        .enumerate()
+                        .map(|(argnum, n)| {
+                            match BasicValueEnum::try_from(self.gen(n, false)?) {
+                                Ok(val) => Some(val),
+                                Err(()) => {
+                                    error!("{}: Failed to generate code for argument #{} in function {} as the argument was not a basic type", n.1, argnum, name);
+                                    None
+                                }
+                            }
+                        }).collect::<Option<Vec<_>>>()?;
+                    Some(self.build
                         .build_call(f.clone(), args.as_ref(), "tmp_fncall")
-                        .as_any_value_enum()
+                        .as_any_value_enum())
                 }
                 None => panic!("Calling unknown function {}", name),
             },
             Ast::AssocFunAccess(item, name, args) => match self.get_fun(name.as_str()) {
                 Some((f, _)) => {
-                    let item = BasicValueEnum::try_from(self.gen(&item.deref(), false)).unwrap(); //Generate code for the first expression
+                    let item = BasicValueEnum::try_from(self.gen(&item.deref(), false)?).unwrap(); //Generate code for the first expression
                     let mut real_args = vec![item];
-                    real_args.extend(args.iter().map(|n| BasicValueEnum::try_from(self.gen(&n, false)).expect("Failed to convert any value enum to basic value enum when calling function")) );
-                    self.build
+                    real_args.extend(
+                        args
+                            .iter()
+                            .map(|n| Some(BasicValueEnum::try_from(self.gen(&n, false)?).expect("Failed to convert any value enum to basic value enum when calling function"))).collect::<Option<Vec<_>>>()? );
+                    Some(self.build
                         .build_call(f.clone(), real_args.as_ref(), "tmp_assoc_fncall")
                         .as_any_value_enum()
+                    )
                 }
                 None => panic!("Calling unknown associated function {}", name),
             },
             Ast::If {
-                cond,
+                cond: condition,
                 true_block,
                 else_block,
             } => {
-                let cond = self.gen(&cond, false).into_int_value();
-                let fun = self.current_fn.expect("Conditional outside of function");
+                let cond = self.gen(&condition, false)?.into_int_value();
+                let fun = match self.current_fn {
+                    Some(fun) => fun,
+                    None => {
+                        error!("{}: Cannot use an if expression outside of a function body", condition.1);
+                        return None
+                    }
+                };
 
                 let true_bb = self.ctx.append_basic_block(fun, "if_true_bb");
                 let false_bb = self.ctx.append_basic_block(fun, "if_false_bb");
@@ -396,7 +434,7 @@ impl<'c> Compiler<'c> {
                 };
 
                 self.build.position_at_end(after_bb);
-                cond.as_any_value_enum()
+                Some(cond.as_any_value_enum())
             }
             Ast::While { cond, block } => {
                 let fun = self.current_fn.expect("While loop outside of function");
@@ -407,7 +445,7 @@ impl<'c> Compiler<'c> {
 
                 self.build.build_unconditional_branch(cond_bb); //Jump to the condition block for the first check
                 self.build.position_at_end(cond_bb);
-                let cond = self.gen(&cond, false).into_int_value();
+                let cond = self.gen(&cond, false)?.into_int_value();
 
                 self.build
                     .build_conditional_branch(cond, while_bb, after_bb);
@@ -421,32 +459,26 @@ impl<'c> Compiler<'c> {
 
                 let br = self.build.build_unconditional_branch(cond_bb); //Branch back to the condition to check it
                 self.build.position_at_end(after_bb); //Continue condegen after the loop block
-                br.as_any_value_enum()
+                Some(br.as_any_value_enum())
             }
             Ast::VarDecl { ty, name, attrs: _ } => {
                 let var = self.entry_alloca(name.as_str(), self.llvm_type(ty));
                 self.vars.insert(name.clone(), (var, ty.clone()));
-                var.as_any_value_enum()
+                Some(var.as_any_value_enum())
             }
             Ast::VarAccess(name) => match self.vars.get(name) {
                 Some((val, _)) => match lval {
-                    false => self.build.build_load(*val, "ssa_load").as_any_value_enum(),
-                    true => val.as_any_value_enum(),
+                    false => Some(self.build.build_load(*val, "ssa_load").as_any_value_enum()),
+                    true => Some(val.as_any_value_enum()),
                 },
-                None => panic!(
-                    "Accessing unknown variable {}{}",
-                    name,
-                    match self.current_fn {
-                        Some(f) => format!(
-                            " in function {}",
-                            f.get_name()
-                                .to_str()
-                                .expect("Failed to convert function name: invalid UTF-8")
-                        ),
-
-                        None => "".to_owned(),
-                    }
-                ),
+                None => {
+                    error!(
+                    "{}: Accessing unknown variable {}",
+                        node.1,
+                        name,
+                    );
+                    return None
+                },
             },
             Ast::StructLiteral { name, fields } => {
                 let (ty, def) = self.get_struct(name).unwrap_or_else(|| {
@@ -465,16 +497,19 @@ impl<'c> Compiler<'c> {
                 let mut pos_vals = Vec::with_capacity(def_fields.len());
                 unsafe { pos_vals.set_len(def_fields.len()) };
                 for field in fields {
-                    let pos = def_fields
+                    let pos = match def_fields
                         .iter()
-                        .position(|s| s.0 == field.0)
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "In struct literal for struct type {}: No field named {}",
-                                name, field.0
-                            )
-                        });
-                    let val = self.gen(&field.1, false);
+                        .position(|s| s.0 == field.0) {
+                            Some(pos) => pos,
+                            None => {
+                                error!(
+                                    "{}: In struct literal for struct type {}: No field named {}",
+                                    node.1, name, field.0
+                                );
+                                return None
+                            }
+                        };
+                    let val = self.gen(&field.1, false)?;
                     pos_vals[pos] = BasicValueEnum::try_from(val)
                         .expect("Failed to convert struct literal field to a basic value");
                 }
@@ -488,9 +523,9 @@ impl<'c> Compiler<'c> {
                         .unwrap();
                     self.build.build_store(field, *val);
                 }
-                self.build
+                Some(self.build
                     .build_load(literal, "load_struct_literal")
-                    .as_any_value_enum()
+                    .as_any_value_enum())
             }
             Ast::MemberAccess(val, field) => {
                 let col = val.ast()
@@ -520,7 +555,7 @@ impl<'c> Compiler<'c> {
                             .unwrap_or_else(|| {
                                 panic!("Struct type {} has no field named {}", s_ty.name, field)
                             });
-                        let s = self.gen(val, true);
+                        let s = self.gen(val, true)?;
                         let field = self
                             .build
                             .build_struct_gep(
@@ -531,28 +566,31 @@ impl<'c> Compiler<'c> {
                             .unwrap();
 
                         //Return the pointer value if we are generating an assignment
-                        match lval {
+                        Some(match lval {
                             false => self
                                 .build
                                 .build_load(field, "load_struct_field")
                                 .as_any_value_enum(),
                             true => field.as_any_value_enum(),
-                        }
+                        })
                     }
                     false => {
-                        let (_, field_ty) = s_ty
+                        let (_, field_ty) = match s_ty
                             .fields
                             .as_ref()
                             .unwrap()
                             .iter()
-                            .find(|(name, _)| name == field)
-                            .unwrap_or_else(|| {
-                                panic!("Union type {} has no field named {}", s_ty.name, field)
-                            });
+                            .find(|(name, _)| name == field) {
+                                Some(val) => val,
+                                None => {
+                                    error!("{}: Union type {} has no field named {}", node.1, s_ty.name, field);
+                                    return None
+                                }
+                            };
                         let field_ty = self.llvm_type(field_ty);
-                        match lval {
+                        Some(match lval {
                             true => {
-                                let u = self.gen(val, true);
+                                let u = self.gen(val, true)?;
                                 self.build
                                     .build_pointer_cast(
                                         u.into_pointer_value(),
@@ -562,7 +600,7 @@ impl<'c> Compiler<'c> {
                                     .as_any_value_enum()
                             }
                             false => {
-                                let u = self.gen(val, false);
+                                let u = self.gen(val, false)?;
                                 self.build
                                     .build_bitcast(
                                         u.into_struct_value().as_basic_value_enum(),
@@ -571,7 +609,7 @@ impl<'c> Compiler<'c> {
                                     )
                                     .as_any_value_enum()
                             }
-                        }
+                        })
                     }
                 }
             }
@@ -580,18 +618,19 @@ impl<'c> Compiler<'c> {
                     .build
                     .build_global_string_ptr(string.as_str(), "const_string_literal");
                 unsafe {
-                    self.build
+                    Some(self.build
                         .build_gep(
                             s.as_pointer_value(),
                             &[self.ctx.i64_type().const_zero()],
                             "string_literal_gep",
                         )
                         .as_any_value_enum()
+                    )
                 }
             }
             Ast::Cast(expr, ty) => {
-                let lhs = self.gen(expr, false);
-                match (lhs.get_type(), self.llvm_type(ty)) {
+                let lhs = self.gen(expr, false)?;
+                Some(match (lhs.get_type(), self.llvm_type(ty)) {
                     (AnyTypeEnum::IntType(_), BasicTypeEnum::PointerType(ptr)) => self
                         .build
                         .build_int_to_ptr(lhs.into_int_value(), ptr, "int_to_ptr_cast")
@@ -609,19 +648,19 @@ impl<'c> Compiler<'c> {
                         .build_pointer_cast(lhs.into_pointer_value(), ptr2, "ptr_to_ptr_cast")
                         .as_any_value_enum(),
                     (one, two) => panic!("Cannot cast type {:?} to {:?}", one, two),
-                }
+                })
             }
             Ast::Unary(op, val) => match op {
                 Op::And => self.gen(val, true),
                 Op::Star => {
-                    let ptr = self.gen(val, false).into_pointer_value();
-                    match lval {
+                    let ptr = self.gen(val, false)?.into_pointer_value();
+                    Some(match lval {
                         false => self
                             .build
                             .build_load(ptr, "deref_pointer_load")
                             .as_any_value_enum(),
                         true => ptr.as_any_value_enum(),
-                    }
+                    })
                 }
                 other => panic!("Unknown unary operator {} being applied", other),
             },
