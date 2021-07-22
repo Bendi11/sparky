@@ -96,8 +96,29 @@ pub fn panic_handler(p: &PanicInfo) {
     std::process::exit(-1);
 }
 
+/// Setup the logging handler with [`fern`]
 fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
     fern::Dispatch::new()
+        .level(verbosity)
+        .chain(fern::Dispatch::new()
+            .filter(|meta| {
+                // Reject messages with the `Error` log level.
+                meta.level() == log::LevelFilter::Error || meta.level() == log::LevelFilter::Warn
+            })
+            .format(|out, message, record| {
+                out.finish(format_args!(
+                    "[{}] {}",
+                    match record.level() {
+                        log::Level::Warn => "WARNING",
+                        log::Level::Error => "ERROR",
+                        _ => unreachable!(),
+                    },
+                    message
+                ))
+            })
+            .chain(std::io::stderr())
+        )
+        .chain(fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
                 "[{}][{}] {}",
@@ -112,8 +133,9 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
             .truncate(true)
             .open("sparkc.log")?
         )
-        .level(verbosity)
-        .apply()?;
+        .level(log::LevelFilter::Debug)
+    ).apply()?;
+    
     Ok(())
 }
 
@@ -148,9 +170,10 @@ fn main() {
         .arg(Arg::with_name("input-dir")
             .short("d")
             .long("input-dir")
-            .help("Select a directory containing all spark source files to be parsed")
+            .help("Select a directory or list of directories containing all spark source files to be parsed")
             .takes_value(true)
-            .multiple(false)
+            .multiple(true)
+            .allow_hyphen_values(true)
             .validator(|c| match std::path::Path::new(&c).exists() {
                 true => Ok(()),
                 false => Err(format!("The directory at {} does not exist", c))
@@ -224,7 +247,7 @@ fn main() {
     let input_files: Vec<String> = match args.values_of("input-files") {
         Some(v) => v.map(|s| s.to_owned()).collect(),
         None => {
-            let dir = args.value_of("input-dir").unwrap();
+            let dirs = args.values_of("input-dir").unwrap();
             let mut list = Vec::new();
 
             /// Recursively search a directory for .sprk files
@@ -246,7 +269,10 @@ fn main() {
                     });
             }
 
-            read_dir(dir, &mut list);
+            for dir in dirs {
+                read_dir(dir, &mut list);
+            }
+            
 
 
             list
@@ -259,9 +285,9 @@ fn main() {
     let ctx = Context::create();
 
     //Parse every file
-    for file in input_files.iter() {
-        let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
-        let lexer = lex::Lexer::from_reader(&mut file);
+    for filename in input_files.iter() {
+        let mut file = std::io::BufReader::new(std::fs::File::open(filename).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
+        let lexer = lex::Lexer::from_reader(&mut file, filename.clone());
         ast.extend(parser::Parser::new(lexer.into_iter())
             .parse()
             .unwrap_or_else(|e| panic!("Error when parsing: {}", e))
@@ -269,6 +295,9 @@ fn main() {
     }
 
     let compiler = Compiler::new(&ctx, "spark".to_owned());
-    
-    compiler.compile(ast, opts, linker::WinLink::default())
+    let name = opts.out_file.clone();
+    match compiler.compile(ast, opts, linker::WinLink::default()) {
+        Ok(()) => println!("{} Compiled successfully!", name.display()),
+        Err(count) => eprintln!("{}: Failed to compile due to {} errors", name.display(), count)
+    }
 }

@@ -2,31 +2,87 @@ use std::{path::Path, process::Command};
 
 use inkwell::{OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}};
 
-use crate::{CompileOpts, OutFormat, ast::Ast, code::linker::Linker};
+use crate::{CompileOpts, OutFormat, ast::{Ast, AstPos, FunProto}, code::linker::Linker};
 
-use super::Compiler;
+use super::{Compiler, debug, error};
 
 
 impl<'c> Compiler<'c> {
-    /// Generate all code for a LLVM module and return it
-    pub fn finish(mut self, ast: Vec<Ast>) -> Module<'c> {
-        let ast = self.scan_decls(ast);
-        //let ast = self.get_fn_protos(ast);
-        for node in ast {
-            match node {
-                Ast::FunDef(ref proto, ref body) => self.gen_fundef(proto, body),
-                other => panic!("Invalid top level expression {:?}", other),
+    /// Generate code for a full function definition
+    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>) -> Option<()> {
+        if self.current_fn.is_some() {
+            error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
+            return None
+        }
+
+        let old_vars = self.vars.clone();
+
+        let f = match self.module.get_function(proto.name.as_str()) {
+            Some(f) => f,
+            None => self.gen_fun_proto(proto).unwrap(),
+        };
+        self.current_fn = Some(f);
+        self.current_proto = Some(proto.clone());
+
+        let bb = self.ctx.append_basic_block(f, "fn_entry"); //Add the first basic block
+        self.build.position_at_end(bb); //Start inserting into the function
+
+        //Add argument names to the list of variables we can use
+        for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
+            let alloca = self.entry_alloca(
+                proto_arg.clone().unwrap_or("".to_owned()).as_str(),
+                self.llvm_type(ty),
+            );
+            self.build.build_store(alloca, arg); //Store the initial value in the function parameters
+
+            if let Some(name) = proto_arg {
+                self.vars.insert(name.clone(), (alloca, ty.clone()));
             }
         }
-        self.module
+
+        //Generate code for the function body
+        for ast in body {
+            match self.gen(ast, false) {
+                Some(_) => (),
+                None => {
+                    debug!("Not generating more code for function {} due to fatal error", proto.name);
+                    break
+                }
+            }
+        }
+
+        self.vars = old_vars; //Reset the variables
+        self.current_fn = None;
+        self.current_proto = None;
+        Some(())
+    }
+
+        
+    /// Generate all code for a LLVM module and return it
+    pub fn finish(mut self, ast: Vec<AstPos>) -> Result<Module<'c>, u16> {
+        let ast = self.scan_decls(ast);
+        let mut err = 0;
+        for node in ast {
+            match node.ast() {
+                Ast::FunDef(ref proto, ref body) => if self.gen_fundef(proto, body).is_none()  {err += 1},
+                other => {
+                    error!("{}: Invalid top level expression {:?}", node.1, other);
+                    err += 1;
+                }
+            }
+        }
+        match err > 0 {
+            true => Err(err),
+            false => Ok(self.module)
+        }
     }
 
     /// Compile the code into an executable / library file
-    pub fn compile<L: Linker>(self, ast: Vec<Ast>, opts: CompileOpts, mut linker: L) {
+    pub fn compile<L: Linker>(self, ast: Vec<AstPos>, opts: CompileOpts, mut linker: L) -> Result<(), u16> {
         const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
         use std::process::Stdio;
 
-        let module = self.finish(ast);
+        let module = self.finish(ast)?;
 
         module
             .verify()
@@ -132,5 +188,7 @@ impl<'c> Compiler<'c> {
                 }
             }
         }
+        
+        Ok(())
     }
 }

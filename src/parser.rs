@@ -1,11 +1,6 @@
 use std::iter::Peekable;
 
-use crate::{
-    ast::{Ast, Attributes, FunProto},
-    lex::{Key, Op, Token, TokenType},
-    types::Container,
-    Type,
-};
+use crate::{Type, ast::{Ast, AstPos, Attributes, FunProto}, lex::{Key, Op, Pos, Token, TokenType}, types::Container};
 use thiserror::Error;
 
 /// The `ParseRes<T>` type is a wrapper over the standard libraries Result type with [ParseErr] always set as the
@@ -27,7 +22,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     }
 
     /// Parse a program full of declarations and defintions
-    pub fn parse(mut self) -> ParseRes<Vec<Ast>> {
+    pub fn parse(mut self) -> ParseRes<Vec<AstPos>> {
         let mut body = Vec::new();
         loop {
             match self.toks.peek() {
@@ -39,27 +34,27 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     }
 
     /// Parse a single declaration, the highest expression possible
-    fn parse_decl(&mut self) -> ParseRes<Ast> {
+    fn parse_decl(&mut self) -> ParseRes<AstPos> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::Key(Key::Fun)) => self.parse_fun(),
 
             Token(_, TokenType::Key(Key::Struct)) => {
-                self.toks.next(); //Consume the struct keyword
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the struct keyword
                 let name = self.expect_next_ident()?;
                 match self.toks.peek() {
                     Some(Token(_, TokenType::LeftBrace('{'))) => {
                         let body = self.parse_struct_def_body()?;
-                        Ok(Ast::StructDec(Container {
+                        Ok(AstPos(Ast::StructDec(Container {
                             name,
                             fields: Some(body),
-                        }))
+                        }), pos.clone()))
                     }
-                    _ => Ok(Ast::StructDec(Container { name, fields: None })),
+                    _ => Ok(AstPos(Ast::StructDec(Container { name, fields: None }), pos.clone())),
                 }
             }
 
-            Token(line, other) => Err(ParseErr::UnexpectedToken(
-                *line,
+            Token(pos, other) => Err(ParseErr::UnexpectedToken(
+                pos.clone(),
                 other.clone(),
                 vec![TokenType::Key(Key::Fun), TokenType::Key(Key::Struct)],
             )),
@@ -84,9 +79,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     self.toks.next();
                     break Ok(body);
                 }
-                Token(line, other) => {
+                Token(pos, other) => {
                     break Err(ParseErr::UnexpectedToken(
-                        *line,
+                        pos.clone(),
                         other.clone(),
                         vec![TokenType::Comma, TokenType::RightBrace('}')],
                     ))
@@ -127,32 +122,36 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     }
 
     /// Parse a variable declaration and optional assignment, expects the keyword `let`to be the next token consumed
-    fn parse_var_dec(&mut self) -> ParseRes<Ast> {
-        self.expect_next(TokenType::Key(Key::Let))?; //Expect the next token to be the let keyword
+    fn parse_var_dec(&mut self) -> ParseRes<AstPos> {
+        let Token(pos, tok) = self.toks.next().eof()?; //Expect the next token to be the let keyword
+        if TokenType::Key(Key::Let) != tok {
+            return Err(ParseErr::UnexpectedToken(pos, tok, vec![TokenType::Key(Key::Let)]))
+        }
+
         let ty = self.parse_typename()?; //Get the type of this variable
         let attrs = self.parse_attrs(); //Get attributes, if any
         let name = self.expect_next_ident()?;
 
-        let decl = Ast::VarDecl { name, ty, attrs };
+        let decl = AstPos(Ast::VarDecl { name, ty, attrs }, pos);
 
         //Check if assignment is present
         match self.toks.peek().eof()? {
             Token(_, TokenType::Op(Op::Assign)) => {
-                self.toks.next(); //Consume the assignment operator
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the assignment operator
                 let assigned = self.parse_expr()?; //Get the assigned value
-                Ok(Ast::Bin(Box::new(decl), Op::Assign, Box::new(assigned)))
+                Ok(AstPos(Ast::Bin(Box::new(decl), Op::Assign, Box::new(assigned)), pos.clone()))
             }
             _ => Ok(decl),
         }
     }
 
     /// Parse a top level expression like variable declarations, if and while statements, etc.
-    fn parse_top(&mut self) -> ParseRes<Ast> {
+    fn parse_top(&mut self) -> ParseRes<AstPos> {
         match self.toks.peek().eof()? {
-            Token(line, TokenType::Key(key)) => match key {
+            Token(pos, TokenType::Key(key)) => match key {
                 Key::Let => self.parse_var_dec(),
                 Key::If => {
-                    self.toks.next();
+                    let Token(pos, _) = self.toks.next().eof()?;
                     let cond = self.parse_expr()?; //Parse the conditional expression
                     let if_body = self.parse_body()?; //Parse the if statement body
 
@@ -164,31 +163,31 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         _ => None,
                     };
 
-                    Ok(Ast::If {
+                    Ok(AstPos(Ast::If {
                         cond: Box::new(cond),
                         true_block: if_body,
                         else_block: else_body,
-                    })
+                    }, pos))
                 }
                 Key::While => {
-                    self.toks.next(); //Consume the while keyword
+                    let Token(pos, _) = self.toks.next().eof()?; //Consume the while keyword
                     let cond = self.parse_expr()?;
                     let body = self.parse_body()?;
-                    Ok(Ast::While {
+                    Ok(AstPos(Ast::While {
                         cond: Box::new(cond),
                         block: body,
-                    })
+                    }, pos))
                 }
                 Key::Ret => {
-                    self.toks.next();
+                    let Token(pos, _) = self.toks.next().eof()?;
                     let val = match self.toks.peek().eof()? {
                         Token(_, TokenType::Semicolon) => None,
                         _ => Some(self.parse_expr()?),
                     };
-                    Ok(Ast::Ret(Box::new(val)))
+                    Ok(AstPos(Ast::Ret(Box::new(val)), pos))
                 }
                 other => Err(ParseErr::UnexpectedToken(
-                    *line,
+                    pos.clone(),
                     TokenType::Key(other.clone()),
                     vec![
                         TokenType::Key(Key::If),
@@ -199,7 +198,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             },
 
             //Variable assignment or function calls can be top level expressions
-            Token(_, TokenType::Ident(_)) | Token(_, TokenType::LeftBrace('(')) => {
+            Token(pos, TokenType::Ident(_)) | Token(pos, TokenType::LeftBrace('(')) => {
+                let pos = pos.clone();
                 let mut prefix = self.parse_prefix()?;
 
                 match self.toks.peek().eof()? {
@@ -207,21 +207,21 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     Token(_, TokenType::Dot) => {
                         self.toks.next(); //Consume the token
                         let val = self.expect_next_ident()?; //Get the identifier from the next token
-                        prefix = Ast::MemberAccess(Box::new(prefix), val);
+                        prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val), pos.clone());
                     }
                     _ => (),
                 };
 
-                if !matches!(prefix, Ast::FunCall(_, _)) {
+                if !matches!(prefix, AstPos(Ast::FunCall(_, _), _)) {
                     self.expect_next(TokenType::Op(Op::Assign))?; //Expect the assignment operator
                     let assigned = self.parse_expr()?; //Get the assigned value
-                    return Ok(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)));
+                    return Ok(AstPos(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)), pos));
                 }
                 Ok(prefix)
             }
 
-            Token(line, unexpected) => Err(ParseErr::UnexpectedToken(
-                *line,
+            Token(pos, unexpected) => Err(ParseErr::UnexpectedToken(
+                pos.clone(),
                 unexpected.clone(),
                 vec![
                     TokenType::Ident(String::new()),
@@ -234,7 +234,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
     /// Parse a function, if statement, while statement body, assuming that a semiclon separates expressions.
     /// Expects the next token to be an opening curly brace
-    fn parse_body(&mut self) -> ParseRes<Vec<Ast>> {
+    fn parse_body(&mut self) -> ParseRes<Vec<AstPos>> {
         self.expect_next(TokenType::LeftBrace('{'))?;
         let mut body = Vec::new();
 
@@ -246,38 +246,38 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 }
                 _ => {
                     body.push(self.parse_top()?);
-                    self.expect_next(TokenType::Semicolon)?
+                    self.expect_next(TokenType::Semicolon)?;
                 }
             }
         }
     }
 
     /// Parse a number literal or bool literal from the token stream
-    fn parse_numliteral(&mut self) -> ParseRes<Ast> {
+    fn parse_numliteral(&mut self) -> ParseRes<AstPos> {
         //Get the number string
-        let num = match self.toks.next().eof()? {
-            Token(_, TokenType::NumLiteral(num)) => num,
-            Token(_, TokenType::Key(Key::True)) => {
-                return Ok(Ast::NumLiteral(
+        let (num, pos) = match self.toks.next().eof()? {
+            Token(pos, TokenType::NumLiteral(num)) => (num, pos),
+            Token(pos, TokenType::Key(Key::True)) => {
+                return Ok(AstPos(Ast::NumLiteral(
                     Type::Integer {
                         signed: false,
                         width: 1,
                     },
                     "1".to_owned(),
-                ))
+                ), pos))
             }
-            Token(_, TokenType::Key(Key::False)) => {
-                return Ok(Ast::NumLiteral(
+            Token(pos, TokenType::Key(Key::False)) => {
+                return Ok(AstPos(Ast::NumLiteral(
                     Type::Integer {
                         signed: false,
                         width: 1,
                     },
                     "0".to_owned(),
-                ))
+                ), pos))
             }
-            Token(line, tok) => {
+            Token(pos, tok) => {
                 return Err(ParseErr::UnexpectedToken(
-                    line,
+                    pos,
                     tok,
                     vec![
                         TokenType::NumLiteral(String::new()),
@@ -290,22 +290,22 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::IntType(ty)) => {
                 let ty = ty.clone();
-                self.toks.next();
-                Ok(Ast::NumLiteral(ty.clone(), num))
+                let Token(pos, _) = self.toks.next().eof()?;
+                Ok(AstPos(Ast::NumLiteral(ty.clone(), num), pos))
             }
-            _ => Ok(Ast::NumLiteral(
+            _ => Ok(AstPos(Ast::NumLiteral(
                 Type::Integer {
                     signed: true,
                     width: 32,
                 },
                 num,
-            )),
+            ), pos)),
         }
     }
 
     /// Parse a function call from the input tokens
-    fn parse_funcall(&mut self, name: String) -> ParseRes<Ast> {
-        self.expect_next(TokenType::LeftBrace('('))?; //Consume the opening brace
+    fn parse_funcall(&mut self, name: String) -> ParseRes<AstPos> {
+        let pos = self.expect_next(TokenType::LeftBrace('('))?; //Consume the opening brace
         let mut args = Vec::new();
         loop {
             match self.toks.peek().eof()? {
@@ -323,36 +323,36 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             }
         }
 
-        Ok(Ast::FunCall(name, args))
+        Ok(AstPos(Ast::FunCall(name, args), pos))
     }
 
     /// Parse a prefix expression like variable access or function calls
-    fn parse_prefix(&mut self) -> ParseRes<Ast> {
+    fn parse_prefix(&mut self) -> ParseRes<AstPos> {
         match self.toks.next().eof()? {
             Token(_, TokenType::LeftBrace('(')) => {
                 let expr = self.parse_expr()?;
                 self.expect_next(TokenType::RightBrace(')'))?;
                 Ok(expr)
             }
-            Token(_, TokenType::Ident(name)) => match self.toks.peek().eof()? {
+            Token(pos, TokenType::Ident(name)) => match self.toks.peek().eof()? {
                 Token(_, TokenType::LeftBrace('(')) => self.parse_funcall(name.clone()),
-                _ => Ok(Ast::VarAccess(name.clone())),
+                _ => Ok(AstPos(Ast::VarAccess(name.clone()), pos)),
             },
             _ => unreachable!(),
         }
     }
 
     /// Parse an expression from the input stream
-    fn parse_expr(&mut self) -> ParseRes<Ast> {
+    fn parse_expr(&mut self) -> ParseRes<AstPos> {
         let lhs = match self.toks.peek().eof()? {
             Token(_, TokenType::Ident(_)) | Token(_, TokenType::LeftBrace('(')) => {
                 let expr = self.parse_prefix()?; //Parse the prefix expression
                 match self.toks.peek().eof()? {
                     //This is a member item access
                     Token(_, TokenType::Dot) => {
-                        self.toks.next(); //Consume the token
+                        let Token(pos, _) = self.toks.next().eof()?; //Consume the token
                         let val = self.expect_next_ident()?; //Get the identifier from the next token
-                        Ok(Ast::MemberAccess(Box::new(expr), val))
+                        Ok(AstPos(Ast::MemberAccess(Box::new(expr), val), pos))
                     }
                     _ => Ok(expr),
                 }
@@ -360,25 +360,25 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
             //Cast expression
             Token(_, TokenType::LeftBrace('{')) => {
-                self.toks.next(); //Consume the opening curly brace token
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the opening curly brace token
                 let ty = self.parse_typename()?; //Parse a typename
                 self.expect_next(TokenType::RightBrace('}'))?; //Consume the closing curly brace
                 let casted = self.parse_expr()?; //Get the casted expression
-                Ok(Ast::Cast(Box::new(casted), ty))
+                Ok(AstPos(Ast::Cast(Box::new(casted), ty), pos))
             }
 
             //Unary expression
             Token(_, TokenType::Op(op)) => {
                 let op = op.clone();
-                self.toks.next(); //Consume the operator
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the operator
                 let expr = self.parse_expr()?; //Parse the expression that the unary operator is being applied to
-                Ok(Ast::Unary(op, Box::new(expr)))
+                Ok(AstPos(Ast::Unary(op, Box::new(expr)), pos))
             }
 
             Token(_, TokenType::StrLiteral(string)) => {
                 let string = string.clone();
-                self.toks.next(); //Consume the string literal
-                Ok(Ast::StrLiteral(string))
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the string literal
+                Ok(AstPos(Ast::StrLiteral(string), pos))
             }
 
             Token(_, TokenType::NumLiteral(_))
@@ -387,7 +387,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
             //Struct literal
             Token(_, TokenType::Key(Key::Struct)) => {
-                self.toks.next(); //Consume the struct keyword
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the struct keyword
                 let name = self.expect_next_ident()?;
                 self.expect_next(TokenType::LeftBrace('{'))?;
                 let mut fields = Vec::new();
@@ -414,11 +414,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     }
                 }
 
-                Ok(Ast::StructLiteral { name, fields })
+                Ok(AstPos(Ast::StructLiteral { name, fields }, pos))
             }
 
-            Token(line, unexpected) => Err(ParseErr::UnexpectedToken(
-                *line,
+            Token(pos, unexpected) => Err(ParseErr::UnexpectedToken(
+                pos.clone(),
                 unexpected.clone(),
                 vec![
                     TokenType::NumLiteral(String::new()),
@@ -435,9 +435,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::Op(op)) => {
                 let op = op.clone();
-                self.toks.next(); //Consume the operator
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the operator
                 let rhs = self.parse_expr()?; //Parse the right hand side of the expression
-                Ok(Ast::Bin(Box::new(lhs?), op, Box::new(rhs)))
+                Ok(AstPos(Ast::Bin(Box::new(lhs?), op, Box::new(rhs)), pos))
             }
             _ => lhs, //Return LHS if there is no operator
         }
@@ -506,14 +506,15 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     }
 
     /// Parse a function prototype or defintion
-    fn parse_fun(&mut self) -> ParseRes<Ast> {
+    fn parse_fun(&mut self) -> ParseRes<AstPos> {
         let proto = self.parse_fun_proto()?;
         match self.toks.peek().eof()? {
-            Token(_, TokenType::LeftBrace('{')) => {
+            Token(pos, TokenType::LeftBrace('{')) => {
+                let pos = pos.clone();
                 let body = self.parse_body()?;
-                Ok(Ast::FunDef(proto, body))
+                Ok(AstPos(Ast::FunDef(proto, body), pos))
             }
-            _ => Ok(Ast::FunProto(proto)),
+            Token(pos, _) => Ok(AstPos(Ast::FunProto(proto), pos.clone())),
         }
     }
 
@@ -531,10 +532,10 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     }
 
     /// Expect the next token to be a certain type, or return an `Err`
-    fn expect_next(&mut self, tok: TokenType) -> ParseRes<()> {
+    fn expect_next(&mut self, tok: TokenType) -> ParseRes<Pos> {
         let next = self.toks.next().eof()?;
         match next.is(tok.clone()) {
-            true => Ok(()),
+            true => Ok(next.0),
             false => Err(ParseErr::UnexpectedToken(next.0, next.1, vec![tok])),
         }
     }
@@ -573,8 +574,8 @@ pub enum ParseErr {
     #[error("Unexpected End-Of-File")]
     UnexpectedEOF,
 
-    #[error("Unexpected token {} on line {}, expecting one of {:?}", .1, .0, .2)]
-    UnexpectedToken(usize, TokenType, Vec<TokenType>),
+    #[error("{}: Unexpected token {}, expecting one of {:?}", .0, .1, .2)]
+    UnexpectedToken(Pos, TokenType, Vec<TokenType>),
 }
 
 trait NoEof: Sized {
