@@ -1,8 +1,8 @@
-//! The `linker` module provides structs to generate linker commands for 
+//! The `linker` module provides structs to generate linker commands for
 //! a number of popular linkers
 
-use std::process::Command;
 use std::io;
+use std::process::Command;
 
 pub use crate::OutFormat;
 
@@ -17,7 +17,7 @@ pub trait Linker: Default + Sized {
     }
 
     /// Set the output format for this linker
-    fn set_format(&mut self, format: OutFormat); 
+    fn set_format(&mut self, format: OutFormat);
 
     /// Set the entry function of the linked output
     fn set_entry(&mut self, entry: Option<&str>);
@@ -61,7 +61,8 @@ impl Default for WinLink {
 
 impl Linker for WinLink {
     fn add_object_file(&mut self, obj: impl AsRef<std::path::Path>) {
-        self.input_files.push(obj.as_ref().to_str().unwrap().to_owned())
+        self.input_files
+            .push(obj.as_ref().to_str().unwrap().to_owned())
     }
 
     fn set_format(&mut self, format: OutFormat) {
@@ -85,12 +86,16 @@ impl Linker for WinLink {
             args.push(format!("/ENTRY:{}", entry));
         }
 
-        args.push(format!("/OUT:{}", self.output + match self.format {
-            OutFormat::Exe => ".exe",
-            OutFormat::Lib => ".lib",
-            OutFormat::Obj => ".obj",
-            _ => unreachable!()
-        }));
+        args.push(format!(
+            "/OUT:{}",
+            self.output
+                + match self.format {
+                    OutFormat::Exe => ".exe",
+                    OutFormat::Lib => ".lib",
+                    OutFormat::Obj => ".obj",
+                    _ => unreachable!(),
+                }
+        ));
 
         let _ = Command::new(self.linker_path)
             .args(args)
@@ -98,8 +103,7 @@ impl Linker for WinLink {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .output()?;
-        
-        
+
         Ok(())
     }
 }

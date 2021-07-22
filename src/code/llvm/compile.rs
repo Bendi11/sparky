@@ -1,18 +1,26 @@
 use std::{path::Path, process::Command};
 
-use inkwell::{OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}};
+use inkwell::{
+    module::Module,
+    passes::PassManager,
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
+    OptimizationLevel,
+};
 
-use crate::{CompileOpts, OutFormat, ast::{Ast, AstPos, FunProto}, code::linker::Linker};
+use crate::{
+    ast::{Ast, AstPos, FunProto},
+    code::linker::Linker,
+    CompileOpts, OutFormat,
+};
 
-use super::{Compiler, debug, error};
-
+use super::{debug, error, Compiler};
 
 impl<'c> Compiler<'c> {
     /// Generate code for a full function definition
     pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>) -> Option<()> {
         if self.current_fn.is_some() {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
-            return None
+            return None;
         }
 
         let old_vars = self.vars.clone();
@@ -45,8 +53,11 @@ impl<'c> Compiler<'c> {
             match self.gen(ast, false) {
                 Some(_) => (),
                 None => {
-                    debug!("Not generating more code for function {} due to fatal error", proto.name);
-                    break
+                    debug!(
+                        "Not generating more code for function {} due to fatal error",
+                        proto.name
+                    );
+                    break;
                 }
             }
         }
@@ -57,14 +68,17 @@ impl<'c> Compiler<'c> {
         Some(())
     }
 
-        
     /// Generate all code for a LLVM module and return it
     pub fn finish(mut self, ast: Vec<AstPos>) -> Result<Module<'c>, u16> {
         let ast = self.scan_decls(ast);
         let mut err = 0;
         for node in ast {
             match node.ast() {
-                Ast::FunDef(ref proto, ref body) => if self.gen_fundef(proto, body).is_none()  {err += 1},
+                Ast::FunDef(ref proto, ref body) => {
+                    if self.gen_fundef(proto, body).is_none() {
+                        err += 1
+                    }
+                }
                 other => {
                     error!("{}: Invalid top level expression {:?}", node.1, other);
                     err += 1;
@@ -73,12 +87,17 @@ impl<'c> Compiler<'c> {
         }
         match err > 0 {
             true => Err(err),
-            false => Ok(self.module)
+            false => Ok(self.module),
         }
     }
 
     /// Compile the code into an executable / library file
-    pub fn compile<L: Linker>(self, ast: Vec<AstPos>, opts: CompileOpts, mut linker: L) -> Result<(), u16> {
+    pub fn compile<L: Linker>(
+        self,
+        ast: Vec<AstPos>,
+        opts: CompileOpts,
+        mut linker: L,
+    ) -> Result<(), u16> {
         const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
         use std::process::Stdio;
 
@@ -181,14 +200,13 @@ impl<'c> Compiler<'c> {
                         linker.set_output_file(opts.out_file);
                         linker.link().unwrap();
 
-                        
                         std::fs::remove_file(obj).unwrap();
                     }
                     _ => unreachable!(),
                 }
             }
         }
-        
+
         Ok(())
     }
 }

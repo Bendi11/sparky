@@ -1,6 +1,11 @@
 use std::iter::Peekable;
 
-use crate::{Type, ast::{Ast, AstPos, Attributes, FunProto}, lex::{Key, Op, Pos, Token, TokenType}, types::Container};
+use crate::{
+    ast::{Ast, AstPos, Attributes, FunProto},
+    lex::{Key, Op, Pos, Token, TokenType},
+    types::Container,
+    Type,
+};
 use thiserror::Error;
 
 /// The `ParseRes<T>` type is a wrapper over the standard libraries Result type with [ParseErr] always set as the
@@ -44,12 +49,18 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 match self.toks.peek() {
                     Some(Token(_, TokenType::LeftBrace('{'))) => {
                         let body = self.parse_struct_def_body()?;
-                        Ok(AstPos(Ast::StructDec(Container {
-                            name,
-                            fields: Some(body),
-                        }), pos.clone()))
+                        Ok(AstPos(
+                            Ast::StructDec(Container {
+                                name,
+                                fields: Some(body),
+                            }),
+                            pos.clone(),
+                        ))
                     }
-                    _ => Ok(AstPos(Ast::StructDec(Container { name, fields: None }), pos.clone())),
+                    _ => Ok(AstPos(
+                        Ast::StructDec(Container { name, fields: None }),
+                        pos.clone(),
+                    )),
                 }
             }
 
@@ -125,7 +136,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     fn parse_var_dec(&mut self) -> ParseRes<AstPos> {
         let Token(pos, tok) = self.toks.next().eof()?; //Expect the next token to be the let keyword
         if TokenType::Key(Key::Let) != tok {
-            return Err(ParseErr::UnexpectedToken(pos, tok, vec![TokenType::Key(Key::Let)]))
+            return Err(ParseErr::UnexpectedToken(
+                pos,
+                tok,
+                vec![TokenType::Key(Key::Let)],
+            ));
         }
 
         let ty = self.parse_typename()?; //Get the type of this variable
@@ -139,7 +154,10 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(_, TokenType::Op(Op::Assign)) => {
                 let Token(pos, _) = self.toks.next().eof()?; //Consume the assignment operator
                 let assigned = self.parse_expr()?; //Get the assigned value
-                Ok(AstPos(Ast::Bin(Box::new(decl), Op::Assign, Box::new(assigned)), pos.clone()))
+                Ok(AstPos(
+                    Ast::Bin(Box::new(decl), Op::Assign, Box::new(assigned)),
+                    pos.clone(),
+                ))
             }
             _ => Ok(decl),
         }
@@ -163,20 +181,26 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         _ => None,
                     };
 
-                    Ok(AstPos(Ast::If {
-                        cond: Box::new(cond),
-                        true_block: if_body,
-                        else_block: else_body,
-                    }, pos))
+                    Ok(AstPos(
+                        Ast::If {
+                            cond: Box::new(cond),
+                            true_block: if_body,
+                            else_block: else_body,
+                        },
+                        pos,
+                    ))
                 }
                 Key::While => {
                     let Token(pos, _) = self.toks.next().eof()?; //Consume the while keyword
                     let cond = self.parse_expr()?;
                     let body = self.parse_body()?;
-                    Ok(AstPos(Ast::While {
-                        cond: Box::new(cond),
-                        block: body,
-                    }, pos))
+                    Ok(AstPos(
+                        Ast::While {
+                            cond: Box::new(cond),
+                            block: body,
+                        },
+                        pos,
+                    ))
                 }
                 Key::Ret => {
                     let Token(pos, _) = self.toks.next().eof()?;
@@ -215,7 +239,10 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 if !matches!(prefix, AstPos(Ast::FunCall(_, _), _)) {
                     self.expect_next(TokenType::Op(Op::Assign))?; //Expect the assignment operator
                     let assigned = self.parse_expr()?; //Get the assigned value
-                    return Ok(AstPos(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)), pos));
+                    return Ok(AstPos(
+                        Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)),
+                        pos,
+                    ));
                 }
                 Ok(prefix)
             }
@@ -258,22 +285,28 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         let (num, pos) = match self.toks.next().eof()? {
             Token(pos, TokenType::NumLiteral(num)) => (num, pos),
             Token(pos, TokenType::Key(Key::True)) => {
-                return Ok(AstPos(Ast::NumLiteral(
-                    Type::Integer {
-                        signed: false,
-                        width: 1,
-                    },
-                    "1".to_owned(),
-                ), pos))
+                return Ok(AstPos(
+                    Ast::NumLiteral(
+                        Type::Integer {
+                            signed: false,
+                            width: 1,
+                        },
+                        "1".to_owned(),
+                    ),
+                    pos,
+                ))
             }
             Token(pos, TokenType::Key(Key::False)) => {
-                return Ok(AstPos(Ast::NumLiteral(
-                    Type::Integer {
-                        signed: false,
-                        width: 1,
-                    },
-                    "0".to_owned(),
-                ), pos))
+                return Ok(AstPos(
+                    Ast::NumLiteral(
+                        Type::Integer {
+                            signed: false,
+                            width: 1,
+                        },
+                        "0".to_owned(),
+                    ),
+                    pos,
+                ))
             }
             Token(pos, tok) => {
                 return Err(ParseErr::UnexpectedToken(
@@ -293,13 +326,16 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let Token(pos, _) = self.toks.next().eof()?;
                 Ok(AstPos(Ast::NumLiteral(ty.clone(), num), pos))
             }
-            _ => Ok(AstPos(Ast::NumLiteral(
-                Type::Integer {
-                    signed: true,
-                    width: 32,
-                },
-                num,
-            ), pos)),
+            _ => Ok(AstPos(
+                Ast::NumLiteral(
+                    Type::Integer {
+                        signed: true,
+                        width: 32,
+                    },
+                    num,
+                ),
+                pos,
+            )),
         }
     }
 

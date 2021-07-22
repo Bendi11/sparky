@@ -1,4 +1,4 @@
-//! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to 
+//! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to
 //! LLVM types
 use crate::ast::AstPos;
 
@@ -6,7 +6,7 @@ use super::*;
 
 pub enum Either<A, B> {
     This(A),
-    That(B)
+    That(B),
 }
 
 impl<'c> Compiler<'c> {
@@ -36,19 +36,20 @@ impl<'c> Compiler<'c> {
 
     /// Get all type definitions and track them as opaque struct types
     fn get_opaques<'a>(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
-        ast.iter().for_each(|node| {
-            match node.ast() {
-                Ast::StructDec(container) | Ast::UnionDec(container) => {
-                    trace!("Generating initial opaque llvm type for struct/union type {}", container.name);
-                    let ty = self.ctx.opaque_struct_type(&container.name);
-                    self.struct_types.insert(container.name.clone(), (ty, container.clone()));
-                },
-                _ => ()
+        ast.iter().for_each(|node| match node.ast() {
+            Ast::StructDec(container) | Ast::UnionDec(container) => {
+                trace!(
+                    "Generating initial opaque llvm type for struct/union type {}",
+                    container.name
+                );
+                let ty = self.ctx.opaque_struct_type(&container.name);
+                self.struct_types
+                    .insert(container.name.clone(), (ty, container.clone()));
             }
+            _ => (),
         });
         ast
     }
-
 
     /// Generate code for a function prototype
     pub(super) fn gen_fun_proto(&mut self, proto: &FunProto) -> Result<FunctionValue<'c>, String> {
@@ -92,49 +93,72 @@ impl<'c> Compiler<'c> {
             Ok(fun)
         }
     }
-    
+
     /// Get all types and fill the struct bodies
     pub fn get_type_bodies(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
-        ast.into_iter().filter(|node| match node.ast() {
-            Ast::StructDec(Container{name, fields: Some(fields)}) => {
-                let ty = self.module.get_struct_type(&name).unwrap();
-                ty.set_body(fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), true);
-                let (_, col) = self.struct_types.get_mut(name).unwrap();
-                trace!("Generating struct {} body with fields {:?}", name, fields);
-                col.fields = Some(fields.clone());
-                false
-            },
-            Ast::StructDec(_) => false,
-            Ast::UnionDec(con) => {
-                let ty = self.module.get_struct_type(&con.name).unwrap();
-                let largest = con.fields.as_ref().unwrap().iter().max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size())).expect("Union type with no fields!");
-                ty.set_body(&[self.llvm_type(&largest.1)], false);
-                false
-            },
-            _ => true
-        }).collect()
+        ast.into_iter()
+            .filter(|node| match node.ast() {
+                Ast::StructDec(Container {
+                    name,
+                    fields: Some(fields),
+                }) => {
+                    let ty = self.module.get_struct_type(&name).unwrap();
+                    ty.set_body(
+                        fields
+                            .iter()
+                            .map(|(_, f)| self.llvm_type(f))
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        true,
+                    );
+                    let (_, col) = self.struct_types.get_mut(name).unwrap();
+                    trace!("Generating struct {} body with fields {:?}", name, fields);
+                    col.fields = Some(fields.clone());
+                    false
+                }
+                Ast::StructDec(_) => false,
+                Ast::UnionDec(con) => {
+                    let ty = self.module.get_struct_type(&con.name).unwrap();
+                    let largest = con
+                        .fields
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size()))
+                        .expect("Union type with no fields!");
+                    ty.set_body(&[self.llvm_type(&largest.1)], false);
+                    false
+                }
+                _ => true,
+            })
+            .collect()
     }
-    
-    /// Generate code for all function prototypes 
+
+    /// Generate code for all function prototypes
     fn scan_for_fns(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
-        ast.into_iter().filter(|node| match node.ast() {
-            Ast::FunProto(proto)  => {
-                self.gen_fun_proto(proto).unwrap();
-                trace!("Generated function prototype {}", proto.name);
-                false
-            },
-            Ast::FunDef(proto, _) => {
-                self.gen_fun_proto(proto).unwrap();
-                trace!("Generation function prototype for function definition {}", proto.name);
-                true
-            },
-            //Insert a user-defined typedef
-            Ast::TypeDef(name, ty) => {
-                self.typedefs.insert(name.clone(), ty.clone());
-                false
-            },
-            _ => true
-        }).collect()
+        ast.into_iter()
+            .filter(|node| match node.ast() {
+                Ast::FunProto(proto) => {
+                    self.gen_fun_proto(proto).unwrap();
+                    trace!("Generated function prototype {}", proto.name);
+                    false
+                }
+                Ast::FunDef(proto, _) => {
+                    self.gen_fun_proto(proto).unwrap();
+                    trace!(
+                        "Generation function prototype for function definition {}",
+                        proto.name
+                    );
+                    true
+                }
+                //Insert a user-defined typedef
+                Ast::TypeDef(name, ty) => {
+                    self.typedefs.insert(name.clone(), ty.clone());
+                    false
+                }
+                _ => true,
+            })
+            .collect()
     }
 
     /// Walk the AST and get any declared types or functions

@@ -1,6 +1,10 @@
 use std::ops::Deref;
 
-use crate::{code::Compiler, lex::{Op, Pos}, types};
+use crate::{
+    code::Compiler,
+    lex::{Op, Pos},
+    types,
+};
 
 use super::Type;
 use bitflags::bitflags;
@@ -133,7 +137,10 @@ impl AstPos {
 
 impl Ast {
     /// Get the type of this expression, if any
-    pub fn get_type<'a, 'b, 'c>(&'a self, compiler: &'b mut Compiler<'c>) -> Option<(Type, Option<StructType<'c>>)> {
+    pub fn get_type<'a, 'b, 'c>(
+        &'a self,
+        compiler: &'b mut Compiler<'c>,
+    ) -> Option<(Type, Option<StructType<'c>>)> {
         match match self {
             Self::FunCall(name, _) => compiler.get_fun(name)?.1.ret.clone(),
             Self::VarDecl {

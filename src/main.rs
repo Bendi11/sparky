@@ -10,7 +10,7 @@ use console::style;
 use inkwell::context::Context;
 pub use types::Type;
 
-use crate::code::{Compiler, linker};
+use crate::code::{linker, Compiler};
 
 /// Optimization level that can be given as a command line argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,42 +100,47 @@ pub fn panic_handler(p: &PanicInfo) {
 fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .level(verbosity)
-        .chain(fern::Dispatch::new()
-            .filter(|meta| {
-                // Reject messages with the `Error` log level.
-                meta.level() == log::LevelFilter::Error || meta.level() == log::LevelFilter::Warn
-            })
-            .format(|out, message, record| {
-                out.finish(format_args!(
-                    "[{}] {}",
-                    match record.level() {
-                        log::Level::Warn => "WARNING",
-                        log::Level::Error => "ERROR",
-                        _ => unreachable!(),
-                    },
-                    message
-                ))
-            })
-            .chain(std::io::stderr())
+        .chain(
+            fern::Dispatch::new()
+                .filter(|meta| {
+                    // Reject messages with the `Error` log level.
+                    meta.level() == log::LevelFilter::Error
+                        || meta.level() == log::LevelFilter::Warn
+                })
+                .format(|out, message, record| {
+                    out.finish(format_args!(
+                        "[{}] {}",
+                        match record.level() {
+                            log::Level::Warn => "WARNING",
+                            log::Level::Error => "ERROR",
+                            _ => unreachable!(),
+                        },
+                        message
+                    ))
+                })
+                .chain(std::io::stderr()),
         )
-        .chain(fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}][{}] {}",
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .chain(std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open("sparkc.log")?
+        .chain(
+            fern::Dispatch::new()
+                .format(|out, message, record| {
+                    out.finish(format_args!(
+                        "[{}][{}] {}",
+                        record.target(),
+                        record.level(),
+                        message
+                    ))
+                })
+                .chain(
+                    std::fs::OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .truncate(true)
+                        .open("sparkc.log")?,
+                )
+                .level(log::LevelFilter::Debug),
         )
-        .level(log::LevelFilter::Debug)
-    ).apply()?;
-    
+        .apply()?;
+
     Ok(())
 }
 
@@ -229,8 +234,9 @@ fn main() {
 
     match args.is_present("verbose") {
         true => setup_logger(log::LevelFilter::max()),
-        false => setup_logger(log::LevelFilter::Debug)
-    }.unwrap();
+        false => setup_logger(log::LevelFilter::Debug),
+    }
+    .unwrap();
 
     //Get the given compilation options
     let opts = CompileOpts {
@@ -272,8 +278,6 @@ fn main() {
             for dir in dirs {
                 read_dir(dir, &mut list);
             }
-            
-
 
             list
         }
@@ -288,9 +292,10 @@ fn main() {
     for filename in input_files.iter() {
         let mut file = std::io::BufReader::new(std::fs::File::open(filename).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
         let lexer = lex::Lexer::from_reader(&mut file, filename.clone());
-        ast.extend(parser::Parser::new(lexer.into_iter())
-            .parse()
-            .unwrap_or_else(|e| panic!("Error when parsing: {}", e))
+        ast.extend(
+            parser::Parser::new(lexer.into_iter())
+                .parse()
+                .unwrap_or_else(|e| panic!("Error when parsing: {}", e)),
         ); //Parse the file and add it to the AST
     }
 
@@ -298,6 +303,10 @@ fn main() {
     let name = opts.out_file.clone();
     match compiler.compile(ast, opts, linker::WinLink::default()) {
         Ok(()) => println!("{} Compiled successfully!", name.display()),
-        Err(count) => eprintln!("{}: Failed to compile due to {} errors", name.display(), count)
+        Err(count) => eprintln!(
+            "{}: Failed to compile due to {} errors",
+            name.display(),
+            count
+        ),
     }
 }

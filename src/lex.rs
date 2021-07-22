@@ -265,7 +265,7 @@ impl fmt::Display for TokenType {
 }
 
 /// The `Pos` struct holds the line and column of a token in the source file
-#[derive(Clone, Debug, PartialEq, Eq, )]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pos(u32, u32, String);
 
 impl Pos {
@@ -322,17 +322,16 @@ impl ops::Sub<(u32, u32)> for Pos {
     }
 }
 
-
-/// Compare two `Pos` structs, respecting that a higher line count always means a bigger 
+/// Compare two `Pos` structs, respecting that a higher line count always means a bigger
 /// position
 impl PartialOrd for Pos {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         use std::cmp::Ordering;
-        match self.line().partial_cmp(&other.line())  {
+        match self.line().partial_cmp(&other.line()) {
             Some(Ordering::Greater) => Some(Ordering::Greater),
             Some(Ordering::Less) => Some(Ordering::Less),
             Some(Ordering::Equal) => self.col().partial_cmp(&other.col()),
-            None => None
+            None => None,
         }
     }
 }
@@ -450,7 +449,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             some @ Some(_) => {
                 self.pos += (0, 1);
                 some
-            },
+            }
             None => None,
         }
     }
@@ -685,10 +684,22 @@ mod tests {
         assert_eq!(
             lexed,
             vec![
-                Token::new(&Pos::new(1, 3, "unnamed_buffer".to_owned()), TokenType::Key(Key::Fun)),
-                Token::new(&Pos::new(1, 4, "unnamed_buffer".to_owned()), TokenType::LeftBrace('(')),
-                Token::new(&Pos::new(1, 7, "unnamed_buffer".to_owned()), TokenType::Ident("i32".into())),
-                Token::new(&Pos::new(1, 8, "unnamed_buffer".to_owned()), TokenType::RightBrace(')')),
+                Token::new(
+                    &Pos::new(1, 3, "unnamed_buffer".to_owned()),
+                    TokenType::Key(Key::Fun)
+                ),
+                Token::new(
+                    &Pos::new(1, 4, "unnamed_buffer".to_owned()),
+                    TokenType::LeftBrace('(')
+                ),
+                Token::new(
+                    &Pos::new(1, 7, "unnamed_buffer".to_owned()),
+                    TokenType::Ident("i32".into())
+                ),
+                Token::new(
+                    &Pos::new(1, 8, "unnamed_buffer".to_owned()),
+                    TokenType::RightBrace(')')
+                ),
             ],
             "Lexer fails to lex tokens correctly"
         )
