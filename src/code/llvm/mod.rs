@@ -4,12 +4,7 @@ use std::{convert::TryFrom, ops::Deref};
 use log::{debug, error, info, trace, warn};
 
 
-use crate::{
-    ast::{Ast, FunProto},
-    lex::Op,
-    types::Container,
-    Type,
-};
+use crate::{Type, ast::{Ast, FunProto}, lex::{Op, Pos}, types::Container};
 use hashbrown::HashMap;
 use inkwell::{
     builder::Builder,

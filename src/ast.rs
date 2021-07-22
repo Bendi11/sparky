@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::{code::Compiler, lex::Op, types};
+use crate::{code::Compiler, lex::{Op, Pos}, types};
 
 use super::Type;
 use bitflags::bitflags;
@@ -37,7 +37,7 @@ pub enum Ast {
     FunProto(FunProto),
 
     /// A function definition with the function signature and the body of the function
-    FunDef(FunProto, Vec<Ast>),
+    FunDef(FunProto, Vec<AstPos>),
 
     /// A constant number literal
     NumLiteral(Type, String),
@@ -46,7 +46,7 @@ pub enum Ast {
     StrLiteral(String),
 
     /// A binary operation  applied to two expressions
-    Bin(Box<Ast>, Op, Box<Ast>),
+    Bin(Box<AstPos>, Op, Box<AstPos>),
 
     /// A struct definition with the defined type
     StructDec(types::Container),
@@ -60,17 +60,17 @@ pub enum Ast {
         name: String,
 
         /// The given field values
-        fields: Vec<(String, Ast)>,
+        fields: Vec<(String, AstPos)>,
     },
 
     /// Cast an expression to a type
-    Cast(Box<Ast>, Type),
+    Cast(Box<AstPos>, Type),
 
     /// A struct or union field access
-    MemberAccess(Box<Ast>, String),
+    MemberAccess(Box<AstPos>, String),
 
     /// An associated function is being called on a value
-    AssocFunAccess(Box<Ast>, String, Vec<Ast>),
+    AssocFunAccess(Box<AstPos>, String, Vec<AstPos>),
 
     /// A variable declaration with type, name, and attributes of the variable
     VarDecl {
@@ -88,35 +88,39 @@ pub enum Ast {
     VarAccess(String),
 
     /// A unary operator being applied the the RHS expression
-    Unary(Op, Box<Ast>),
+    Unary(Op, Box<AstPos>),
 
     /// A function call with expression arguments
-    FunCall(String, Vec<Ast>),
+    FunCall(String, Vec<AstPos>),
 
     /// Return statement
-    Ret(Box<Option<Ast>>),
+    Ret(Box<Option<AstPos>>),
 
     /// An if conditional statement
     If {
         /// The condition to check
-        cond: Box<Ast>,
+        cond: Box<AstPos>,
         /// Code to execute on true
-        true_block: Vec<Ast>,
+        true_block: Vec<AstPos>,
         /// Code to execute on false, if any
-        else_block: Option<Vec<Ast>>,
+        else_block: Option<Vec<AstPos>>,
     },
 
     /// A while statement for looping
     While {
         /// The condition to check
-        cond: Box<Ast>,
+        cond: Box<AstPos>,
         /// The block to loop over
-        block: Vec<Ast>,
+        block: Vec<AstPos>,
     },
 
     /// A type definition aliasing an identifier to a typename
     TypeDef(String, Type),
 }
+
+/// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file
+#[derive(Debug, Clone)]
+pub struct AstPos(pub Ast, pub Pos);
 
 impl Ast {
     /// Get the type of this expression, if any
@@ -133,7 +137,7 @@ impl Ast {
             Self::StructLiteral { name, fields: _ } => {
                 Type::Struct(compiler.get_struct(name)?.1.clone())
             },
-            Self::MemberAccess(first, item) => match first.get_type(compiler)? {
+            Self::MemberAccess(first, item) => match first.0.get_type(compiler)? {
                 Type::Struct(col) | Type::Union(col) => col
                     .fields
                     .unwrap()
@@ -149,11 +153,11 @@ impl Ast {
                 signed: false,
             })), //char pointer for string literals
             Self::Unary(op, val) => match op {
-                Op::Star => val.deref().get_type(compiler)?.deref_type()?,
-                Op::And => val.deref().get_type(compiler)?.ptr_type(),
+                Op::Star => val.deref().0.get_type(compiler)?.deref_type()?,
+                Op::And => val.deref().0.get_type(compiler)?.ptr_type(),
                 _ => return None,
             },
-            Self::Bin(lhs, _, _) => lhs.get_type(compiler)?,
+            Self::Bin(lhs, _, _) => lhs.0.get_type(compiler)?,
             _ => return None,
         })
     }
