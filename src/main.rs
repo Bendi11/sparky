@@ -295,6 +295,9 @@ fn main() {
     }
 
     let compiler = Compiler::new(&ctx, "spark".to_owned());
-    
-    compiler.compile(ast, opts, linker::WinLink::default())
+    let name = opts.out_file.clone();
+    match compiler.compile(ast, opts, linker::WinLink::default()) {
+        Ok(()) => println!("{} Compiled successfully!", name.display()),
+        Err(count) => eprintln!("{}: Failed to compile due to {} errors", name.display(), count)
+    }
 }
