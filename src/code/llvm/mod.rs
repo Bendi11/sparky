@@ -4,7 +4,7 @@ use std::{convert::TryFrom, ops::Deref};
 use log::{debug, error, info, trace, warn};
 
 
-use crate::{Type, ast::{Ast, FunProto}, lex::{Op, Pos}, types::Container};
+use crate::{Type, ast::{Ast, AstPos, FunProto}, lex::Op, types::Container};
 use hashbrown::HashMap;
 use inkwell::{
     builder::Builder,
@@ -88,7 +88,7 @@ impl<'c> Compiler<'c> {
     }
 
     /// Generate code for a binary expression
-    fn gen_bin(&mut self, lhs: &Ast, rhs: &Ast, op: &Op) -> AnyValueEnum<'c> {
+    fn gen_bin(&mut self, lhs: &AstPos, rhs: &AstPos, op: &Op) -> AnyValueEnum<'c> {
         match op {
             //Handle assignment separately
             Op::Assign => {
@@ -302,8 +302,8 @@ impl<'c> Compiler<'c> {
     }
 
     /// Generate code for one expression, only used for generating function bodies, no delcarations
-    pub fn gen(&mut self, node: &Ast, lval: bool) -> AnyValueEnum<'c> {
-        match node {
+    pub fn gen(&mut self, node: &AstPos, lval: bool) -> AnyValueEnum<'c> {
+        match node.ast() {
             Ast::NumLiteral(ty, num) => self
                 .llvm_type(ty)
                 .into_int_type()
@@ -319,7 +319,7 @@ impl<'c> Compiler<'c> {
                 {
                     Type::Void => self.build.build_return(None).as_any_value_enum(),
                     _ => {
-                        let ret = self.gen(node.deref().as_ref().unwrap(), false);
+                        let ret = self.gen(&node.deref().as_ref().unwrap(), false);
                         if ret.get_type()
                             != self
                                 .current_fn
@@ -351,9 +351,9 @@ impl<'c> Compiler<'c> {
             },
             Ast::AssocFunAccess(item, name, args) => match self.get_fun(name.as_str()) {
                 Some((f, _)) => {
-                    let item = BasicValueEnum::try_from(self.gen(item.deref(), false)).unwrap(); //Generate code for the first expression
+                    let item = BasicValueEnum::try_from(self.gen(&item.deref(), false)).unwrap(); //Generate code for the first expression
                     let mut real_args = vec![item];
-                    real_args.extend(args.iter().map(|n| BasicValueEnum::try_from(self.gen(n, false)).expect("Failed to convert any value enum to basic value enum when calling function")) );
+                    real_args.extend(args.iter().map(|n| BasicValueEnum::try_from(self.gen(&n, false)).expect("Failed to convert any value enum to basic value enum when calling function")) );
                     self.build
                         .build_call(f.clone(), real_args.as_ref(), "tmp_assoc_fncall")
                         .as_any_value_enum()
@@ -365,7 +365,7 @@ impl<'c> Compiler<'c> {
                 true_block,
                 else_block,
             } => {
-                let cond = self.gen(cond, false).into_int_value();
+                let cond = self.gen(&cond, false).into_int_value();
                 let fun = self.current_fn.expect("Conditional outside of function");
 
                 let true_bb = self.ctx.append_basic_block(fun, "if_true_bb");
@@ -375,7 +375,7 @@ impl<'c> Compiler<'c> {
 
                 self.build.position_at_end(true_bb);
                 for stmt in true_block {
-                    self.gen(stmt, false);
+                    self.gen(&stmt, false);
                 }
                 //true_bb = self.build.get_insert_block().unwrap();
                 self.build.build_unconditional_branch(after_bb);
@@ -385,7 +385,7 @@ impl<'c> Compiler<'c> {
                 match else_block.is_some() {
                     true => {
                         for stmt in else_block.as_ref().unwrap().iter() {
-                            self.gen(stmt, false);
+                            self.gen(&stmt, false);
                         }
                         self.build.build_unconditional_branch(after_bb);
                         //false_bb = self.build.get_insert_block().unwrap();
@@ -407,7 +407,7 @@ impl<'c> Compiler<'c> {
 
                 self.build.build_unconditional_branch(cond_bb); //Jump to the condition block for the first check
                 self.build.position_at_end(cond_bb);
-                let cond = self.gen(cond, false).into_int_value();
+                let cond = self.gen(&cond, false).into_int_value();
 
                 self.build
                     .build_conditional_branch(cond, while_bb, after_bb);
@@ -415,7 +415,7 @@ impl<'c> Compiler<'c> {
 
                 let old_vars = self.vars.clone();
                 for stmt in block {
-                    self.gen(stmt, false);
+                    self.gen(&stmt, false);
                 }
                 self.vars = old_vars; //Drop values that were enclosed in the while loop
 
@@ -493,7 +493,7 @@ impl<'c> Compiler<'c> {
                     .as_any_value_enum()
             }
             Ast::MemberAccess(val, field) => {
-                let col = val
+                let col = val.ast()
                     .get_type(self)
                     .expect("Failed to get type of lhs when accessing member of struct or union");
                 let (_, s_ty, is_struct) = match col {

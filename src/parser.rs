@@ -38,8 +38,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::Key(Key::Fun)) => self.parse_fun(),
 
-            Token(pos, TokenType::Key(Key::Struct)) => {
-                self.toks.next(); //Consume the struct keyword
+            Token(_, TokenType::Key(Key::Struct)) => {
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the struct keyword
                 let name = self.expect_next_ident()?;
                 match self.toks.peek() {
                     Some(Token(_, TokenType::LeftBrace('{'))) => {
@@ -136,8 +136,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
         //Check if assignment is present
         match self.toks.peek().eof()? {
-            Token(pos, TokenType::Op(Op::Assign)) => {
-                self.toks.next(); //Consume the assignment operator
+            Token(_, TokenType::Op(Op::Assign)) => {
+                let Token(pos, _) = self.toks.next().eof()?; //Consume the assignment operator
                 let assigned = self.parse_expr()?; //Get the assigned value
                 Ok(AstPos(Ast::Bin(Box::new(decl), Op::Assign, Box::new(assigned)), pos.clone()))
             }
@@ -151,7 +151,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(pos, TokenType::Key(key)) => match key {
                 Key::Let => self.parse_var_dec(),
                 Key::If => {
-                    self.toks.next();
+                    let Token(pos, _) = self.toks.next().eof()?;
                     let cond = self.parse_expr()?; //Parse the conditional expression
                     let if_body = self.parse_body()?; //Parse the if statement body
 
@@ -167,24 +167,24 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         cond: Box::new(cond),
                         true_block: if_body,
                         else_block: else_body,
-                    }, pos.clone()))
+                    }, pos))
                 }
                 Key::While => {
-                    self.toks.next(); //Consume the while keyword
+                    let Token(pos, _) = self.toks.next().eof()?; //Consume the while keyword
                     let cond = self.parse_expr()?;
                     let body = self.parse_body()?;
                     Ok(AstPos(Ast::While {
                         cond: Box::new(cond),
                         block: body,
-                    }, pos.clone()))
+                    }, pos))
                 }
                 Key::Ret => {
-                    self.toks.next();
+                    let Token(pos, _) = self.toks.next().eof()?;
                     let val = match self.toks.peek().eof()? {
                         Token(_, TokenType::Semicolon) => None,
                         _ => Some(self.parse_expr()?),
                     };
-                    Ok(AstPos(Ast::Ret(Box::new(val)), pos.clone()))
+                    Ok(AstPos(Ast::Ret(Box::new(val)), pos))
                 }
                 other => Err(ParseErr::UnexpectedToken(
                     pos.clone(),
@@ -199,6 +199,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
             //Variable assignment or function calls can be top level expressions
             Token(pos, TokenType::Ident(_)) | Token(pos, TokenType::LeftBrace('(')) => {
+                let pos = pos.clone();
                 let mut prefix = self.parse_prefix()?;
 
                 match self.toks.peek().eof()? {
@@ -214,7 +215,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 if !matches!(prefix, AstPos(Ast::FunCall(_, _), _)) {
                     self.expect_next(TokenType::Op(Op::Assign))?; //Expect the assignment operator
                     let assigned = self.parse_expr()?; //Get the assigned value
-                    return Ok(AstPos(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)), pos.clone()));
+                    return Ok(AstPos(Ast::Bin(Box::new(prefix), Op::Assign, Box::new(assigned)), pos));
                 }
                 Ok(prefix)
             }
@@ -287,10 +288,10 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             }
         };
         match self.toks.peek().eof()? {
-            Token(pos, TokenType::IntType(ty)) => {
+            Token(_, TokenType::IntType(ty)) => {
                 let ty = ty.clone();
-                self.toks.next();
-                Ok(AstPos(Ast::NumLiteral(ty.clone(), num), pos.clone()))
+                let Token(pos, _) = self.toks.next().eof()?;
+                Ok(AstPos(Ast::NumLiteral(ty.clone(), num), pos))
             }
             _ => Ok(AstPos(Ast::NumLiteral(
                 Type::Integer {
@@ -509,8 +510,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         let proto = self.parse_fun_proto()?;
         match self.toks.peek().eof()? {
             Token(pos, TokenType::LeftBrace('{')) => {
+                let pos = pos.clone();
                 let body = self.parse_body()?;
-                Ok(AstPos(Ast::FunDef(proto, body), pos.clone()))
+                Ok(AstPos(Ast::FunDef(proto, body), pos))
             }
             Token(pos, _) => Ok(AstPos(Ast::FunProto(proto), pos.clone())),
         }

@@ -1,5 +1,7 @@
 //! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to 
 //! LLVM types
+use crate::ast::AstPos;
+
 use super::*;
 
 
@@ -29,9 +31,9 @@ impl<'c> Compiler<'c> {
     }
 
     /// Get all type definitions and track them as opaque struct types
-    fn get_opaques<'a>(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
+    fn get_opaques<'a>(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
         ast.iter().for_each(|node| {
-            match node {
+            match node.ast() {
                 Ast::StructDec(container) | Ast::UnionDec(container) => {
                     trace!("Generating initial opaque llvm type for struct/union type {}", container.name);
                     let ty = self.ctx.opaque_struct_type(&container.name);
@@ -44,7 +46,7 @@ impl<'c> Compiler<'c> {
     }
 
     /// Generate code for a full function definition
-    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<Ast>) {
+    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>) {
         if self.current_fn.is_some() {
             panic!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
         }
@@ -128,8 +130,8 @@ impl<'c> Compiler<'c> {
     }
     
     /// Get all types and fill the struct bodies
-    pub fn get_type_bodies(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
-        ast.into_iter().filter(|node| match node {
+    pub fn get_type_bodies(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
+        ast.into_iter().filter(|node| match node.ast() {
             Ast::StructDec(Container{name, fields: Some(fields)}) => {
                 let ty = self.module.get_struct_type(&name).unwrap();
                 ty.set_body(fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), true);
@@ -150,8 +152,8 @@ impl<'c> Compiler<'c> {
     }
     
     /// Generate code for all function prototypes 
-    fn scan_for_fns(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
-        ast.into_iter().filter(|node| match node {
+    fn scan_for_fns(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
+        ast.into_iter().filter(|node| match node.ast() {
             Ast::FunProto(proto)  => {
                 self.gen_fun_proto(proto).unwrap();
                 trace!("Generated function prototype {}", proto.name);
@@ -172,7 +174,7 @@ impl<'c> Compiler<'c> {
     }
 
     /// Walk the AST and get any declared types or functions
-    pub fn scan_decls(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
+    pub fn scan_decls(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
         let ast = self.get_opaques(ast);
         let ast = self.get_type_bodies(ast);
         self.scan_for_fns(ast)

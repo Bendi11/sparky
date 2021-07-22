@@ -122,6 +122,13 @@ pub enum Ast {
 #[derive(Debug, Clone)]
 pub struct AstPos(pub Ast, pub Pos);
 
+impl AstPos {
+    #[inline(always)]
+    pub const fn ast(&self) -> &Ast {
+        &self.0
+    }
+}
+
 impl Ast {
     /// Get the type of this expression, if any
     pub fn get_type<'a, 'b, 'c>(&'a self, compiler: &'b mut Compiler<'c>) -> Option<Type> {
