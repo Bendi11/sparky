@@ -132,7 +132,7 @@ impl Ast {
             Self::VarAccess(name) => compiler.vars.get(name)?.1.clone(),
             Self::StructLiteral { name, fields: _ } => {
                 Type::Struct(compiler.get_struct(name)?.1.clone())
-            }
+            },
             Self::MemberAccess(first, item) => match first.get_type(compiler)? {
                 Type::Struct(col) | Type::Union(col) => col
                     .fields

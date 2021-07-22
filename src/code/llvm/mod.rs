@@ -1,6 +1,8 @@
 pub mod compile;
 pub mod types;
 use std::{convert::TryFrom, ops::Deref};
+use log::{debug, error, info, trace, warn};
+
 
 use crate::{
     ast::{Ast, FunProto},

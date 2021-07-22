@@ -96,6 +96,22 @@ pub fn panic_handler(p: &PanicInfo) {
     std::process::exit(-1);
 }
 
+fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{}][{}] {}",
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .chain(fern::log_file("sparkc.log")?)
+        .level(verbosity)
+        .apply()?;
+    Ok(())
+}
+
 fn main() {
     std::panic::set_hook(Box::new(panic_handler));
 
@@ -123,6 +139,11 @@ fn main() {
             })
             .required_unless("input-dir")
             .conflicts_with("input-dir")
+        )
+        .arg(Arg::with_name("input-dir")
+            .short("d")
+            .long("input-dir")
+            .help("Select a directory containing all spark source files")
         )
         .arg(Arg::with_name("library")
             .short("l")
@@ -163,8 +184,19 @@ fn main() {
             .required(true)
             .max_values(1)
             .takes_value(true)
+        )
+        .arg(Arg::with_name("verbose")
+            .short("v")
+            .long("verbose")
+            .help("Enable verbose logs for the compiler (useful when debugging an issue when compiling)")
+            .takes_value(false)
         );
     let args = app.get_matches(); //Get argument matches from environment args
+
+    match args.is_present("verbose") {
+        true => setup_logger(log::LevelFilter::max()),
+        false => setup_logger(log::LevelFilter::Debug)
+    }.unwrap();
 
     //Get the given compilation options
     let opts = CompileOpts {

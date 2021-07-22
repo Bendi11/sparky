@@ -30,6 +30,7 @@ impl<'c> Compiler<'c> {
         ast.iter().for_each(|node| {
             match node {
                 Ast::StructDec(container) | Ast::UnionDec(container) => {
+                    trace!("Generating initial opaque llvm type for struct/union type {}", container.name);
                     let ty = self.ctx.opaque_struct_type(&container.name);
                     self.struct_types.insert(container.name.clone(), (ty, container.clone()));
                 },
@@ -124,11 +125,14 @@ impl<'c> Compiler<'c> {
     }
     
     /// Get all types and fill the struct bodies
-    pub fn get_type_bodies(&self, ast: Vec<Ast>) -> Vec<Ast> {
+    pub fn get_type_bodies(&mut self, ast: Vec<Ast>) -> Vec<Ast> {
         ast.into_iter().filter(|node| match node {
             Ast::StructDec(Container{name, fields: Some(fields)}) => {
                 let ty = self.module.get_struct_type(&name).unwrap();
                 ty.set_body(fields.iter().map(|(_, f)| self.llvm_type(f)).collect::<Vec<_>>().as_slice(), true);
+                let (_, col) = self.struct_types.get_mut(name).unwrap();
+                trace!("Generating struct {} body with fields {:?}", name, fields);
+                col.fields = Some(fields.clone());
                 false
             },
             Ast::StructDec(_) => false,
@@ -147,10 +151,12 @@ impl<'c> Compiler<'c> {
         ast.into_iter().filter(|node| match node {
             Ast::FunProto(proto)  => {
                 self.gen_fun_proto(proto).unwrap();
+                trace!("Generated function prototype {}", proto.name);
                 false
             },
             Ast::FunDef(proto, _) => {
                 self.gen_fun_proto(proto).unwrap();
+                trace!("Generation function prototype for function definition {}", proto.name);
                 true
             },
             //Insert a user-defined typedef
