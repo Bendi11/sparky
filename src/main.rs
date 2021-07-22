@@ -274,9 +274,9 @@ fn main() {
     let ctx = Context::create();
 
     //Parse every file
-    for file in input_files.iter() {
-        let mut file = std::io::BufReader::new(std::fs::File::open(file).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
-        let lexer = lex::Lexer::from_reader(&mut file);
+    for filename in input_files.iter() {
+        let mut file = std::io::BufReader::new(std::fs::File::open(filename).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
+        let lexer = lex::Lexer::from_reader(&mut file, filename.clone());
         ast.extend(parser::Parser::new(lexer.into_iter())
             .parse()
             .unwrap_or_else(|e| panic!("Error when parsing: {}", e))

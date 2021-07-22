@@ -1,11 +1,6 @@
 use std::iter::Peekable;
 
-use crate::{
-    ast::{Ast, Attributes, FunProto},
-    lex::{Key, Op, Token, TokenType},
-    types::Container,
-    Type,
-};
+use crate::{Type, ast::{Ast, Attributes, FunProto}, lex::{Key, Op, Pos, Token, TokenType}, types::Container};
 use thiserror::Error;
 
 /// The `ParseRes<T>` type is a wrapper over the standard libraries Result type with [ParseErr] always set as the
@@ -58,8 +53,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 }
             }
 
-            Token(line, other) => Err(ParseErr::UnexpectedToken(
-                *line,
+            Token(pos, other) => Err(ParseErr::UnexpectedToken(
+                pos.clone(),
                 other.clone(),
                 vec![TokenType::Key(Key::Fun), TokenType::Key(Key::Struct)],
             )),
@@ -84,9 +79,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     self.toks.next();
                     break Ok(body);
                 }
-                Token(line, other) => {
+                Token(pos, other) => {
                     break Err(ParseErr::UnexpectedToken(
-                        *line,
+                        pos.clone(),
                         other.clone(),
                         vec![TokenType::Comma, TokenType::RightBrace('}')],
                     ))
@@ -188,7 +183,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     Ok(Ast::Ret(Box::new(val)))
                 }
                 other => Err(ParseErr::UnexpectedToken(
-                    *line,
+                    line.clone(),
                     TokenType::Key(other.clone()),
                     vec![
                         TokenType::Key(Key::If),
@@ -220,8 +215,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 Ok(prefix)
             }
 
-            Token(line, unexpected) => Err(ParseErr::UnexpectedToken(
-                *line,
+            Token(pos, unexpected) => Err(ParseErr::UnexpectedToken(
+                pos.clone(),
                 unexpected.clone(),
                 vec![
                     TokenType::Ident(String::new()),
@@ -417,8 +412,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 Ok(Ast::StructLiteral { name, fields })
             }
 
-            Token(line, unexpected) => Err(ParseErr::UnexpectedToken(
-                *line,
+            Token(pos, unexpected) => Err(ParseErr::UnexpectedToken(
+                pos.clone(),
                 unexpected.clone(),
                 vec![
                     TokenType::NumLiteral(String::new()),
@@ -573,8 +568,8 @@ pub enum ParseErr {
     #[error("Unexpected End-Of-File")]
     UnexpectedEOF,
 
-    #[error("Unexpected token {} on line {}, expecting one of {:?}", .1, .0, .2)]
-    UnexpectedToken(usize, TokenType, Vec<TokenType>),
+    #[error("{}: Unexpected token {}, expecting one of {:?}", .0, .1, .2)]
+    UnexpectedToken(Pos, TokenType, Vec<TokenType>),
 }
 
 trait NoEof: Sized {
