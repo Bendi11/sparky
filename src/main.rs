@@ -106,7 +106,12 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .chain(fern::log_file("sparkc.log")?)
+        .chain(std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open("sparkc.log")?
+        )
         .level(verbosity)
         .apply()?;
     Ok(())
@@ -143,7 +148,13 @@ fn main() {
         .arg(Arg::with_name("input-dir")
             .short("d")
             .long("input-dir")
-            .help("Select a directory containing all spark source files")
+            .help("Select a directory containing all spark source files to be parsed")
+            .takes_value(true)
+            .multiple(false)
+            .validator(|c| match std::path::Path::new(&c).exists() {
+                true => Ok(()),
+                false => Err(format!("The directory at {} does not exist", c))
+            })
         )
         .arg(Arg::with_name("library")
             .short("l")
