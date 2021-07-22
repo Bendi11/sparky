@@ -1,4 +1,7 @@
+//! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to 
+//! LLVM types
 use super::*;
+
 
 impl<'c> Compiler<'c> {
     /// Get a struct type from the given path

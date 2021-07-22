@@ -96,8 +96,18 @@ pub fn panic_handler(p: &PanicInfo) {
     std::process::exit(-1);
 }
 
+/// Setup the logging handler with [`fern`]
 fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
     fern::Dispatch::new()
+        .level(verbosity)
+        .chain(fern::Dispatch::new()
+            .filter(|meta| {
+                // Reject messages with the `Error` log level.
+                meta.level() != log::LevelFilter::Error || meta.level() != log::LevelFilter::Warn
+            })
+            .chain(std::io::stderr())
+        )
+        .chain(fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
                 "[{}][{}] {}",
@@ -112,8 +122,9 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
             .truncate(true)
             .open("sparkc.log")?
         )
-        .level(verbosity)
-        .apply()?;
+        .level(log::LevelFilter::Debug)
+    ).apply()?;
+    
     Ok(())
 }
 
@@ -148,9 +159,10 @@ fn main() {
         .arg(Arg::with_name("input-dir")
             .short("d")
             .long("input-dir")
-            .help("Select a directory containing all spark source files to be parsed")
+            .help("Select a directory or list of directories containing all spark source files to be parsed")
             .takes_value(true)
-            .multiple(false)
+            .multiple(true)
+            .allow_hyphen_values(true)
             .validator(|c| match std::path::Path::new(&c).exists() {
                 true => Ok(()),
                 false => Err(format!("The directory at {} does not exist", c))
@@ -224,7 +236,7 @@ fn main() {
     let input_files: Vec<String> = match args.values_of("input-files") {
         Some(v) => v.map(|s| s.to_owned()).collect(),
         None => {
-            let dir = args.value_of("input-dir").unwrap();
+            let dirs = args.values_of("input-dir").unwrap();
             let mut list = Vec::new();
 
             /// Recursively search a directory for .sprk files
@@ -246,7 +258,10 @@ fn main() {
                     });
             }
 
-            read_dir(dir, &mut list);
+            for dir in dirs {
+                read_dir(dir, &mut list);
+            }
+            
 
 
             list
