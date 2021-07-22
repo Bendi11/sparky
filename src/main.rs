@@ -179,6 +179,7 @@ fn main() {
             .takes_value(true)
             .multiple(true)
             .allow_hyphen_values(true)
+            .number_of_values(1)
             .validator(|c| match std::path::Path::new(&c).exists() {
                 true => Ok(()),
                 false => Err(format!("The directory at {} does not exist", c))
@@ -302,7 +303,7 @@ fn main() {
     let compiler = Compiler::new(&ctx, "spark".to_owned());
     let name = opts.out_file.clone();
     match compiler.compile(ast, opts, linker::WinLink::default()) {
-        Ok(()) => println!("{} Compiled successfully!", name.display()),
+        Ok(()) => println!("{} compiled successfully!", name.display()),
         Err(count) => eprintln!(
             "{}: Failed to compile due to {} errors",
             name.display(),

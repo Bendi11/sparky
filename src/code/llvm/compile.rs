@@ -194,6 +194,10 @@ impl<'c> Compiler<'c> {
                             .write_to_file(&module, FileType::Object, &obj)
                             .unwrap();
 
+                        for lib in opts.libraries {
+                            linker.add_library(lib);
+                        }
+
                         linker.add_object_file(obj.to_str().unwrap().to_owned());
                         linker.set_format(OutFormat::Exe);
                         linker.set_entry(Some("main"));

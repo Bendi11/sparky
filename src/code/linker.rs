@@ -97,12 +97,15 @@ impl Linker for WinLink {
                 }
         ));
 
-        let _ = Command::new(self.linker_path)
+        let out = Command::new(self.linker_path)
             .args(args)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .output()?;
+
+        println!("LINK.EXE stderr: {}", std::str::from_utf8(out.stderr.as_slice()).unwrap());
+        println!("LINK.EXE stdout: {}", std::str::from_utf8(out.stdout.as_slice()).unwrap());
 
         Ok(())
     }
