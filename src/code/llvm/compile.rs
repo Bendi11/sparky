@@ -15,7 +15,7 @@ use crate::{
 
 use super::{debug, error, Compiler};
 
-impl<'c> Compiler<'c> {
+impl<'a, 'c> Compiler<'a, 'c> {
     /// Generate code for a full function definition
     pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>) -> Option<()> {
         if self.current_fn.is_some() {

@@ -1,6 +1,7 @@
 //! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to
 //! LLVM types
-use crate::ast::AstPos;
+
+use crate::{ast::AstPos, code::ns::Path};
 
 use super::*;
 
@@ -9,58 +10,92 @@ pub enum Either<A, B> {
     That(B),
 }
 
-impl<'c> Compiler<'c> {
+impl<'a, 'c> Compiler<'a, 'c> {
     /// Get a struct type from the given path
+    #[inline]
     pub fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
-        let name = name.as_ref();
-        self.struct_types.get(name).cloned()
+        self.current_ns.get().get_struct(name.as_ref().parse().unwrap())
     }
 
     /// Get a union type from the given path
     pub fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
-        let name = name.as_ref();
-        self.union_types.get(name).cloned()
+        self.current_ns.get().get_union(name.as_ref().parse().unwrap())
     }
 
     /// Get a typedef'd type from the given path
     pub fn get_typedef(&self, name: impl AsRef<str>) -> Option<Type> {
-        let name = name.as_ref();
-        self.typedefs.get(name).cloned()
+        self.current_ns.get().get_typedef(name.as_ref().parse().unwrap())
     }
 
     /// Get a struct type from the given path
     pub fn get_fun(&self, name: impl AsRef<str>) -> Option<(FunctionValue<'c>, FunProto)> {
-        let name = name.as_ref();
-        self.funs.get(name).cloned()
+        self.current_ns.get().get_fun(name.as_ref().parse().unwrap())
     }
 
-    /// Get all type definitions and track them as opaque struct types
-    fn get_opaques<'a>(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
-        ast.iter().for_each(|node| match node.ast() {
-            Ast::StructDec(container) | Ast::UnionDec(container) => {
-                trace!(
-                    "Generating initial opaque llvm type for struct/union type {}",
-                    container.name
-                );
-                let ty = self.ctx.opaque_struct_type(&container.name);
-                self.struct_types
-                    .insert(container.name.clone(), (ty, container.clone()));
+    /// Enter a new namespace or create one if the namespace doesn't exist
+    fn enter_ns(&'a self, ns: &Path) {
+        let mut iter = ns.parts();
+        loop {
+            match iter.next() {
+                Some(name) => {
+                    match self.current_ns.get().nested.borrow().contains_key(name) {
+                        true => self.current_ns.set(self.current_ns.get().get_ns(name.parse().unwrap()).unwrap()),
+                        false => {
+                            let ns = self.arena.alloc(Ns::new_empty(name.clone()));
+                            self.current_ns.get().add_ns(ns);
+                            self.current_ns.set(ns);
+                        }
+                    }
+                },
+                None => break
             }
-            _ => (),
-        });
+        }
+    }
+
+    /// Exit a certain amount of namepsaces by going one namespace up
+    fn exit_ns(&self, depth: usize) {
+        for _ in 0..depth {
+            self.current_ns.set(self.current_ns.get().parent.borrow().as_ref().unwrap());
+        }
+    } 
+
+    /// Get all type definitions and track them as opaque struct types
+    fn get_opaques(&'a self, ast: Vec<AstPos>) -> Vec<AstPos> {
+        
+        for node in ast.iter() {
+            match node.ast() {
+                Ast::StructDec(container) | Ast::UnionDec(container) => {
+                    trace!(
+                        "Generating initial opaque llvm type for struct/union type {}",
+                        container.name
+                    );
+                    let name = self.current_ns.get().qualify(&container.name).to_string();
+                    let ty = self.ctx.opaque_struct_type(&name);
+                    self.current_ns.get().struct_types.borrow_mut()
+                        .insert(container.name.clone(), (ty, container.clone()));
+                },
+                Ast::Ns(ns, stmts) => {
+                    self.enter_ns(&ns);
+                    self.get_opaques(stmts.clone());
+                    self.exit_ns(ns.count());
+                }
+                _ => (),
+            }
+        }
         ast
     }
 
     /// Generate code for a function prototype
-    pub(super) fn gen_fun_proto(&mut self, proto: &FunProto) -> Result<FunctionValue<'c>, String> {
-        if self.module.get_function(proto.name.as_str()).is_some() {
-            return Err(format!("Function {} defined twice", proto.name));
+    pub(super) fn gen_fun_proto(&self, proto: &FunProto) -> Result<FunctionValue<'c>, String> {
+        let qualified = self.current_ns.get().qualify(&proto.name).to_string();
+        if self.module.get_function(qualified.as_str()).is_some() {
+            return Err(format!("Function {} defined twice", qualified));
         }
 
         if proto.ret == Type::Void {
             let proto_clone = proto.clone();
             let fun = self.module.add_function(
-                proto.name.as_str(),
+                self.current_ns.get().qualify(proto.name.as_str()).to_string().as_str(),
                 self.ctx.void_type().fn_type(
                     proto
                         .args
@@ -72,12 +107,12 @@ impl<'c> Compiler<'c> {
                 ),
                 None,
             );
-            self.funs.insert(proto.name.clone(), (fun, proto_clone));
+            self.current_ns.get().funs.borrow_mut().insert(proto.name.clone(), (fun, proto_clone));
             Ok(fun)
         } else {
             let proto_clone = proto.clone();
             let fun = self.module.add_function(
-                proto.name.as_str(),
+                self.current_ns.get().qualify(&proto.name).to_string().as_str(),
                 self.llvm_type(&proto.ret).fn_type(
                     proto
                         .args
@@ -89,80 +124,97 @@ impl<'c> Compiler<'c> {
                 ),
                 None,
             );
-            self.funs.insert(proto.name.clone(), (fun, proto_clone));
+            self.current_ns.get().funs.borrow_mut().insert(proto.name.clone(), (fun, proto_clone));
             Ok(fun)
         }
     }
 
     /// Get all types and fill the struct bodies
-    pub fn get_type_bodies(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
-        ast.into_iter()
-            .filter(|node| match node.ast() {
-                Ast::StructDec(Container {
-                    name,
-                    fields: Some(fields),
-                }) => {
-                    let ty = self.module.get_struct_type(&name).unwrap();
-                    ty.set_body(
-                        fields
+    pub fn get_type_bodies(&'a self, ast: Vec<AstPos>) -> Vec<AstPos> {
+        let mut ret = Vec::with_capacity(ast.len() / 2);
+        for node in ast {
+            match node.ast() {
+                    Ast::StructDec(Container {
+                        name,
+                        fields: Some(fields),
+                    }) => {
+                        let ty = self.module.get_struct_type(self.current_ns.get().qualify(name).to_string().as_str()).unwrap();
+                        ty.set_body(
+                            fields
+                                .iter()
+                                .map(|(_, f)| self.llvm_type(f))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                            true,
+                        );
+                        let mut types = self.current_ns.get().struct_types.borrow_mut();
+                        let (_, col) = types.get_mut(name).unwrap();
+                        trace!("Generating struct {} body with fields {:?}", name, fields);
+                        col.fields = Some(fields.clone());
+                        
+                    }
+                    Ast::StructDec(_) => (),
+                    Ast::UnionDec(con) => {
+                        let ty = self.module.get_struct_type(self.current_ns.get().qualify(&con.name).to_string().as_str()).unwrap();
+                        let largest = con
+                            .fields
+                            .as_ref()
+                            .unwrap()
                             .iter()
-                            .map(|(_, f)| self.llvm_type(f))
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                        true,
-                    );
-                    let (_, col) = self.struct_types.get_mut(name).unwrap();
-                    trace!("Generating struct {} body with fields {:?}", name, fields);
-                    col.fields = Some(fields.clone());
-                    false
+                            .max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size()))
+                            .expect("Union type with no fields!");
+                        ty.set_body(&[self.llvm_type(&largest.1)], false);
+                        
+                    },
+                    Ast::Ns(ns, stmts) => {
+                        self.enter_ns(&ns);
+                        let stmts = self.get_type_bodies(stmts.clone());
+                        self.exit_ns(ns.count());
+                        ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
+                    },
+                    _ => ret.push(node),
                 }
-                Ast::StructDec(_) => false,
-                Ast::UnionDec(con) => {
-                    let ty = self.module.get_struct_type(&con.name).unwrap();
-                    let largest = con
-                        .fields
-                        .as_ref()
-                        .unwrap()
-                        .iter()
-                        .max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size()))
-                        .expect("Union type with no fields!");
-                    ty.set_body(&[self.llvm_type(&largest.1)], false);
-                    false
-                }
-                _ => true,
-            })
-            .collect()
+            }
+        ret
     }
 
     /// Generate code for all function prototypes
-    fn scan_for_fns(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
-        ast.into_iter()
-            .filter(|node| match node.ast() {
+    fn scan_for_fns(&'a self, ast: Vec<AstPos>) -> Vec<AstPos> {
+        let mut ret = Vec::with_capacity(ast.len());
+        for node in ast {
+            match node.ast() {
                 Ast::FunProto(proto) => {
-                    self.gen_fun_proto(proto).unwrap();
+                    self.gen_fun_proto(&proto).unwrap();
                     trace!("Generated function prototype {}", proto.name);
-                    false
+                    
                 }
                 Ast::FunDef(proto, _) => {
-                    self.gen_fun_proto(proto).unwrap();
+                    self.gen_fun_proto(&proto).unwrap();
                     trace!(
                         "Generation function prototype for function definition {}",
-                        proto.name
+                        &proto.name
                     );
-                    true
+                    ret.push(node);
                 }
                 //Insert a user-defined typedef
                 Ast::TypeDef(name, ty) => {
-                    self.typedefs.insert(name.clone(), ty.clone());
-                    false
-                }
-                _ => true,
-            })
-            .collect()
+                    self.current_ns.get().typedefs.borrow_mut().insert(name.clone(), ty.clone());
+                    trace!("Generated typedef {}", name);
+                },
+                Ast::Ns(ns, stmts) => {
+                    self.enter_ns(&ns);
+                    let stmts = self.scan_for_fns(stmts.clone());
+                    self.exit_ns(ns.count());
+                    ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
+                },
+                _ => ret.push(node),
+            }
+        }
+        ret
     }
 
     /// Walk the AST and get any declared types or functions
-    pub fn scan_decls(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
+    pub fn scan_decls(&'a mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
         let ast = self.get_opaques(ast);
         let ast = self.get_type_bodies(ast);
         self.scan_for_fns(ast)

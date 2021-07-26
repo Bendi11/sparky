@@ -1,6 +1,6 @@
 //! Structs and functions for handling namespaces and getting contents from them
 
-use std::{convert::Infallible, str::FromStr, rc::Rc, cell::RefCell};
+use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, rc::Rc, str::FromStr};
 use hashbrown::HashMap;
 use inkwell::{types::StructType, values::FunctionValue};
 
@@ -8,7 +8,7 @@ use crate::{Type, ast::FunProto, types::Container};
 
 /// The `Path` struct functions nearly the same as a the [Path](std::path::Path) struct from the standard library,
 /// but uses the "::" characters as separators instead of forward/back slashes
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Path {
     /// The parts of the path, separated by "::"
     parts: Vec<String>,
@@ -22,10 +22,35 @@ impl FromStr for Path {
     }
 }
 
+impl<T: ToString> FromIterator<T> for Path {
+    fn from_iter<A: IntoIterator<Item = T>>(iter: A) -> Self {
+        Self{parts: iter.into_iter().map(|s| s.to_string()).collect()}
+    }
+}
+
+impl fmt::Display for Path {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.parts.join("::"))
+    }
+}
+
 impl Path {
+    /// Get the number of names in this namespace
+    #[inline(always)]
+    pub fn count(&self) -> usize {
+        self.parts.len()
+    }
+
+    /// Push a name to this path
+    #[inline]
+    pub fn push(&mut self, item: impl ToString) {
+        self.parts.push(item.to_string())
+    }
+
     /// Return an iterator over the parts of this path
     #[inline]
-    pub fn parts(&self) -> impl Iterator<Item = &String> {
+    pub fn parts(&self) -> (impl Iterator<Item = &String> + DoubleEndedIterator<Item = &String>){
         self.parts.iter()
     }
 
@@ -71,6 +96,20 @@ pub struct Ns<'a, 'c> {
 }
 
 impl<'a, 'c> Ns<'a, 'c> {
+    /// Construct a new empty namespace from only a name
+    pub fn new_empty(name: String) -> Self {
+        Self {
+            name, 
+            parent: Rc::new(RefCell::new(Default::default())),
+            struct_types: Rc::new(RefCell::new(Default::default())),
+            union_types: Rc::new(RefCell::new(Default::default())),
+            typedefs: Rc::new(RefCell::new(Default::default())),
+            funs: Rc::new(RefCell::new(Default::default())),
+            nested: Rc::new(RefCell::new(Default::default())),
+
+        }
+    }
+
     /// Get a nested namespace if it exists
     pub fn get_ns(&'a self, path: Path) -> Option<&'a Self> {
         self.get_child(path.parts())
@@ -90,7 +129,65 @@ impl<'a, 'c> Ns<'a, 'c> {
         self.nested.borrow_mut().insert(ns.name.clone(), ns);
     }
 
-    
+    /// Get a struct type from this namespace using the given path
+    pub fn get_struct(&'a self, path: Path) -> Option<(StructType<'c>, Container)> {
+        let ns = match path.parent() {
+            Some(parents) => self.get_child(parents.iter())?,
+            None => self
+        };
+        ns.struct_types.borrow().get(path.last()?).cloned()
+    }
+
+    /// Get a union type from this namespace using the given path
+    pub fn get_union(&'a self, path: Path) -> Option<(StructType<'c>, Container)> {
+        let ns = match path.parent() {
+            Some(parents) => self.get_child(parents.iter())?,
+            None => self
+        };
+        ns.union_types.borrow().get(path.last()?).cloned()
+    }
+
+    /// Get a function from this namespace using the given path
+    pub fn get_fun(&'a self, path: Path) -> Option<(FunctionValue<'c>, FunProto)> {
+        let ns = match path.parent() {
+            Some(parents) => self.get_child(parents.iter())?,
+            None => self
+        };
+        ns.funs.borrow().get(path.last()?).cloned()
+    }
+
+    /// Get a typedef from this namespace using the given path
+    pub fn get_typedef(&'a self, path: Path) -> Option<Type> {
+        let ns = match path.parent() {
+            Some(parents) => self.get_child(parents.iter())?,
+            None => self
+        };
+        ns.typedefs.borrow().get(path.last()?).cloned()
+    }
+
+    /// Get the full path to this namespace from the root namespace
+    #[inline]
+    pub fn full_path(&'a self) -> Path {
+        let mut path = Path::default();
+        self.path(&mut path);
+        path
+    }
+
+    /// Get the full path to this namespace
+    fn path(&'a self, path: &mut Path) {
+        path.parts.push(self.name.clone());
+        match self.parent.borrow().as_ref() {
+            Some(parent) => parent.path(path),
+            None => *path = path.parts().rev().collect()
+        }
+    }
+
+    /// Fully qualify a name using the full path from root to this namespace, then to the name given
+    pub fn qualify(&'a self, name: impl ToString) -> Path {
+        let mut path = self.full_path();
+        path.push(name.to_string());
+        path
+    }
 }
 
 #[cfg(test)]

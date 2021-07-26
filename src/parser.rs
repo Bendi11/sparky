@@ -60,7 +60,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     stmts.push(self.parse_decl()?);
                 }   
                 self.toks.next();
-                Ok(AstPos(Ast::Ns(namespaces, stmts), pos))
+                Ok(AstPos(Ast::Ns(namespaces.into_iter().collect(), stmts), pos))
             }
 
             Token(_, TokenType::Key(Key::Struct)) => {

@@ -1,7 +1,8 @@
 pub mod compile;
 pub mod types;
+use bumpalo::Bump;
 use log::{debug, error, info, trace, warn};
-use std::{convert::TryFrom, ops::Deref};
+use std::{cell::Cell, convert::TryFrom, ops::Deref, rc::Rc};
 
 use crate::{
     ast::{Ast, AstPos, FunProto},
@@ -19,25 +20,24 @@ use inkwell::{
     IntPredicate,
 };
 
+use super::ns::Ns;
+
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
-pub struct Compiler<'c> {
+pub struct Compiler<'a, 'c> {
     /// The name of the currently compiled module
     name: String,
 
     /// The LLVM context
     ctx: &'c Context,
 
-    /// A hash map of identifiers to defined struct types
-    pub struct_types: HashMap<String, (StructType<'c>, Container)>,
+    /// The root namespace
+    root: &'a Ns<'a, 'c>,
 
-    /// A hash map of identifiers to defined union types
-    pub union_types: HashMap<String, (StructType<'c>, Container)>,
+    /// The current namespace
+    current_ns: Cell< &'a Ns<'a, 'c> >,
 
-    /// A map of function names to function prototypes
-    pub funs: HashMap<String, (FunctionValue<'c>, FunProto)>,
-
-    /// A map of user - defined type definitions to real types
-    pub typedefs: HashMap<String, Type>,
+    /// The arena allocator holding all namespaces
+    arena: Bump,
 
     /// The LLVM module that we will be writing code to
     module: Module<'c>,
@@ -55,10 +55,12 @@ pub struct Compiler<'c> {
     pub vars: HashMap<String, (PointerValue<'c>, Type)>,
 }
 
-impl<'c> Compiler<'c> {
+impl<'a, 'c> Compiler<'a, 'c> {
     /// Create a new `Compiler` from an LLVM context struct
     pub fn new(ctx: &'c Context, name: String) -> Self {
-        Self {
+        let alloc = Bump::new();
+        
+        let mut me = Self {
             name,
             ctx,
             build: ctx.create_builder(),
@@ -66,11 +68,16 @@ impl<'c> Compiler<'c> {
             current_fn: None,
             vars: HashMap::new(),
             current_proto: None,
-            funs: HashMap::new(),
-            struct_types: HashMap::new(),
-            union_types: HashMap::new(),
-            typedefs: HashMap::new(),
-        }
+            root: unsafe { std::mem::transmute(0u64)},
+            arena: alloc,
+            current_ns: unsafe {std::mem::transmute(0u64)},
+        };
+
+        let root = me.arena.alloc(Ns::new_empty(String::new()));
+        me.root = root;
+        me.current_ns = Cell::new(root);
+        
+        me
     }
 
     /// Build an alloca for a variable in the current function
