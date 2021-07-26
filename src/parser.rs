@@ -560,14 +560,15 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
     /// Parse a function prototype or defintion
     fn parse_fun(&mut self) -> ParseRes<AstPos> {
+        let pos = self.toks.peek().eof()?.0.clone();
         let proto = self.parse_fun_proto()?;
-        match self.toks.peek().eof()? {
-            Token(pos, TokenType::LeftBrace('{')) => {
+        match self.toks.peek() {
+            Some(Token(pos, TokenType::LeftBrace('{'))) => {
                 let pos = pos.clone();
                 let body = self.parse_body()?;
                 Ok(AstPos(Ast::FunDef(proto, body), pos))
             }
-            Token(pos, _) => Ok(AstPos(Ast::FunProto(proto), pos.clone())),
+            Some(Token(_, _)) | None => Ok(AstPos(Ast::FunProto(proto), pos.clone())),
         }
     }
 

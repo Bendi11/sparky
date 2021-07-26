@@ -297,7 +297,7 @@ fn main() {
         ast.extend(
             parser::Parser::new(lexer.into_iter())
                 .parse()
-                .unwrap_or_else(|e| panic!("Error when parsing: {}", e)),
+                .unwrap_or_else(|e| panic!("Error when parsing file {}: {}", filename, e)),
         ); //Parse the file and add it to the AST
     }
 
