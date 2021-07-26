@@ -33,6 +33,9 @@ pub struct Compiler<'a, 'c> {
     /// The arena allocator for namespaces
     arena: &'a Bump,
 
+    /// The root namespace
+    root: &'a Ns<'a, 'c>,
+
     /// The current namespace
     current_ns: Cell< &'a Ns<'a, 'c> >,
 
@@ -65,6 +68,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
             vars: HashMap::new(),
             current_proto: None,
             arena,
+            root,
             current_ns: Cell::new(root),
         }
     }

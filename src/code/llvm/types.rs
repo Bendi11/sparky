@@ -14,22 +14,38 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// Get a struct type from the given path
     #[inline]
     pub fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
-        self.current_ns.get().get_struct(name.as_ref().parse().unwrap())
+        let path: Path = name.as_ref().parse().unwrap();
+        match self.current_ns.get().get_struct(path.clone()) {
+            Some(s) => Some(s),
+            None => self.root.get_struct(path),
+        }
     }
 
     /// Get a union type from the given path
     pub fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
-        self.current_ns.get().get_union(name.as_ref().parse().unwrap())
+        let path: Path = name.as_ref().parse().unwrap();
+        match self.current_ns.get().get_union(path.clone()) {
+            Some(s) => Some(s),
+            None => self.root.get_union(path),
+        }
     }
 
     /// Get a typedef'd type from the given path
     pub fn get_typedef(&self, name: impl AsRef<str>) -> Option<Type> {
-        self.current_ns.get().get_typedef(name.as_ref().parse().unwrap())
+        let path: Path = name.as_ref().parse().unwrap();
+        match self.current_ns.get().get_typedef(path.clone()) {
+            Some(s) => Some(s),
+            None => self.root.get_typedef(path),
+        }
     }
 
     /// Get a struct type from the given path
     pub fn get_fun(&self, name: impl AsRef<str>) -> Option<(FunctionValue<'c>, FunProto)> {
-        self.current_ns.get().get_fun(name.as_ref().parse().unwrap())
+        let path: Path = name.as_ref().parse().unwrap();
+        match self.current_ns.get().get_fun(path.clone()) {
+            Some(s) => Some(s),
+            None => self.root.get_fun(path),
+        }
     }
 
     /// Enter a new namespace or create one if the namespace doesn't exist
