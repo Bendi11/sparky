@@ -4,7 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.other",
-			"match": "\\b(let|struct|union|fun|ns)\\b"
+			"match": "\\b(let|struct|union|fun|ns|use)\\b"
 		},
 		{
 			"name": "keyword.control",
