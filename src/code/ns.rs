@@ -63,10 +63,10 @@ impl Path {
 
     /// Get all parts of the path except the final name
     pub fn parent(&self) -> Option<&[String]> {
-        if self.parts.len() < 2 {
+        if self.parts.len() == 1 {
             return None
         }
-        Some(&self.parts[0..self.parts.len()])
+        Some(&self.parts[0..(self.parts.len() - 1)])
     }
 }
 
