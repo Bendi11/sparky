@@ -5,6 +5,7 @@ pub mod parser;
 pub mod types;
 use std::{ffi::OsStr, panic::PanicInfo, path::PathBuf, str::FromStr};
 
+use bumpalo::Bump;
 use clap::{App, AppSettings, Arg};
 use console::style;
 use inkwell::context::Context;
@@ -300,7 +301,8 @@ fn main() {
         ); //Parse the file and add it to the AST
     }
 
-    let compiler = Compiler::new(&ctx, "spark".to_owned());
+    let arena = Bump::new();
+    let compiler = Compiler::new(&ctx, &arena, "spark".to_owned());
     let name = opts.out_file.clone();
     match compiler.compile(ast, opts, linker::WinLink::default()) {
         Ok(()) => println!("{} compiled successfully!", name.display()),

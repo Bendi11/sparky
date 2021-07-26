@@ -30,14 +30,14 @@ pub struct Compiler<'a, 'c> {
     /// The LLVM context
     ctx: &'c Context,
 
+    /// The arena allocator for namespaces
+    arena: &'a Bump,
+
     /// The root namespace
     root: &'a Ns<'a, 'c>,
 
     /// The current namespace
     current_ns: Cell< &'a Ns<'a, 'c> >,
-
-    /// The arena allocator holding all namespaces
-    arena: Bump,
 
     /// The LLVM module that we will be writing code to
     module: Module<'c>,
@@ -57,10 +57,9 @@ pub struct Compiler<'a, 'c> {
 
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Create a new `Compiler` from an LLVM context struct
-    pub fn new(ctx: &'c Context, name: String) -> Self {
-        let alloc = Bump::new();
-        
-        let mut me = Self {
+    pub fn new(ctx: &'c Context, arena: &'a Bump, name: String) -> Self {     
+        let root = arena.alloc(Ns::new_empty(String::new()));   
+        Self {
             name,
             ctx,
             build: ctx.create_builder(),
@@ -68,16 +67,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
             current_fn: None,
             vars: HashMap::new(),
             current_proto: None,
-            root: unsafe { std::mem::transmute(0u64)},
-            arena: alloc,
-            current_ns: unsafe {std::mem::transmute(0u64)},
-        };
-
-        let root = me.arena.alloc(Ns::new_empty(String::new()));
-        me.root = root;
-        me.current_ns = Cell::new(root);
-        
-        me
+            arena,
+            current_ns: Cell::new(root),
+            root,
+        }
     }
 
     /// Build an alloca for a variable in the current function

@@ -33,7 +33,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Enter a new namespace or create one if the namespace doesn't exist
-    fn enter_ns(&'a self, ns: &Path) {
+    fn enter_ns(&self, ns: &Path) {
         let mut iter = ns.parts();
         loop {
             match iter.next() {
@@ -60,7 +60,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     } 
 
     /// Get all type definitions and track them as opaque struct types
-    fn get_opaques(&'a self, ast: Vec<AstPos>) -> Vec<AstPos> {
+    fn get_opaques(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         
         for node in ast.iter() {
             match node.ast() {
@@ -130,7 +130,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Get all types and fill the struct bodies
-    pub fn get_type_bodies(&'a self, ast: Vec<AstPos>) -> Vec<AstPos> {
+    pub fn get_type_bodies(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         let mut ret = Vec::with_capacity(ast.len() / 2);
         for node in ast {
             match node.ast() {
@@ -179,7 +179,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Generate code for all function prototypes
-    fn scan_for_fns(&'a self, ast: Vec<AstPos>) -> Vec<AstPos> {
+    fn scan_for_fns(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         let mut ret = Vec::with_capacity(ast.len());
         for node in ast {
             match node.ast() {
@@ -214,7 +214,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Walk the AST and get any declared types or functions
-    pub fn scan_decls(&'a mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
+    pub fn scan_decls(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         let ast = self.get_opaques(ast);
         let ast = self.get_type_bodies(ast);
         self.scan_for_fns(ast)
