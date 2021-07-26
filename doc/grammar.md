@@ -64,7 +64,7 @@ The operators and their purposes:
         | "type" <typename> <ident>
         | <nsdecl>
 
-<nsdecl> ::= "ns" ( <ident> "," )* <ident>? "{" <program> "}"
+<nsdecl> ::= "ns" <ident> "{" <program> "}"
 
 (*If a struct declaration has no definition, it is parsed as an opaque type*)
 <structdecl> ::= "struct" <ident> ( "{" (<typename> <ident> ",")* (<typename> <ident>)? "}" )?
