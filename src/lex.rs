@@ -385,7 +385,6 @@ impl PartialEq<TokenType> for &Token {
     }
 }
 
-
 impl From<Token> for TokenType {
     /// Convert a token to a TokenType
     fn from(tok: Token) -> Self {
@@ -685,36 +684,4 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
     fn next(&mut self) -> Option<Self::Item> {
         self.token()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    //#[test]
-    /*pub fn lex_correct() {
-        let lexed = Lexer::new(&mut BufReader::new(b"fun(i32)")).into_vec();
-
-        assert_eq!(
-            lexed,
-            vec![
-                Token::new(
-                    &Pos::new(1, 3, "unnamed_buffer".to_owned()),
-                    TokenType::Key(Key::Fun)
-                ),
-                Token::new(
-                    &Pos::new(1, 4, "unnamed_buffer".to_owned()),
-                    TokenType::LeftBrace('(')
-                ),
-                Token::new(
-                    &Pos::new(1, 7, "unnamed_buffer".to_owned()),
-                    TokenType::Ident("i32".into())
-                ),
-                Token::new(
-                    &Pos::new(1, 8, "unnamed_buffer".to_owned()),
-                    TokenType::RightBrace(')')
-                ),
-            ],
-            "Lexer fails to lex tokens correctly"
-        )
-    }*/
 }

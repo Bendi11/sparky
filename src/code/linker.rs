@@ -104,8 +104,14 @@ impl Linker for WinLink {
             .stderr(Stdio::piped())
             .output()?;
 
-        println!("LINK.EXE stderr: {}", std::str::from_utf8(out.stderr.as_slice()).unwrap());
-        println!("LINK.EXE stdout: {}", std::str::from_utf8(out.stdout.as_slice()).unwrap());
+        println!(
+            "LINK.EXE stderr: {}",
+            std::str::from_utf8(out.stderr.as_slice()).unwrap()
+        );
+        println!(
+            "LINK.EXE stdout: {}",
+            std::str::from_utf8(out.stdout.as_slice()).unwrap()
+        );
 
         Ok(())
     }

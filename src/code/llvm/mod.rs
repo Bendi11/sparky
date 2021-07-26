@@ -2,7 +2,7 @@ pub mod compile;
 pub mod types;
 use bumpalo::Bump;
 use log::{debug, error, info, trace, warn};
-use std::{cell::Cell, convert::TryFrom, ops::Deref, rc::Rc};
+use std::{cell::Cell, convert::TryFrom, ops::Deref};
 
 use crate::{
     ast::{Ast, AstPos, FunProto},
@@ -37,7 +37,7 @@ pub struct Compiler<'a, 'c> {
     root: &'a Ns<'a, 'c>,
 
     /// The current namespace
-    current_ns: Cell< &'a Ns<'a, 'c> >,
+    current_ns: Cell<&'a Ns<'a, 'c>>,
 
     /// The LLVM module that we will be writing code to
     module: Module<'c>,
@@ -57,8 +57,8 @@ pub struct Compiler<'a, 'c> {
 
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Create a new `Compiler` from an LLVM context struct
-    pub fn new(ctx: &'c Context, arena: &'a Bump, name: String) -> Self {     
-        let root = arena.alloc(Ns::new_empty(String::new()));   
+    pub fn new(ctx: &'c Context, arena: &'a Bump, name: String) -> Self {
+        let root = arena.alloc(Ns::new_empty(String::new()));
         Self {
             name,
             ctx,

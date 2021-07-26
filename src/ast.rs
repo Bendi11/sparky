@@ -1,6 +1,10 @@
 use std::ops::Deref;
 
-use crate::{code::{Compiler, ns::Path}, lex::{Op, Pos}, types};
+use crate::{
+    code::{ns::Path, Compiler},
+    lex::{Op, Pos},
+    types,
+};
 
 use super::Type;
 use bitflags::bitflags;

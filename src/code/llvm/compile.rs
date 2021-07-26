@@ -25,7 +25,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         let old_vars = self.vars.clone();
 
-        let f = match self.module.get_function(self.current_ns.get().qualify(&proto.name).to_string().as_str()) {
+        let f = match self.module.get_function(
+            self.current_ns
+                .get()
+                .qualify(&proto.name)
+                .to_string()
+                .as_str(),
+        ) {
             Some(f) => f,
             None => self.gen_fun_proto(proto).unwrap(),
         };
@@ -77,12 +83,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     if self.gen_fundef(proto, body).is_none() {
                         err += 1
                     }
-                },
+                }
                 Ast::Ns(ref path, stmts) => {
                     self.enter_ns(path);
                     self.gen_top(stmts)?;
                     self.exit_ns(path.count());
-                },
+                }
                 other => {
                     error!("{}: Invalid top level expression {:?}", node.1, other);
                     err += 1;
@@ -91,7 +97,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
         match err > 0 {
             true => Err(err),
-            false => Ok(())
+            false => Ok(()),
         }
     }
 

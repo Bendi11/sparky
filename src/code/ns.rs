@@ -1,11 +1,11 @@
 //! Structs and functions for handling namespaces and getting contents from them
 
-use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, str::FromStr};
 use hashbrown::HashMap;
 use inkwell::{types::StructType, values::FunctionValue};
 use log::debug;
+use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, str::FromStr};
 
-use crate::{Type, ast::FunProto, types::Container};
+use crate::{ast::FunProto, types::Container, Type};
 
 /// The `Path` struct functions nearly the same as a the [Path](std::path::Path) struct from the standard library,
 /// but uses the "::" characters as separators instead of forward/back slashes
@@ -19,13 +19,17 @@ impl FromStr for Path {
     type Err = Infallible;
     #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self{parts: s.split("::").map(|s| s.to_owned()).collect()})
+        Ok(Self {
+            parts: s.split("::").map(|s| s.to_owned()).collect(),
+        })
     }
 }
 
 impl<T: ToString> FromIterator<T> for Path {
     fn from_iter<A: IntoIterator<Item = T>>(iter: A) -> Self {
-        Self{parts: iter.into_iter().map(|s| s.to_string()).collect()}
+        Self {
+            parts: iter.into_iter().map(|s| s.to_string()).collect(),
+        }
     }
 }
 
@@ -51,7 +55,7 @@ impl Path {
 
     /// Return an iterator over the parts of this path
     #[inline]
-    pub fn parts(&self) -> (impl Iterator<Item = &String> + DoubleEndedIterator<Item = &String>){
+    pub fn parts(&self) -> (impl Iterator<Item = &String> + DoubleEndedIterator<Item = &String>) {
         self.parts.iter()
     }
 
@@ -64,13 +68,13 @@ impl Path {
     /// Get all parts of the path except the final name
     pub fn parent(&self) -> Option<&[String]> {
         if self.parts.len() == 1 {
-            return None
+            return None;
         }
         Some(&self.parts[0..(self.parts.len() - 1)])
     }
 }
 
-/// The `Ns` struct contains declarations and other namespaces, 
+/// The `Ns` struct contains declarations and other namespaces,
 /// allowing for names to not clash
 #[derive(Debug, Clone)]
 pub struct Ns<'a, 'c> {
@@ -78,36 +82,35 @@ pub struct Ns<'a, 'c> {
     pub name: String,
 
     /// The parent of this namespace
-    pub parent: RefCell< Option<&'a Self> >,
+    pub parent: RefCell<Option<&'a Self>>,
 
     /// A hash map of identifiers to defined struct types
-    pub struct_types: RefCell< HashMap<String, (StructType<'c>, Container)> >,
+    pub struct_types: RefCell<HashMap<String, (StructType<'c>, Container)>>,
 
     /// A hash map of identifiers to defined union types
-    pub union_types: RefCell< HashMap<String, (StructType<'c>, Container)> >,
+    pub union_types: RefCell<HashMap<String, (StructType<'c>, Container)>>,
 
     /// A map of function names to function prototypes
-    pub funs: RefCell< HashMap<String, (FunctionValue<'c>, FunProto)> >,
+    pub funs: RefCell<HashMap<String, (FunctionValue<'c>, FunProto)>>,
 
     /// A map of user - defined type definitions to real types
-    pub typedefs: RefCell< HashMap<String, Type> >,
+    pub typedefs: RefCell<HashMap<String, Type>>,
 
     /// Nested namespaces with interior mutability
-    pub nested: RefCell< HashMap<String, &'a Self> >,
+    pub nested: RefCell<HashMap<String, &'a Self>>,
 }
 
 impl<'a, 'c> Ns<'a, 'c> {
     /// Construct a new empty namespace from only a name
     pub fn new_empty(name: String) -> Self {
         Self {
-            name, 
+            name,
             parent: RefCell::new(Default::default()),
             struct_types: RefCell::new(Default::default()),
             union_types: RefCell::new(Default::default()),
             typedefs: RefCell::new(Default::default()),
             funs: RefCell::new(Default::default()),
             nested: RefCell::new(Default::default()),
-
         }
     }
 
@@ -127,7 +130,11 @@ impl<'a, 'c> Ns<'a, 'c> {
     /// Add a child namespace to this namespace
     pub fn add_ns(&'a self, ns: &'a Self) {
         *ns.parent.borrow_mut() = Some(&self);
-        debug!("Adding child namespace {} to namespace {}", ns.name, self.full_path());
+        debug!(
+            "Adding child namespace {} to namespace {}",
+            ns.name,
+            self.full_path()
+        );
         self.nested.borrow_mut().insert(ns.name.clone(), ns);
     }
 
@@ -135,7 +142,7 @@ impl<'a, 'c> Ns<'a, 'c> {
     pub fn get_struct(&'a self, path: Path) -> Option<(StructType<'c>, Container)> {
         let ns = match path.parent() {
             Some(parents) => self.get_child(parents.iter())?,
-            None => self
+            None => self,
         };
         ns.struct_types.borrow().get(path.last()?).cloned()
     }
@@ -144,7 +151,7 @@ impl<'a, 'c> Ns<'a, 'c> {
     pub fn get_union(&'a self, path: Path) -> Option<(StructType<'c>, Container)> {
         let ns = match path.parent() {
             Some(parents) => self.get_child(parents.iter())?,
-            None => self
+            None => self,
         };
         ns.union_types.borrow().get(path.last()?).cloned()
     }
@@ -153,7 +160,7 @@ impl<'a, 'c> Ns<'a, 'c> {
     pub fn get_fun(&'a self, path: Path) -> Option<(FunctionValue<'c>, FunProto)> {
         let ns = match path.parent() {
             Some(parents) => self.get_child(parents.iter())?,
-            None => self
+            None => self,
         };
         ns.funs.borrow().get(path.last()?).cloned()
     }
@@ -162,7 +169,7 @@ impl<'a, 'c> Ns<'a, 'c> {
     pub fn get_typedef(&'a self, path: Path) -> Option<Type> {
         let ns = match path.parent() {
             Some(parents) => self.get_child(parents.iter())?,
-            None => self
+            None => self,
         };
         ns.typedefs.borrow().get(path.last()?).cloned()
     }
@@ -180,10 +187,10 @@ impl<'a, 'c> Ns<'a, 'c> {
         if !self.name.is_empty() {
             path.parts.push(self.name.clone());
         }
-        
+
         match self.parent.borrow().as_ref() {
             Some(parent) => parent.path(path),
-            None => *path = path.parts().rev().collect()
+            None => *path = path.parts().rev().collect(),
         }
     }
 
@@ -201,8 +208,11 @@ mod tests {
 
     #[test]
     pub fn test_parse() {
-        assert_eq!(Path::from_str("testing::one"), Ok(Path {
-            parts: vec!["testing".to_owned(), "one".to_owned()]
-        }))
+        assert_eq!(
+            Path::from_str("testing::one"),
+            Ok(Path {
+                parts: vec!["testing".to_owned(), "one".to_owned()]
+            })
+        )
     }
 }

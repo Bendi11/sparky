@@ -53,14 +53,27 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         Token(_, TokenType::Ident(ident)) => namespaces.push(ident),
                         Token(_, TokenType::Comma) => continue,
                         Token(_, TokenType::LeftBrace('{')) => break,
-                        Token(pos, ty) => return Err(ParseErr::UnexpectedToken(pos, ty, vec![TokenType::Ident("".to_owned()), TokenType::Comma, TokenType::LeftBrace('{')])),
+                        Token(pos, ty) => {
+                            return Err(ParseErr::UnexpectedToken(
+                                pos,
+                                ty,
+                                vec![
+                                    TokenType::Ident("".to_owned()),
+                                    TokenType::Comma,
+                                    TokenType::LeftBrace('{'),
+                                ],
+                            ))
+                        }
                     }
                 }
                 while self.toks.peek().eof()? != TokenType::RightBrace('}') {
                     stmts.push(self.parse_decl()?);
-                }   
+                }
                 self.toks.next();
-                Ok(AstPos(Ast::Ns(namespaces.into_iter().collect(), stmts), pos))
+                Ok(AstPos(
+                    Ast::Ns(namespaces.into_iter().collect(), stmts),
+                    pos,
+                ))
             }
 
             Token(_, TokenType::Key(Key::Struct)) => {
