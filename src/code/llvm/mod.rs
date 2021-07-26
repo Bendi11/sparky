@@ -1,7 +1,8 @@
 pub mod compile;
 pub mod types;
+use bumpalo::Bump;
 use log::{debug, error, info, trace, warn};
-use std::{convert::TryFrom, ops::Deref};
+use std::{cell::Cell, convert::TryFrom, ops::Deref};
 
 use crate::{
     ast::{Ast, AstPos, FunProto},
@@ -19,25 +20,24 @@ use inkwell::{
     IntPredicate,
 };
 
+use super::ns::Ns;
+
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
-pub struct Compiler<'c> {
+pub struct Compiler<'a, 'c> {
     /// The name of the currently compiled module
     name: String,
 
     /// The LLVM context
     ctx: &'c Context,
 
-    /// A hash map of identifiers to defined struct types
-    pub struct_types: HashMap<String, (StructType<'c>, Container)>,
+    /// The arena allocator for namespaces
+    arena: &'a Bump,
 
-    /// A hash map of identifiers to defined union types
-    pub union_types: HashMap<String, (StructType<'c>, Container)>,
+    /// The root namespace
+    root: &'a Ns<'a, 'c>,
 
-    /// A map of function names to function prototypes
-    pub funs: HashMap<String, (FunctionValue<'c>, FunProto)>,
-
-    /// A map of user - defined type definitions to real types
-    pub typedefs: HashMap<String, Type>,
+    /// The current namespace
+    current_ns: Cell<&'a Ns<'a, 'c>>,
 
     /// The LLVM module that we will be writing code to
     module: Module<'c>,
@@ -55,9 +55,10 @@ pub struct Compiler<'c> {
     pub vars: HashMap<String, (PointerValue<'c>, Type)>,
 }
 
-impl<'c> Compiler<'c> {
+impl<'a, 'c> Compiler<'a, 'c> {
     /// Create a new `Compiler` from an LLVM context struct
-    pub fn new(ctx: &'c Context, name: String) -> Self {
+    pub fn new(ctx: &'c Context, arena: &'a Bump, name: String) -> Self {
+        let root = arena.alloc(Ns::new_empty(String::new()));
         Self {
             name,
             ctx,
@@ -66,10 +67,9 @@ impl<'c> Compiler<'c> {
             current_fn: None,
             vars: HashMap::new(),
             current_proto: None,
-            funs: HashMap::new(),
-            struct_types: HashMap::new(),
-            union_types: HashMap::new(),
-            typedefs: HashMap::new(),
+            arena,
+            root,
+            current_ns: Cell::new(root),
         }
     }
 
@@ -329,7 +329,7 @@ impl<'c> Compiler<'c> {
     pub fn gen(&mut self, node: &AstPos, lval: bool) -> Option<AnyValueEnum<'c>> {
         match node.ast() {
             Ast::NumLiteral(ty, num) => Some(
-                self.llvm_type(ty)
+                self.llvm_type(ty, &node.1)
                     .into_int_type()
                     .const_int_from_string(num.as_str(), inkwell::types::StringRadix::Decimal)
                     .unwrap()
@@ -478,7 +478,7 @@ impl<'c> Compiler<'c> {
                 Some(br.as_any_value_enum())
             }
             Ast::VarDecl { ty, name, attrs: _ } => {
-                let var = self.entry_alloca(name.as_str(), self.llvm_type(ty));
+                let var = self.entry_alloca(name.as_str(), self.llvm_type(ty, &node.1));
                 self.vars.insert(name.clone(), (var, ty.clone()));
                 Some(var.as_any_value_enum())
             }
@@ -597,7 +597,7 @@ impl<'c> Compiler<'c> {
                                 return None;
                             }
                         };
-                        let field_ty = self.llvm_type(field_ty);
+                        let field_ty = self.llvm_type(field_ty, &node.1);
                         Some(match lval {
                             true => {
                                 let u = self.gen(val, true)?;
@@ -641,7 +641,7 @@ impl<'c> Compiler<'c> {
             }
             Ast::Cast(expr, ty) => {
                 let lhs = self.gen(expr, false)?;
-                Some(match (lhs.get_type(), self.llvm_type(ty)) {
+                Some(match (lhs.get_type(), self.llvm_type(ty, &node.1)) {
                     (AnyTypeEnum::IntType(_), BasicTypeEnum::PointerType(ptr)) => self
                         .build
                         .build_int_to_ptr(lhs.into_int_value(), ptr, "int_to_ptr_cast")

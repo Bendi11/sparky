@@ -7,17 +7,13 @@ use inkwell::{
     OptimizationLevel,
 };
 
-use crate::{
-    ast::{Ast, AstPos, FunProto},
-    code::linker::Linker,
-    CompileOpts, OutFormat,
-};
+use crate::{CompileOpts, OutFormat, ast::{Ast, AstPos, FunProto}, code::linker::Linker, lex::Pos};
 
 use super::{debug, error, Compiler};
 
-impl<'c> Compiler<'c> {
+impl<'a, 'c> Compiler<'a, 'c> {
     /// Generate code for a full function definition
-    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>) -> Option<()> {
+    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>, pos: &Pos) -> Option<()> {
         if self.current_fn.is_some() {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
             return None;
@@ -25,9 +21,15 @@ impl<'c> Compiler<'c> {
 
         let old_vars = self.vars.clone();
 
-        let f = match self.module.get_function(proto.name.as_str()) {
+        let f = match self.module.get_function(
+            self.current_ns
+                .get()
+                .qualify(&proto.name)
+                .to_string()
+                .as_str(),
+        ) {
             Some(f) => f,
-            None => self.gen_fun_proto(proto).unwrap(),
+            None => self.gen_fun_proto(proto, pos).unwrap(),
         };
         self.current_fn = Some(f);
         self.current_proto = Some(proto.clone());
@@ -39,7 +41,7 @@ impl<'c> Compiler<'c> {
         for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
             let alloca = self.entry_alloca(
                 proto_arg.clone().unwrap_or("".to_owned()).as_str(),
-                self.llvm_type(ty),
+                self.llvm_type(ty, pos),
             );
             self.build.build_store(alloca, arg); //Store the initial value in the function parameters
 
@@ -68,16 +70,20 @@ impl<'c> Compiler<'c> {
         Some(())
     }
 
-    /// Generate all code for a LLVM module and return it
-    pub fn finish(mut self, ast: Vec<AstPos>) -> Result<Module<'c>, u16> {
-        let ast = self.scan_decls(ast);
+    /// Generate top level expressions in an AST
+    fn gen_top(&mut self, ast: Vec<AstPos>) -> Result<(), u16> {
         let mut err = 0;
         for node in ast {
-            match node.ast() {
+            match node.0 {
                 Ast::FunDef(ref proto, ref body) => {
-                    if self.gen_fundef(proto, body).is_none() {
+                    if self.gen_fundef(proto, body, &node.1).is_none() {
                         err += 1
                     }
+                }
+                Ast::Ns(ref path, stmts) => {
+                    self.enter_ns(path);
+                    self.gen_top(stmts)?;
+                    self.exit_ns(path.count());
                 }
                 other => {
                     error!("{}: Invalid top level expression {:?}", node.1, other);
@@ -87,8 +93,15 @@ impl<'c> Compiler<'c> {
         }
         match err > 0 {
             true => Err(err),
-            false => Ok(self.module),
+            false => Ok(()),
         }
+    }
+
+    /// Generate all code for a LLVM module and return it
+    pub fn finish(mut self, ast: Vec<AstPos>) -> Result<Module<'c>, u16> {
+        let ast = self.scan_decls(ast);
+        self.gen_top(ast)?;
+        Ok(self.module)
     }
 
     /// Compile the code into an executable / library file

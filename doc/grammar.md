@@ -62,6 +62,11 @@ The operators and their purposes:
 		| <structdecl>
         | <uniondecl>
         | "type" <typename> <ident>
+        | <nsdecl>
+        | <usingdecl>
+
+<nsdecl> ::= "ns" <ident> "{" <program> "}"
+<usingdecl> ::= "use" <ident>
 
 (*If a struct declaration has no definition, it is parsed as an opaque type*)
 <structdecl> ::= "struct" <ident> ( "{" (<typename> <ident> ",")* (<typename> <ident>)? "}" )?

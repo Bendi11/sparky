@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::{
-    code::Compiler,
+    code::{ns::Path, Compiler},
     lex::{Op, Pos},
     types,
 };
@@ -122,6 +122,12 @@ pub enum Ast {
 
     /// A type definition aliasing an identifier to a typename
     TypeDef(String, Type),
+
+    /// A namespace declaration with further statements inside
+    Ns(Path, Vec<AstPos>),
+
+    /// Importing a namespace into scope
+    Using(Path),
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file
@@ -137,9 +143,9 @@ impl AstPos {
 
 impl Ast {
     /// Get the type of this expression, if any
-    pub fn get_type<'a, 'b, 'c>(
+    pub fn get_type<'a, 'b, 'c, 'd>(
         &'a self,
-        compiler: &'b mut Compiler<'c>,
+        compiler: &'b mut Compiler<'d, 'c>,
     ) -> Option<(Type, Option<StructType<'c>>)> {
         match match self {
             Self::FunCall(name, _) => compiler.get_fun(name)?.1.ret.clone(),

@@ -66,6 +66,12 @@ pub enum Key {
 
     /// The `false` keyword is used for the literal false value
     False,
+
+    /// The `ns` keyword is used to declare namespaces
+    Ns,
+
+    /// The `use` keyword is used to import namespaces
+    Use,
 }
 
 impl fmt::Display for Key {
@@ -87,6 +93,8 @@ impl fmt::Display for Key {
             Self::Static => write!(f, "static"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
+            Self::Ns => write!(f, "ns"),
+            Self::Use => write!(f, "use"),
         }
     }
 }
@@ -112,6 +120,8 @@ impl convert::TryFrom<&str> for Key {
             "static" => Ok(Self::Static),
             "true" => Ok(Self::True),
             "false" => Ok(Self::False),
+            "ns" => Ok(Self::Ns),
+            "use" => Ok(Self::Use),
             _ => Err(()),
         }
     }
@@ -373,6 +383,13 @@ impl PartialEq<TokenType> for Token {
     }
 }
 
+impl PartialEq<TokenType> for &Token {
+    //Implicitly compare a Token and a TokenType
+    fn eq(&self, tok: &TokenType) -> bool {
+        self.1.eq(tok)
+    }
+}
+
 impl From<Token> for TokenType {
     /// Convert a token to a TokenType
     fn from(tok: Token) -> Self {
@@ -416,7 +433,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         let mut ident = String::from(first); //Create a string from the first char given
         while match self.chars.peek() {
             //Push alphabetic characters to the string
-            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' => {
+            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' || c == &':' => {
                 ident.push(self.next_char().unwrap().unwrap());
                 true
             }
@@ -671,37 +688,5 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.token()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    pub fn lex_correct() {
-        let lexed = Lexer::new(&mut BufReader::new(b"fun(i32)")).into_vec();
-
-        assert_eq!(
-            lexed,
-            vec![
-                Token::new(
-                    &Pos::new(1, 3, "unnamed_buffer".to_owned()),
-                    TokenType::Key(Key::Fun)
-                ),
-                Token::new(
-                    &Pos::new(1, 4, "unnamed_buffer".to_owned()),
-                    TokenType::LeftBrace('(')
-                ),
-                Token::new(
-                    &Pos::new(1, 7, "unnamed_buffer".to_owned()),
-                    TokenType::Ident("i32".into())
-                ),
-                Token::new(
-                    &Pos::new(1, 8, "unnamed_buffer".to_owned()),
-                    TokenType::RightBrace(')')
-                ),
-            ],
-            "Lexer fails to lex tokens correctly"
-        )
     }
 }

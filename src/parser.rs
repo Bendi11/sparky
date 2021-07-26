@@ -42,6 +42,28 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     fn parse_decl(&mut self) -> ParseRes<AstPos> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::Key(Key::Fun)) => self.parse_fun(),
+            Token(_, TokenType::Key(Key::Use)) => {
+                let Token(pos, _) = self.toks.next().eof()?; 
+                let ns = self.expect_next_ident()?;
+                Ok(AstPos(Ast::Using(ns.parse().unwrap()), pos))
+            }
+
+            Token(_, TokenType::Key(Key::Ns)) => {
+                let Token(pos, _) = self.toks.next().eof()?;
+                let mut stmts = vec![];
+
+                let path = self.expect_next_ident()?.parse().unwrap();
+                self.expect_next(TokenType::LeftBrace('{'))?;
+
+                while self.toks.peek().eof()? != TokenType::RightBrace('}') {
+                    stmts.push(self.parse_decl()?);
+                }
+                self.toks.next();
+                Ok(AstPos(
+                    Ast::Ns(path, stmts),
+                    pos,
+                ))
+            }
 
             Token(_, TokenType::Key(Key::Struct)) => {
                 let Token(pos, _) = self.toks.next().eof()?; //Consume the struct keyword
@@ -543,14 +565,15 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
     /// Parse a function prototype or defintion
     fn parse_fun(&mut self) -> ParseRes<AstPos> {
+        let pos = self.toks.peek().eof()?.0.clone();
         let proto = self.parse_fun_proto()?;
-        match self.toks.peek().eof()? {
-            Token(pos, TokenType::LeftBrace('{')) => {
+        match self.toks.peek() {
+            Some(Token(pos, TokenType::LeftBrace('{'))) => {
                 let pos = pos.clone();
                 let body = self.parse_body()?;
                 Ok(AstPos(Ast::FunDef(proto, body), pos))
             }
-            Token(pos, _) => Ok(AstPos(Ast::FunProto(proto), pos.clone())),
+            Some(Token(_, _)) | None => Ok(AstPos(Ast::FunProto(proto), pos.clone())),
         }
     }
 

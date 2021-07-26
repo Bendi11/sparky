@@ -5,6 +5,7 @@ pub mod parser;
 pub mod types;
 use std::{ffi::OsStr, panic::PanicInfo, path::PathBuf, str::FromStr};
 
+use bumpalo::Bump;
 use clap::{App, AppSettings, Arg};
 use console::style;
 use inkwell::context::Context;
@@ -137,7 +138,7 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                         .truncate(true)
                         .open("sparkc.log")?,
                 )
-                .level(log::LevelFilter::Debug),
+                .level(verbosity),
         )
         .apply()?;
 
@@ -234,7 +235,7 @@ fn main() {
     let args = app.get_matches(); //Get argument matches from environment args
 
     match args.is_present("verbose") {
-        true => setup_logger(log::LevelFilter::max()),
+        true => setup_logger(log::LevelFilter::Trace),
         false => setup_logger(log::LevelFilter::Debug),
     }
     .unwrap();
@@ -296,11 +297,12 @@ fn main() {
         ast.extend(
             parser::Parser::new(lexer.into_iter())
                 .parse()
-                .unwrap_or_else(|e| panic!("Error when parsing: {}", e)),
+                .unwrap_or_else(|e| panic!("Error when parsing file {}: {}", filename, e)),
         ); //Parse the file and add it to the AST
     }
 
-    let compiler = Compiler::new(&ctx, "spark".to_owned());
+    let arena = Bump::new();
+    let compiler = Compiler::new(&ctx, &arena, "spark".to_owned());
     let name = opts.out_file.clone();
     match compiler.compile(ast, opts, linker::WinLink::default()) {
         Ok(()) => println!("{} compiled successfully!", name.display()),
