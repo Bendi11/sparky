@@ -88,7 +88,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Ast::StructDec(container) | Ast::UnionDec(container) => {
                     trace!(
                         "Generating initial opaque llvm type for struct/union type {}",
-                        container.name
+                        self.current_ns.get().qualify(&container.name)
                     );
                     let name = self.current_ns.get().qualify(&container.name).to_string();
                     let ty = self.ctx.opaque_struct_type(&name);
