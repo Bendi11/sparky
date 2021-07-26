@@ -177,7 +177,10 @@ impl<'a, 'c> Ns<'a, 'c> {
 
     /// Get the full path to this namespace
     fn path(&'a self, path: &mut Path) {
-        path.parts.push(self.name.clone());
+        if !self.name.is_empty() {
+            path.parts.push(self.name.clone());
+        }
+        
         match self.parent.borrow().as_ref() {
             Some(parent) => parent.path(path),
             None => *path = path.parts().rev().collect()
