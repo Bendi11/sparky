@@ -690,8 +690,8 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Iterator for Lexer<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    pub fn lex_correct() {
+    //#[test]
+    /*pub fn lex_correct() {
         let lexed = Lexer::new(&mut BufReader::new(b"fun(i32)")).into_vec();
 
         assert_eq!(
@@ -716,5 +716,5 @@ mod tests {
             ],
             "Lexer fails to lex tokens correctly"
         )
-    }
+    }*/
 }
