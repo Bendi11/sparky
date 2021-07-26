@@ -73,8 +73,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// Exit a certain amount of namepsaces by going one namespace up
     pub fn exit_ns(&self, depth: usize) {
         for _ in 0..depth {
-            self.current_ns
-                .set(self.current_ns.get().parent.borrow().as_ref().unwrap());
+            match self.current_ns.get().parent.borrow().as_ref() {
+                Some(parent) => self.current_ns.set(*parent),
+                None => break
+            }
+            
         }
     }
 
