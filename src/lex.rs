@@ -429,7 +429,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         let mut ident = String::from(first); //Create a string from the first char given
         while match self.chars.peek() {
             //Push alphabetic characters to the string
-            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' => {
+            Some(Ok(c)) if c.is_alphanumeric() || c == &'_' || c == &':' => {
                 ident.push(self.next_char().unwrap().unwrap());
                 true
             }
