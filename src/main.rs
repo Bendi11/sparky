@@ -138,7 +138,7 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                         .truncate(true)
                         .open("sparkc.log")?,
                 )
-                .level(log::LevelFilter::Debug),
+                .level(verbosity),
         )
         .apply()?;
 
@@ -235,7 +235,7 @@ fn main() {
     let args = app.get_matches(); //Get argument matches from environment args
 
     match args.is_present("verbose") {
-        true => setup_logger(log::LevelFilter::max()),
+        true => setup_logger(log::LevelFilter::Trace),
         false => setup_logger(log::LevelFilter::Debug),
     }
     .unwrap();

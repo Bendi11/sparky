@@ -12,7 +12,6 @@ pub enum Either<A, B> {
 
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Get a struct type from the given path
-    #[inline]
     pub fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
         let path: Path = name.as_ref().parse().unwrap();
         match self.current_ns.get().get_struct(path.clone()) {
@@ -77,8 +76,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     } 
 
     /// Get all type definitions and track them as opaque struct types
-    fn get_opaques(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
-        
+    fn get_opaques(&self, ast: Vec<AstPos>) -> Vec<AstPos> {     
         for node in ast.iter() {
             match node.ast() {
                 Ast::StructDec(container) | Ast::UnionDec(container) => {
@@ -203,14 +201,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
             match node.ast() {
                 Ast::FunProto(proto) => {
                     self.gen_fun_proto(&proto).unwrap();
-                    trace!("Generated function prototype {}", proto.name);
+                    trace!("Generated function prototype {}", self.current_ns.get().qualify(&proto.name));
                     
                 }
                 Ast::FunDef(proto, _) => {
                     self.gen_fun_proto(&proto).unwrap();
                     trace!(
                         "Generation function prototype for function definition {}",
-                        &proto.name
+                        self.current_ns.get().qualify(&proto.name)
                     );
                     ret.push(node);
                 }
