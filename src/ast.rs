@@ -122,6 +122,9 @@ pub enum Ast {
 
     /// A type definition aliasing an identifier to a typename
     TypeDef(String, Type),
+
+    /// A namespace declaration with further statements inside
+    Ns(Vec<String>, Vec<AstPos>),
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file

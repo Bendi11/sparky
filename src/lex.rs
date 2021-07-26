@@ -66,6 +66,9 @@ pub enum Key {
 
     /// The `false` keyword is used for the literal false value
     False,
+
+    /// The `ns` keyword is used to declare namespaces
+    Ns,
 }
 
 impl fmt::Display for Key {
@@ -87,6 +90,7 @@ impl fmt::Display for Key {
             Self::Static => write!(f, "static"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
+            Self::Ns => write!(f, "ns"),
         }
     }
 }
@@ -112,6 +116,7 @@ impl convert::TryFrom<&str> for Key {
             "static" => Ok(Self::Static),
             "true" => Ok(Self::True),
             "false" => Ok(Self::False),
+            "ns" => Ok(Self::Ns),
             _ => Err(()),
         }
     }
@@ -372,6 +377,14 @@ impl PartialEq<TokenType> for Token {
         self.1.eq(tok)
     }
 }
+
+impl PartialEq<TokenType> for &Token {
+    //Implicitly compare a Token and a TokenType
+    fn eq(&self, tok: &TokenType) -> bool {
+        self.1.eq(tok)
+    }
+}
+
 
 impl From<Token> for TokenType {
     /// Convert a token to a TokenType

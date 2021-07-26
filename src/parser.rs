@@ -43,6 +43,26 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::Key(Key::Fun)) => self.parse_fun(),
 
+            Token(_, TokenType::Key(Key::Ns)) => {
+                let Token(pos, _) = self.toks.next().eof()?;
+                let mut namespaces = vec![];
+                let mut stmts = vec![];
+
+                loop {
+                    match self.toks.next().eof()? {
+                        Token(_, TokenType::Ident(ident)) => namespaces.push(ident),
+                        Token(_, TokenType::Comma) => continue,
+                        Token(_, TokenType::LeftBrace('{')) => break,
+                        Token(pos, ty) => return Err(ParseErr::UnexpectedToken(pos, ty, vec![TokenType::Ident("".to_owned()), TokenType::Comma, TokenType::LeftBrace('{')])),
+                    }
+                }
+                while self.toks.peek().eof()? != TokenType::RightBrace('}') {
+                    stmts.push(self.parse_decl()?);
+                }   
+                self.toks.next();
+                Ok(AstPos(Ast::Ns(namespaces, stmts), pos))
+            }
+
             Token(_, TokenType::Key(Key::Struct)) => {
                 let Token(pos, _) = self.toks.next().eof()?; //Consume the struct keyword
                 let name = self.expect_next_ident()?;
