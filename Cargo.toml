@@ -17,6 +17,8 @@ inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", feat
 utf8-chars = "1" # For reading a BufReader character by character without reading entire file to string
 bitflags = "1.2" # For function and variable attributes
 
+bumpalo = "3.7" #  Keeping an arena of all namespaces and not making Rust complain
+
 [dev-dependencies]
 criterion = {version = "0.3", features = ["html_reports"] } # For benchmarking performance of compiler
 
