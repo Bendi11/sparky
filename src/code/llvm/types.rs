@@ -241,7 +241,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Ast::FunDef(proto, _) => {
                     self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
-                        "Generation function prototype for function definition {}",
+                        "Generating function prototype for function definition {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
                     ret.push(node);
