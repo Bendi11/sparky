@@ -4,7 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.other",
-			"match": "\\b(let|struct|union|fun)\\b"
+			"match": "\\b(let|struct|union|fun|ns)\\b"
 		},
 		{
 			"name": "keyword.control",
@@ -20,7 +20,7 @@
 		},
 		{
 			"name": "entity.name.class",
-			"match": "(?<=\\bstruct\\s+)\\w(\\w|_)*\\b"
+			"match": "(?<=\\bstruct\\s+)\\w(\\w|_|::)*\\b"
 		},
 		{
 			"name": "storage.modifier",
