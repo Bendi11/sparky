@@ -1,1 +1,1 @@
-**.sprk linguist-language=Rust
+std/**/*.sprk linguist-language=C++
