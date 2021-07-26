@@ -1,7 +1,7 @@
 //! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to
 //! LLVM types
 
-use crate::{ast::AstPos, code::ns::Path};
+use crate::{ast::AstPos, code::ns::Path, lex::Pos};
 
 use super::*;
 
@@ -108,7 +108,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Generate code for a function prototype
-    pub(super) fn gen_fun_proto(&self, proto: &FunProto) -> Result<FunctionValue<'c>, String> {
+    pub(super) fn gen_fun_proto(&self, proto: &FunProto, pos: &Pos) -> Result<FunctionValue<'c>, String> {
         let qualified = self.current_ns.get().qualify(&proto.name).to_string();
         if self.module.get_function(qualified.as_str()).is_some() {
             return Err(format!("Function {} defined twice", qualified));
@@ -126,7 +126,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     proto
                         .args
                         .iter()
-                        .map(|(ty, _)| self.llvm_type(ty))
+                        .map(|(ty, _)| self.llvm_type(ty, pos))
                         .collect::<Vec<_>>()
                         .as_slice(),
                     false,
@@ -147,11 +147,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     .qualify(&proto.name)
                     .to_string()
                     .as_str(),
-                self.llvm_type(&proto.ret).fn_type(
+                self.llvm_type(&proto.ret, pos).fn_type(
                     proto
                         .args
                         .iter()
-                        .map(|(ty, _)| self.llvm_type(ty))
+                        .map(|(ty, _)| self.llvm_type(ty, pos))
                         .collect::<Vec<_>>()
                         .as_slice(),
                     false,
@@ -183,7 +183,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     ty.set_body(
                         fields
                             .iter()
-                            .map(|(_, f)| self.llvm_type(f))
+                            .map(|(_, f)| self.llvm_type(f, &node.1))
                             .collect::<Vec<_>>()
                             .as_slice(),
                         true,
@@ -212,7 +212,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .iter()
                         .max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size()))
                         .expect("Union type with no fields!");
-                    ty.set_body(&[self.llvm_type(&largest.1)], false);
+                    ty.set_body(&[self.llvm_type(&largest.1, &node.1)], false);
                 }
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(&ns);
@@ -232,14 +232,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
         for node in ast {
             match node.ast() {
                 Ast::FunProto(proto) => {
-                    self.gen_fun_proto(&proto).unwrap();
+                    self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
                         "Generated function prototype {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
                 }
                 Ast::FunDef(proto, _) => {
-                    self.gen_fun_proto(&proto).unwrap();
+                    self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
                         "Generation function prototype for function definition {}",
                         self.current_ns.get().qualify(&proto.name)
@@ -275,21 +275,24 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Convert the AST types to LLVM types
-    pub fn llvm_type(&self, ty: &Type) -> BasicTypeEnum<'c> {
+    pub fn llvm_type(&self, ty: &Type, pos: &Pos) -> BasicTypeEnum<'c> {
         match ty {
             Type::Integer{
                 width, 
                 signed: _
             } => self.ctx.custom_width_int_type(*width as u32).as_basic_type_enum(),
-            Type::Ptr(internal) => self.llvm_type(internal).ptr_type(inkwell::AddressSpace::Generic).as_basic_type_enum(),
+            Type::Ptr(internal) => self.llvm_type(internal, pos).ptr_type(inkwell::AddressSpace::Generic).as_basic_type_enum(),
             Type::Union(u) => self.get_union(&u.name).unwrap_or_else(|| panic!("Failed to get unknown union type {}", u.name)).0.as_basic_type_enum(),
             Type::Struct(u) => self.get_struct(&u.name).unwrap_or_else(|| panic!("Failed to get unknown struct type {}", u.name)).0.as_basic_type_enum(),
             Type::Unknown(name) => match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
                 (Some(_), Some(_), _) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
                 (Some(u), _, _) => u.0.as_basic_type_enum(),
                 (_, Some(s), _) => s.0.as_basic_type_enum(),
-                (_, _, Some(ty)) => self.llvm_type(&ty),
-                (None, None, None) => panic!("Unknown union or struct type {}", name),
+                (_, _, Some(ty)) => self.llvm_type(&ty, pos),
+                (None, None, None) => {
+                    error!("{}: Unknown union or struct type {}", pos, name);
+                    panic!()
+                },
             },
             Type::Void => panic!("Cannot create void type in LLVM!"),
         }

@@ -329,7 +329,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     pub fn gen(&mut self, node: &AstPos, lval: bool) -> Option<AnyValueEnum<'c>> {
         match node.ast() {
             Ast::NumLiteral(ty, num) => Some(
-                self.llvm_type(ty)
+                self.llvm_type(ty, &node.1)
                     .into_int_type()
                     .const_int_from_string(num.as_str(), inkwell::types::StringRadix::Decimal)
                     .unwrap()
@@ -478,7 +478,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Some(br.as_any_value_enum())
             }
             Ast::VarDecl { ty, name, attrs: _ } => {
-                let var = self.entry_alloca(name.as_str(), self.llvm_type(ty));
+                let var = self.entry_alloca(name.as_str(), self.llvm_type(ty, &node.1));
                 self.vars.insert(name.clone(), (var, ty.clone()));
                 Some(var.as_any_value_enum())
             }
@@ -597,7 +597,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                                 return None;
                             }
                         };
-                        let field_ty = self.llvm_type(field_ty);
+                        let field_ty = self.llvm_type(field_ty, &node.1);
                         Some(match lval {
                             true => {
                                 let u = self.gen(val, true)?;
@@ -641,7 +641,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
             }
             Ast::Cast(expr, ty) => {
                 let lhs = self.gen(expr, false)?;
-                Some(match (lhs.get_type(), self.llvm_type(ty)) {
+                Some(match (lhs.get_type(), self.llvm_type(ty, &node.1)) {
                     (AnyTypeEnum::IntType(_), BasicTypeEnum::PointerType(ptr)) => self
                         .build
                         .build_int_to_ptr(lhs.into_int_value(), ptr, "int_to_ptr_cast")

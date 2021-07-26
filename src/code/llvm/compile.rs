@@ -7,17 +7,13 @@ use inkwell::{
     OptimizationLevel,
 };
 
-use crate::{
-    ast::{Ast, AstPos, FunProto},
-    code::linker::Linker,
-    CompileOpts, OutFormat,
-};
+use crate::{CompileOpts, OutFormat, ast::{Ast, AstPos, FunProto}, code::linker::Linker, lex::Pos};
 
 use super::{debug, error, Compiler};
 
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Generate code for a full function definition
-    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>) -> Option<()> {
+    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>, pos: &Pos) -> Option<()> {
         if self.current_fn.is_some() {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
             return None;
@@ -33,7 +29,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 .as_str(),
         ) {
             Some(f) => f,
-            None => self.gen_fun_proto(proto).unwrap(),
+            None => self.gen_fun_proto(proto, pos).unwrap(),
         };
         self.current_fn = Some(f);
         self.current_proto = Some(proto.clone());
@@ -45,7 +41,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
             let alloca = self.entry_alloca(
                 proto_arg.clone().unwrap_or("".to_owned()).as_str(),
-                self.llvm_type(ty),
+                self.llvm_type(ty, pos),
             );
             self.build.build_store(alloca, arg); //Store the initial value in the function parameters
 
@@ -80,7 +76,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         for node in ast {
             match node.0 {
                 Ast::FunDef(ref proto, ref body) => {
-                    if self.gen_fundef(proto, body).is_none() {
+                    if self.gen_fundef(proto, body, &node.1).is_none() {
                         err += 1
                     }
                 }
