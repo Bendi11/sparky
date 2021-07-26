@@ -69,6 +69,9 @@ pub enum Key {
 
     /// The `ns` keyword is used to declare namespaces
     Ns,
+
+    /// The `use` keyword is used to import namespaces
+    Use,
 }
 
 impl fmt::Display for Key {
@@ -91,6 +94,7 @@ impl fmt::Display for Key {
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
             Self::Ns => write!(f, "ns"),
+            Self::Use => write!(f, "use"),
         }
     }
 }
@@ -117,6 +121,7 @@ impl convert::TryFrom<&str> for Key {
             "true" => Ok(Self::True),
             "false" => Ok(Self::False),
             "ns" => Ok(Self::Ns),
+            "use" => Ok(Self::Use),
             _ => Err(()),
         }
     }

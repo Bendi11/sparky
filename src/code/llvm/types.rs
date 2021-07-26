@@ -254,7 +254,18 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .borrow_mut()
                         .insert(name.clone(), ty.clone());
                     trace!("Generated typedef {}", name);
-                }
+                },
+                Ast::Using(name) => {
+                    let ns = match self.root.get_ns(name.clone()) {
+                        Some(ns) => ns,
+                        None => {
+                            warn!("{}: Imported unknown namespace {}", &node.1, name);
+                            continue
+                        }
+                    };
+                    self.current_ns.get().nested.borrow_mut().insert(ns.name.clone(), ns);
+                    trace!("Imported namespace {} into namespace {}", name, self.current_ns.get().full_path())
+                },
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(&ns);
                     let stmts = self.scan_for_fns(stmts.clone());

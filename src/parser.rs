@@ -42,6 +42,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     fn parse_decl(&mut self) -> ParseRes<AstPos> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::Key(Key::Fun)) => self.parse_fun(),
+            Token(_, TokenType::Key(Key::Use)) => {
+                let Token(pos, _) = self.toks.next().eof()?; 
+                let ns = self.expect_next_ident()?;
+                Ok(AstPos(Ast::Using(ns.parse().unwrap()), pos))
+            }
 
             Token(_, TokenType::Key(Key::Ns)) => {
                 let Token(pos, _) = self.toks.next().eof()?;

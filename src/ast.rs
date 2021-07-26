@@ -125,6 +125,9 @@ pub enum Ast {
 
     /// A namespace declaration with further statements inside
     Ns(Path, Vec<AstPos>),
+
+    /// Importing a namespace into scope
+    Using(Path),
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file
