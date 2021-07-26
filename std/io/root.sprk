@@ -1,0 +1,23 @@
+fun ext GetStdHandle(i32) std::win::Handle
+fun ext WriteConsoleA(std::win::Handle, u8 ptr, i32, i32 ptr, u8 ptr) u8
+
+ns std::io {
+use std::win
+
+//Write a certain amount of bytes from a given memory address to stdout, returning
+//how many bytes were written
+fun write_stdout(u8 ptr buf, u64 len) i32 {
+    let std::win::Handle con = GetStdHandle(-11);
+    let i32 written = 0;
+    WriteConsoleA(con, buf, ({i32}len), (&written), {u8 ptr}0);
+    ret written;
+}
+
+//Write a NULL-terminated string to stdout, returning the number of bytes written
+//to the console
+fun puts(u8 ptr str) i32 {
+    let u32 len = std::str::null::strlen(str);
+    ret write_stdout(str, {u64}len);
+}
+
+}

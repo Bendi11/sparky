@@ -1,0 +1,7 @@
+ns std::win {
+
+struct Handle {
+    u8 ptr _raw
+}
+
+}

@@ -1,0 +1,68 @@
+ns std::io::fs {
+use std::str
+use std::win
+
+struct File {
+    std::win::Handle file
+}
+
+/// Open a file and return it as a File struct
+fun open_file(str::Str ptr file_name) File {
+    let win::Handle handle = CreateFileA(str::str_raw(file_name), 268435456i32, 0i32, {winstructs::SECURITY_ATTRIBUTES ptr}0, 2i32, 128i32, struct win::Handle {_raw = {u8 ptr}0});
+    if ({i64}handle._raw) == -1i64 {
+        std::io::puts("Failed to open file!\n");
+    };
+    ret struct File {
+        file = handle
+    };
+}
+
+/// Write a byte buffer to the file 
+fun write_file(File file, u8 ptr buf, u32 len) u32 {
+    let u32 written = 0;
+    std::io::puts("Writing ");
+    std::io::write_stdout(buf, {u64}len);
+    std::io::puts(" to file\n");
+    WriteFile(file.file, buf, len, &written, {u8 ptr}0);
+    ret written;
+}
+
+}
+
+ns std::io::fs::winstructs {
+
+struct SECURITY_ATTRIBUTES {
+    u32 nLength,
+    u8 ptr lpSecurityDescriptor,
+    u8 bInheritHandle
+}
+
+struct OFSTRUCT {
+    u8 cBytes,
+    u8 fFixedDisk,
+    u16 nErrCode,
+    u16 Reserved1,
+    u16 Reserved2,
+    u64 _pad1,
+    u64 _pad2,
+    u64 _pad3,
+    u64 _pad4,
+    u64 _pad5,
+    u64 _pad6,
+    u64 _pad7,
+    u64 _pad8,
+    u64 _pad9,
+    u64 _pad10,
+    u64 _pad11,
+    u64 _pad12,
+    u64 _pad13,
+    u64 _pad14,
+    u64 _pad15,
+    u64 _pad16
+}
+
+}
+
+fun ext OpenFile(u8 ptr, std::io::fs::winstructs::OFSTRUCT, u32) std::win::Handle
+fun ext WriteFile(std::win::Handle, u8 ptr, u32, u32 ptr, u8 ptr) u8
+fun ext CreateFileA(u8 ptr fname, i32 desiredaccess, i32 sharemode, std::io::fs::winstructs::SECURITY_ATTRIBUTES ptr lpSecurityAttributes, i32 creationDisposition, i32 flagsAndAttributes, std::win::Handle hTemplateFile) std::win::Handle

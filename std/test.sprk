@@ -1,0 +1,15 @@
+use std::str
+use std::io
+use std::io::fs
+
+fun main() i32 {
+    let str::Str str = str::str_new();
+
+    str::write_to_stdout(&str);
+    io::puts("Hello World!!!!!\n");
+
+    let str::Str file_name = str::str_from("test.txt");
+    let fs::File file = fs::open_file(&file_name);
+    fs::write_file(file, "Hello World!!!\n", str::null::strlen("Hello World!!!\n"));
+    ret 0;
+}

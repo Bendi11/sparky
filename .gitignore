@@ -5,7 +5,6 @@
 *.exe
 *.s
 *.c
-*.sprk
 *.log
 paths.txt
 .vscode
