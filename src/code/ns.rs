@@ -1,8 +1,9 @@
 //! Structs and functions for handling namespaces and getting contents from them
 
-use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, rc::Rc, str::FromStr};
+use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, str::FromStr};
 use hashbrown::HashMap;
 use inkwell::{types::StructType, values::FunctionValue};
+use log::debug;
 
 use crate::{Type, ast::FunProto, types::Container};
 
@@ -77,22 +78,22 @@ pub struct Ns<'a, 'c> {
     pub name: String,
 
     /// The parent of this namespace
-    pub parent: Rc<RefCell< Option<&'a Self> >>,
+    pub parent: RefCell< Option<&'a Self> >,
 
     /// A hash map of identifiers to defined struct types
-    pub struct_types: Rc<RefCell< HashMap<String, (StructType<'c>, Container)> >>,
+    pub struct_types: RefCell< HashMap<String, (StructType<'c>, Container)> >,
 
     /// A hash map of identifiers to defined union types
-    pub union_types: Rc<RefCell< HashMap<String, (StructType<'c>, Container)> >>,
+    pub union_types: RefCell< HashMap<String, (StructType<'c>, Container)> >,
 
     /// A map of function names to function prototypes
-    pub funs: Rc<RefCell< HashMap<String, (FunctionValue<'c>, FunProto)> >>,
+    pub funs: RefCell< HashMap<String, (FunctionValue<'c>, FunProto)> >,
 
     /// A map of user - defined type definitions to real types
-    pub typedefs: Rc<RefCell< HashMap<String, Type> >>,
+    pub typedefs: RefCell< HashMap<String, Type> >,
 
     /// Nested namespaces with interior mutability
-    pub nested: Rc<RefCell< HashMap<String, &'a Self> >>,
+    pub nested: RefCell< HashMap<String, &'a Self> >,
 }
 
 impl<'a, 'c> Ns<'a, 'c> {
@@ -100,12 +101,12 @@ impl<'a, 'c> Ns<'a, 'c> {
     pub fn new_empty(name: String) -> Self {
         Self {
             name, 
-            parent: Rc::new(RefCell::new(Default::default())),
-            struct_types: Rc::new(RefCell::new(Default::default())),
-            union_types: Rc::new(RefCell::new(Default::default())),
-            typedefs: Rc::new(RefCell::new(Default::default())),
-            funs: Rc::new(RefCell::new(Default::default())),
-            nested: Rc::new(RefCell::new(Default::default())),
+            parent: RefCell::new(Default::default()),
+            struct_types: RefCell::new(Default::default()),
+            union_types: RefCell::new(Default::default()),
+            typedefs: RefCell::new(Default::default()),
+            funs: RefCell::new(Default::default()),
+            nested: RefCell::new(Default::default()),
 
         }
     }
@@ -126,6 +127,7 @@ impl<'a, 'c> Ns<'a, 'c> {
     /// Add a child namespace to this namespace
     pub fn add_ns(&'a self, ns: &'a Self) {
         *ns.parent.borrow_mut() = Some(&self);
+        debug!("Adding child namespace {} to namespace {}", ns.name, self.full_path());
         self.nested.borrow_mut().insert(ns.name.clone(), ns);
     }
 

@@ -25,7 +25,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         let old_vars = self.vars.clone();
 
-        let f = match self.module.get_function(proto.name.as_str()) {
+        let f = match self.module.get_function(self.current_ns.get().qualify(&proto.name).to_string().as_str()) {
             Some(f) => f,
             None => self.gen_fun_proto(proto).unwrap(),
         };
@@ -68,17 +68,21 @@ impl<'a, 'c> Compiler<'a, 'c> {
         Some(())
     }
 
-    /// Generate all code for a LLVM module and return it
-    pub fn finish(mut self, ast: Vec<AstPos>) -> Result<Module<'c>, u16> {
-        let ast = self.scan_decls(ast);
+    /// Generate top level expressions in an AST
+    fn gen_top(&mut self, ast: Vec<AstPos>) -> Result<(), u16> {
         let mut err = 0;
         for node in ast {
-            match node.ast() {
+            match node.0 {
                 Ast::FunDef(ref proto, ref body) => {
                     if self.gen_fundef(proto, body).is_none() {
                         err += 1
                     }
-                }
+                },
+                Ast::Ns(ref path, stmts) => {
+                    self.enter_ns(path);
+                    self.gen_top(stmts)?;
+                    self.exit_ns(path.count());
+                },
                 other => {
                     error!("{}: Invalid top level expression {:?}", node.1, other);
                     err += 1;
@@ -87,8 +91,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
         match err > 0 {
             true => Err(err),
-            false => Ok(self.module),
+            false => Ok(())
         }
+    }
+
+    /// Generate all code for a LLVM module and return it
+    pub fn finish(mut self, ast: Vec<AstPos>) -> Result<Module<'c>, u16> {
+        let ast = self.scan_decls(ast);
+        self.gen_top(ast)?;
+        Ok(self.module)
     }
 
     /// Compile the code into an executable / library file

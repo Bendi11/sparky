@@ -33,12 +33,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Enter a new namespace or create one if the namespace doesn't exist
-    fn enter_ns(&self, ns: &Path) {
+    pub fn enter_ns(&self, ns: &Path) {
         let mut iter = ns.parts();
         loop {
             match iter.next() {
                 Some(name) => {
-                    match self.current_ns.get().nested.borrow().contains_key(name) {
+                    let contains = self.current_ns.get().nested.borrow().contains_key(name);
+                    match contains {
                         true => self.current_ns.set(self.current_ns.get().get_ns(name.parse().unwrap()).unwrap()),
                         false => {
                             let ns = self.arena.alloc(Ns::new_empty(name.clone()));
@@ -53,7 +54,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Exit a certain amount of namepsaces by going one namespace up
-    fn exit_ns(&self, depth: usize) {
+    pub fn exit_ns(&self, depth: usize) {
         for _ in 0..depth {
             self.current_ns.set(self.current_ns.get().parent.borrow().as_ref().unwrap());
         }
@@ -75,6 +76,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .insert(container.name.clone(), (ty, container.clone()));
                 },
                 Ast::Ns(ns, stmts) => {
+                    trace!("Entering namespace {}", ns);
                     self.enter_ns(&ns);
                     self.get_opaques(stmts.clone());
                     self.exit_ns(ns.count());
