@@ -219,21 +219,32 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .and_modify(|(_, c)| c.fields = Some(fields.clone()));
                 }
                 Ast::StructDec(_) => (),
-                Ast::UnionDec(con) => {
+                Ast::UnionDec(Container{name, fields: Some(fields)}) => {
                     let ty = self
                         .module
                         .get_struct_type(
                             self.current_ns
                                 .get()
-                                .qualify(&con.name)
+                                .qualify(&name)
                                 .to_string()
                                 .as_str(),
                         )
                         .unwrap();
-                    let largest = con
-                        .fields
-                        .as_ref()
-                        .unwrap()
+
+                    //Make sure no unknown types exist in struct body
+                    let fields: Vec<(String, Type)> = fields
+                        .iter()
+                        .map(|(name, ty)| match ty {
+                            Type::Unknown(_) => {
+                                (name.clone(), self.resolve_unknown(ty.clone(), &node.1))
+                            }
+                            ty => (name.clone(), ty.clone()),
+                        })
+                        .collect();
+                    trace!("Generating code for union {} body with fields {:?}", name, fields);
+
+                    
+                    let largest = fields
                         .iter()
                         .max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size()))
                         .expect("Union type with no fields!");

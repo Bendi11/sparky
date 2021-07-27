@@ -80,6 +80,19 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 }
             }
 
+            Token(_, TokenType::Key(Key::Union)) => {
+                let Token(pos, _) = self.toks.next().eof()?;
+                let name = self.expect_next_ident()?;
+                let body = self.parse_struct_def_body()?;
+                Ok(AstPos(
+                    Ast::UnionDec(Container {
+                        name,
+                        fields: Some(body),
+                    }),
+                    pos,
+                ))
+            },
+
             Token(pos, other) => Err(ParseErr::UnexpectedToken(
                 pos.clone(),
                 other.clone(),
