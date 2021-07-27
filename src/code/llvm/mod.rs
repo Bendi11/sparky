@@ -442,6 +442,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 true_block,
                 else_block,
             } => {
+                self.just_ret = false;
                 let cond = self.gen(&condition, false)?.into_int_value();
                 let fun = match self.current_fn {
                     Some(fun) => fun,
