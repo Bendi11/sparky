@@ -71,8 +71,8 @@ pub enum Ast {
     /// Cast an expression to a type
     Cast(Box<AstPos>, Type),
 
-    /// A struct or union field access
-    MemberAccess(Box<AstPos>, String),
+    /// A struct or union field access, plus wether to dereference the left hand side
+    MemberAccess(Box<AstPos>, String, bool),
 
     /// An associated function is being called on a value
     AssocFunAccess(Box<AstPos>, String, Vec<AstPos>),
@@ -155,7 +155,10 @@ impl AstPos {
             Ast::StructLiteral { name, fields: _ } => {
                 Type::Struct(compiler.get_struct(name)?.1)
             },
-            Ast::MemberAccess(first, item) => match first.get_type(compiler) {
+            Ast::MemberAccess(first, item, deref) => match match deref {
+                true => first.get_type(compiler).map(|ty| ty.deref_type().unwrap()),
+                false => first.get_type(compiler)
+            }  {
                 Some(Type::Struct(col)) | Some(Type::Union(col)) => match col
                     .fields
                     .unwrap()

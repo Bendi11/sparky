@@ -242,6 +242,9 @@ pub enum TokenType {
     /// The literal '.' character used for member method and variable access
     Dot,
 
+    /// The dereference left and member access operator
+    Arrow,
+
     /// Typename like i32 or u8, does not include attributes like ptr
     IntType(Type),
 
@@ -270,6 +273,7 @@ impl fmt::Display for TokenType {
             Self::Key(key) => write!(f, "Keyword: {}", key),
             Self::IntType(ty) => write!(f, "Typename: {}", ty),
             Self::Dot => write!(f, "Period"),
+            Self::Arrow => write!(f, "Arrow"),
         }
     }
 }
@@ -640,6 +644,10 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                             self.pos += (1, 0);
                             *self.pos.col_mut() = 0;
                             return self.token(); //Get the next token
+                        },
+                        ('-', '>') => {
+                            self.next_char();
+                            return Some(Token(self.pos.clone(), TokenType::Arrow))
                         }
                         _ => (),
                     }

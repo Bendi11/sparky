@@ -572,10 +572,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .as_any_value_enum(),
                 )
             }
-            Ast::MemberAccess(val, field) => {
-                let col = val
+            Ast::MemberAccess(val, field, deref) => {
+                let mut col = val
                     .get_type(self)
                     .expect("Failed to get type of lhs when accessing member of struct or union");
+
+                if *deref {
+                    col = col.deref_type().unwrap();
+                }
+
                 let (s_ty, is_struct) = match col {
                     Type::Struct(con) => (con, true),
                     Type::Union(con) => (con, false),
@@ -600,7 +605,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             .unwrap_or_else(|| {
                                 panic!("Struct type {} has no field named {}", s_ty.name, field)
                             });
-                        let s = self.gen(val, true)?;
+                        let mut s = self.gen(val, true)?;
+                        if *deref {
+                            s = self
+                                .build
+                                .build_load(s.into_pointer_value(), "deref_lhs_member_access")
+                                .as_any_value_enum()
+                        }
+
                         let field = self
                             .build
                             .build_struct_gep(

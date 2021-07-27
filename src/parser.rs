@@ -246,7 +246,12 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 if let Token(_, TokenType::Dot) = self.toks.peek().eof()? {
                     self.toks.next(); //Consume the token
                     let val = self.expect_next_ident()?; //Get the identifier from the next token
-                    prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val), pos.clone());
+                    prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val, false), pos.clone());
+                }
+                else if let Token(_, TokenType::Arrow) = self.toks.peek().eof()? {
+                    self.toks.next(); //Consume the token
+                    let val = self.expect_next_ident()?; //Get the identifier from the next token
+                    prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val, true), pos.clone());
                 }
 
                 if !matches!(prefix, AstPos(Ast::FunCall(_, _), _)) {
@@ -401,8 +406,13 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     Token(_, TokenType::Dot) => {
                         let Token(pos, _) = self.toks.next().eof()?; //Consume the token
                         let val = self.expect_next_ident()?; //Get the identifier from the next token
-                        Ok(AstPos(Ast::MemberAccess(Box::new(expr), val), pos))
-                    }
+                        Ok(AstPos(Ast::MemberAccess(Box::new(expr), val, false), pos))
+                    },
+                    Token(_, TokenType::Arrow) => {
+                        let Token(pos, _) = self.toks.next().eof()?; //Consume the token
+                        let val = self.expect_next_ident()?; //Get the identifier from the next token
+                        Ok(AstPos(Ast::MemberAccess(Box::new(expr), val, true), pos))
+                    },
                     _ => Ok(expr),
                 }
             }

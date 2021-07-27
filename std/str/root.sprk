@@ -47,7 +47,7 @@ fun str_from(u8 ptr str) Str {
 //Push a character to the string
 fun str_push(Str ptr str, u8 char) void {
     //Extend string storage if needed
-    if (*str)._cap == (*str).len {
+    if str->_cap == (*str).len {
         extend_cap(str, 10u32);
     };
 
