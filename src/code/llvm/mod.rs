@@ -1,7 +1,7 @@
 pub mod compile;
 pub mod types;
 use bumpalo::Bump;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
 use std::{cell::Cell, convert::TryFrom, ops::Deref};
 
 use crate::{
@@ -24,9 +24,6 @@ use super::ns::Ns;
 
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
 pub struct Compiler<'a, 'c> {
-    /// The name of the currently compiled module
-    name: String,
-
     /// The LLVM context
     ctx: &'c Context,
 
@@ -57,10 +54,9 @@ pub struct Compiler<'a, 'c> {
 
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Create a new `Compiler` from an LLVM context struct
-    pub fn new(ctx: &'c Context, arena: &'a Bump, name: String) -> Self {
+    pub fn new(ctx: &'c Context, arena: &'a Bump) -> Self {
         let root = arena.alloc(Ns::new_empty(String::new()));
         Self {
-            name,
             ctx,
             build: ctx.create_builder(),
             module: ctx.create_module("spark_llvm_module"),

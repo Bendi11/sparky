@@ -302,7 +302,7 @@ fn main() {
     }
 
     let arena = Bump::new();
-    let compiler = Compiler::new(&ctx, &arena, "spark".to_owned());
+    let compiler = Compiler::new(&ctx, &arena);
     let name = opts.out_file.clone();
     match compiler.compile(ast, opts, linker::WinLink::default()) {
         Ok(()) => println!("{} compiled successfully!", name.display()),
