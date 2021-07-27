@@ -45,6 +45,9 @@ pub struct Compiler<'a, 'c> {
     /// The function that we are currently generating code in
     current_fn: Option<FunctionValue<'c>>,
 
+    /// If we just wrote a return instruction
+    just_ret: bool,
+
     /// The signature of the current function
     current_proto: Option<FunProto>,
 
@@ -65,6 +68,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
             current_proto: None,
             arena,
             root,
+            just_ret: false,
             current_ns: Cell::new(root),
         }
     }
@@ -338,8 +342,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     .expect("Must be in a function to return from one!")
                     .ret
                 {
-                    Type::Void => Some(self.build.build_return(None).as_any_value_enum()),
-                    _ => {
+                    Type::Void => {
+                        self.just_ret = true;
+                        Some(self.build.build_return(None).as_any_value_enum())
+                    },
+                    ref ty => {
+                        let ty = ty.clone();
                         let ret = self.gen(&node.deref().as_ref().unwrap(), false)?;
                         if ret.get_type()
                             != self
@@ -350,11 +358,16 @@ impl<'a, 'c> Compiler<'a, 'c> {
                                 .unwrap()
                                 .as_any_type_enum()
                         {
-                            panic!(
-                                "In function {}: Returning the incorrect type",
-                                self.current_fn.unwrap().get_name().to_str().unwrap()
-                            )
+                            error!(
+                                "{}: In function {}: Returning the incorrect type: {} expected, {} returned",
+                                node.deref().as_ref().unwrap().1,
+                                self.current_fn.unwrap().get_name().to_str().unwrap(),
+                                ty,
+                                node.deref().as_ref().unwrap().get_type(self).unwrap()
+                            );
+                            return None
                         }
+                        self.just_ret = true;
                         Some(
                             self.build
                                 .build_return(Some(&BasicValueEnum::try_from(ret).unwrap()))
@@ -449,9 +462,18 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 self.build.position_at_end(true_bb);
                 for stmt in true_block {
                     self.gen(&stmt, false);
+                    if self.just_ret {
+                        break
+                    }
+                }
+                if !self.just_ret {
+                    self.build.build_unconditional_branch(after_bb);
+                } else {
+                    self.just_ret = false;
+                    trace!("Encountered an early return from an if block, so not inserting a jump");
                 }
                 //true_bb = self.build.get_insert_block().unwrap();
-                self.build.build_unconditional_branch(after_bb);
+                //self.build.build_unconditional_branch(after_bb);
 
                 self.build.position_at_end(false_bb);
 
@@ -459,8 +481,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     true => {
                         for stmt in else_block.as_ref().unwrap().iter() {
                             self.gen(&stmt, false);
+                            if self.just_ret {
+                                break
+                            }
                         }
-                        self.build.build_unconditional_branch(after_bb);
+                        if !self.just_ret {
+                            self.build.build_unconditional_branch(after_bb);
+                        } else {
+                            self.just_ret = false;
+                        }
                         //false_bb = self.build.get_insert_block().unwrap();
                     }
                     false => {
