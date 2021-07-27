@@ -511,24 +511,38 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 }
             },
             Ast::StructLiteral { name, fields } => {
-                let (ty, def) = self.get_struct(name).unwrap_or_else(|| {
-                    panic!(
-                        "Using unknown struct type {} when defining struct literal",
-                        name
-                    )
-                });
+                let (ty, def) = match self.get_struct(name) {
+                    Some((ty, def)) => (ty, def),
+                    None => { 
+                            error!(
+                                "{}: Using unknown struct type {} when defining struct literal",
+                                node.1,
+                                name
+                            );
+                        return None
+                    }
+                };
                 let ty = ty.clone();
                 let def = def.clone();
+
                 if def.fields.is_none() {
-                    panic!("Cannot have literal of opaque struct type {}", def.name)
+                    error!("{}: Cannot have literal of opaque struct type {}", node.1, def.name);
+                    return None
                 }
-                let def_fields = def.fields.as_ref().unwrap();
+                let def_fields = def.fields.as_ref().unwrap(); //Safe, we already checked that the struct is not opaque
 
                 let mut pos_vals = Vec::with_capacity(def_fields.len());
                 unsafe { pos_vals.set_len(def_fields.len()) };
                 for field in fields {
                     let pos = match def_fields.iter().position(|s| s.0 == field.0) {
-                        Some(pos) => pos,
+                        Some(pos) => {
+                            let ty = field.1.0.get_type(self)?.0;
+                            if def_fields[pos].1 != ty {
+                                error!("{}: In struct literal for type {}; incorrect type of field {}, {} expected but value of type {} given", node.1, name, def_fields[pos].0, def_fields[pos].1, ty);
+                                return None
+                            }
+                            pos
+                        }
                         None => {
                             error!(
                                 "{}: In struct literal for struct type {}: No field named {}",
