@@ -101,7 +101,7 @@ The operators and their purposes:
 
 <typename> ::= <inttype> | <ident> 
 <inttype> ::= ("i" | "u") ("8" | "16" | "32" | "64") | "bool"
-<var> ::= <ident> | <prefix> "." <ident> 
+<var> ::= <ident> | <prefix> ( "." | "->" ) <ident> 
 
 (*Prefix expressions are expressions that can come before a member access with the "." operator*)
 <prefix> ::= <var> | <funcall> | "(" <expr> ")"
