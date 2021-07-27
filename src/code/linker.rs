@@ -54,9 +54,9 @@ impl Default for WinLink {
         use std::fs;
         //Get the location of LINK.exe
         let linker_path = fs::read_dir(
-            r"C:\Program Files(x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC",
         )
-        .unwrap_or_else(|e| panic!("Failed to get location of LINK.EXE: {}", e))
+        .unwrap_or_else(|e| panic!("Failed to get location of Microsoft build tools: {}", e))
         .max_by(|this, next| {
             let this = this
                 .as_ref()

@@ -8,7 +8,6 @@ use crate::{
 
 use super::Type;
 use bitflags::bitflags;
-use inkwell::types::StructType;
 use log::debug;
 
 bitflags! {
@@ -141,26 +140,23 @@ impl AstPos {
     }
 }
 
-impl Ast {
+impl AstPos {
     /// Get the type of this expression, if any
-    pub fn get_type<'a, 'b, 'c, 'd>(
-        &'a self,
-        compiler: &'b mut Compiler<'d, 'c>,
-    ) -> Option<(Type, Option<StructType<'c>>)> {
-        match match self {
-            Self::FunCall(name, _) => compiler.get_fun(name)?.1.ret,
-            Self::VarDecl {
+    pub fn get_type<'a, 'b, 'c, 'd>(&'a self, compiler: &'b Compiler<'d, 'c>) -> Option<Type> {
+        let ty = match self.ast() {
+            Ast::FunCall(name, _) => compiler.get_fun(name)?.1.ret,
+            Ast::VarDecl {
                 name: _,
                 ty,
                 attrs: _,
             } => ty.clone(),
-            Self::Cast(_, ty) => ty.clone(),
-            Self::VarAccess(name) => compiler.vars.get(name)?.1.clone(),
-            Self::StructLiteral { name, fields: _ } => {
+            Ast::Cast(_, ty) => ty.clone(),
+            Ast::VarAccess(ref name) => compiler.vars.get(name)?.1.clone(),
+            Ast::StructLiteral { name, fields: _ } => {
                 Type::Struct(compiler.get_struct(name)?.1)
             },
-            Self::MemberAccess(first, item) => match first.0.get_type(compiler) {
-                Some((Type::Struct(col), _)) | Some((Type::Union(col), _)) => match col
+            Ast::MemberAccess(first, item) => match first.get_type(compiler) {
+                Some(Type::Struct(col)) | Some(Type::Union(col)) => match col
                     .fields
                     .unwrap()
                     .iter()
@@ -182,29 +178,44 @@ impl Ast {
                     return None
                 }
             },
-            Self::NumLiteral(ty, _) => ty.clone(),
-            Self::StrLiteral(_) => Type::Ptr(Box::new(Type::Integer {
+            Ast::NumLiteral(ty, _) => ty.clone(),
+            Ast::StrLiteral(_) => Type::Ptr(Box::new(Type::Integer {
                 width: 8,
                 signed: false,
             })), //char pointer for string literals
-            Self::Unary(op, val) => match op {
-                Op::Star => val.deref().0.get_type(compiler)?.0.deref_type()?,
-                Op::And => val.deref().0.get_type(compiler)?.0.ptr_type(),
+            Ast::Unary(op, val) => match op {
+                Op::Star => val.deref().get_type(compiler)?.deref_type()?,
+                Op::And => val.deref().get_type(compiler)?.ptr_type(),
                 _ => return None,
             },
-            Self::Bin(lhs, _, _) => return lhs.0.get_type(compiler),
+            Ast::Bin(lhs, _, _) => return lhs.get_type(compiler),
             _ => return None,
-        } {
-            Type::Unknown(name) => Some(match (compiler.get_struct(&name), compiler.get_union(&name), compiler.get_typedef(&name)) {
-                (Some((ty, c)), _, _) => (Type::Struct(c), Some(ty)),
-                (_, Some((ty, c)), _) => (Type::Union(c), Some(ty)),
-                (_, _, Some(ty)) => (ty, None),
-                (None, None, None) => {
-                    debug!("Failed to get type of prefix expression in member access because the struct, union or typedef'd type {} does not exist", name);
-                    return None
-                }
-            }),
-            other => Some((other, None))
+        };
+        //Resolve unknown types
+        Self::apply_ptr_ty(&ty, |ty| match ty {
+            Type::Unknown(name) => Some(
+                match (
+                    compiler.get_struct(&name),
+                    compiler.get_union(&name),
+                    compiler.get_typedef(&name),
+                ) {
+                    (Some((_, c)), _, _) => Type::Struct(c),
+                    (_, Some((_, c)), _) => Type::Union(c),
+                    (_, _, Some(ty)) => ty,
+                    (None, None, None) => {
+                        debug!("Failed to get type of prefix expression in member access because the struct, union or typedef'd type {} does not exist", name);
+                        return None;
+                    }
+                },
+            ),
+            other => Some(other.clone()),
+        })
+    }
+
+    fn apply_ptr_ty<'c, F: FnOnce(&Type) -> Option<Type>>(ty: &Type, op: F) -> Option<Type> {
+        match ty {
+            Type::Ptr(ty) => Self::apply_ptr_ty(ty, op).map(|ty| ty.ptr_type()),
+            other => op(other),
         }
     }
 }
