@@ -31,7 +31,9 @@ The keywords and their purposes are:
 - `const`: Attributes for variables and functions
 - `ext`: Mark a function or global variable as externally defined
 - `ptr`: Express a pointer type
-- `let`: Declare a variable whose type will be inferred
+- `let`: Declare a variable 
+- `ns`: Declare a namespace
+- `use`: Import a namespace into another namespace
 
 ## Operators
 The operators and their purposes: 
