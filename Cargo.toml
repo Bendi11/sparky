@@ -18,6 +18,7 @@ utf8-chars = "1" # For reading a BufReader character by character without readin
 bitflags = "1.2" # For function and variable attributes
 
 bumpalo = "3.7" # Bump arena allocator for namespaces
+semver = "1.0" # Finding the highest LINK.exe version on windows
 
 [dev-dependencies]
 criterion = {version = "0.3", features = ["html_reports"] } # For benchmarking performance of compiler
