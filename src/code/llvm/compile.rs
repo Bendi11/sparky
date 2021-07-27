@@ -18,7 +18,7 @@ use super::{debug, error, Compiler};
 
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Generate code for a full function definition
-    pub fn gen_fundef(&mut self, proto: &FunProto, body: &Vec<AstPos>, pos: &Pos) -> Option<()> {
+    pub fn gen_fundef(&mut self, proto: &FunProto, body: &[AstPos], pos: &Pos) -> Option<()> {
         if self.current_fn.is_some() {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
             return None;
@@ -45,7 +45,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         //Add argument names to the list of variables we can use
         for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
             let alloca = self.entry_alloca(
-                proto_arg.clone().unwrap_or("".to_owned()).as_str(),
+                proto_arg.clone().unwrap_or_else(String::new).as_str(),
                 self.llvm_type(ty, pos),
             );
             self.build.build_store(alloca, arg); //Store the initial value in the function parameters

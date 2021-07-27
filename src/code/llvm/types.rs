@@ -49,23 +49,18 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
     /// Enter a new namespace or create one if the namespace doesn't exist
     pub fn enter_ns(&self, ns: &Path) {
-        let mut iter = ns.parts();
-        loop {
-            match iter.next() {
-                Some(name) => {
-                    let contains = self.current_ns.get().nested.borrow().contains_key(name);
-                    match contains {
-                        true => self
-                            .current_ns
-                            .set(self.current_ns.get().get_ns(name.parse().unwrap()).unwrap()),
-                        false => {
-                            let ns = self.arena.alloc(Ns::new_empty(name.clone()));
-                            self.current_ns.get().add_ns(ns);
-                            self.current_ns.set(ns);
-                        }
-                    }
+        let iter = ns.parts();
+        for name in iter {
+            let contains = self.current_ns.get().nested.borrow().contains_key(name);
+            match contains {
+                true => self
+                    .current_ns
+                    .set(self.current_ns.get().get_ns(name.parse().unwrap()).unwrap()),
+                false => {
+                    let ns = self.arena.alloc(Ns::new_empty(name.clone()));
+                    self.current_ns.get().add_ns(ns);
+                    self.current_ns.set(ns);
                 }
-                None => break,
             }
         }
     }

@@ -402,7 +402,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         }).collect::<Option<Vec<_>>>()?;
                     Some(
                         self.build
-                            .build_call(f.clone(), args.as_ref(), "tmp_fncall")
+                            .build_call(f, args.as_ref(), "tmp_fncall")
                             .as_any_value_enum(),
                     )
                 }
@@ -418,7 +418,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             .map(|n| Some(BasicValueEnum::try_from(self.gen(&n, false)?).expect("Failed to convert any value enum to basic value enum when calling function"))).collect::<Option<Vec<_>>>()? );
                     Some(
                         self.build
-                            .build_call(f.clone(), real_args.as_ref(), "tmp_assoc_fncall")
+                            .build_call(f, real_args.as_ref(), "tmp_assoc_fncall")
                             .as_any_value_enum(),
                     )
                 }
@@ -508,7 +508,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 },
                 None => {
                     error!("{}: Accessing unknown variable {}", node.1, name,);
-                    return None;
+                    None
                 }
             },
             Ast::StructLiteral { name, fields } => {
@@ -522,8 +522,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         return None;
                     }
                 };
-                let ty = ty.clone();
-                let def = def.clone();
 
                 if def.fields.is_none() {
                     error!(

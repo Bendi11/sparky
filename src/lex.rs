@@ -506,9 +506,9 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                         &self.pos,
                         TokenType::NumLiteral(
                             match second {
-                                '\\' => '\\' as u8,
-                                'n' => '\n' as u8,
-                                't' => '\t' as u8,
+                                '\\' => b'\\',
+                                'n' => b'\n',
+                                't' => b'\t',
                                 other => {
                                     return Some(Token::new(
                                         &self.pos,
@@ -526,12 +526,12 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                     Token::new(&self.pos, TokenType::NumLiteral((first as u8).to_string()))
                 };
                 if self.next_char().and_then(|o| o.ok())? != '\'' {
-                    return Some(Token::new(
+                    Some(Token::new(
                         &self.pos,
                         TokenType::Error(
                             "Character literal missing terminating \' character".to_owned(),
                         ),
-                    ));
+                    ))
                 } else {
                     Some(character)
                 }
@@ -636,11 +636,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                         }
                         ('/', '/') => {
                             self.next_char();
-                            while match self.next_char() {
-                                Some(Ok('\n')) => false,
-                                None => false,
-                                _ => true,
-                            } {} //Skip the comment
+                            while !matches!(self.next_char(), Some(Ok('\n')) | None) {} //Skip the comment
                             self.pos += (1, 0);
                             *self.pos.col_mut() = 0;
                             return self.token(); //Get the next token

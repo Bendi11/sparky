@@ -29,11 +29,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     /// Parse a program full of declarations and defintions
     pub fn parse(mut self) -> ParseRes<Vec<AstPos>> {
         let mut body = Vec::new();
-        loop {
-            match self.toks.peek() {
-                Some(_) => body.push(self.parse_decl()?),
-                None => break,
-            }
+        while self.toks.peek().is_some() {
+            body.push(self.parse_decl()?)
         }
         Ok(body)
     }
@@ -73,12 +70,12 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                                 name,
                                 fields: Some(body),
                             }),
-                            pos.clone(),
+                            pos,
                         ))
                     }
                     _ => Ok(AstPos(
                         Ast::StructDec(Container { name, fields: None }),
-                        pos.clone(),
+                        pos,
                     )),
                 }
             }
@@ -175,7 +172,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let assigned = self.parse_expr()?; //Get the assigned value
                 Ok(AstPos(
                     Ast::Bin(Box::new(decl), Op::Assign, Box::new(assigned)),
-                    pos.clone(),
+                    pos,
                 ))
             }
             _ => Ok(decl),
@@ -231,7 +228,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 }
                 other => Err(ParseErr::UnexpectedToken(
                     pos.clone(),
-                    TokenType::Key(other.clone()),
+                    TokenType::Key(*other),
                     vec![
                         TokenType::Key(Key::If),
                         TokenType::Key(Key::Let),
@@ -245,15 +242,12 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let pos = pos.clone();
                 let mut prefix = self.parse_prefix()?;
 
-                match self.toks.peek().eof()? {
-                    //This is a member item access
-                    Token(_, TokenType::Dot) => {
-                        self.toks.next(); //Consume the token
-                        let val = self.expect_next_ident()?; //Get the identifier from the next token
-                        prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val), pos.clone());
-                    }
-                    _ => (),
-                };
+                //This is a member item access
+                if let Token(_, TokenType::Dot) = self.toks.peek().eof()? {
+                    self.toks.next(); //Consume the token
+                    let val = self.expect_next_ident()?; //Get the identifier from the next token
+                    prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val), pos.clone());
+                }
 
                 if !matches!(prefix, AstPos(Ast::FunCall(_, _), _)) {
                     self.expect_next(TokenType::Op(Op::Assign))?; //Expect the assignment operator
@@ -343,7 +337,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(_, TokenType::IntType(ty)) => {
                 let ty = ty.clone();
                 let Token(pos, _) = self.toks.next().eof()?;
-                Ok(AstPos(Ast::NumLiteral(ty.clone(), num), pos))
+                Ok(AstPos(Ast::NumLiteral(ty, num), pos))
             }
             _ => Ok(AstPos(
                 Ast::NumLiteral(
@@ -390,8 +384,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 Ok(expr)
             }
             Token(pos, TokenType::Ident(name)) => match self.toks.peek().eof()? {
-                Token(_, TokenType::LeftBrace('(')) => self.parse_funcall(name.clone()),
-                _ => Ok(AstPos(Ast::VarAccess(name.clone()), pos)),
+                Token(_, TokenType::LeftBrace('(')) => self.parse_funcall(name),
+                _ => Ok(AstPos(Ast::VarAccess(name), pos)),
             },
             _ => unreachable!(),
         }
@@ -424,7 +418,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
             //Unary expression
             Token(_, TokenType::Op(op)) => {
-                let op = op.clone();
+                let op = *op;
                 let Token(pos, _) = self.toks.next().eof()?; //Consume the operator
                 let expr = self.parse_expr()?; //Parse the expression that the unary operator is being applied to
                 Ok(AstPos(Ast::Unary(op, Box::new(expr)), pos))
@@ -489,7 +483,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         //Check for binary expressions
         match self.toks.peek().eof()? {
             Token(_, TokenType::Op(op)) => {
-                let op = op.clone();
+                let op = *op;
                 let Token(pos, _) = self.toks.next().eof()?; //Consume the operator
                 let rhs = self.parse_expr()?; //Parse the right hand side of the expression
                 Ok(AstPos(Ast::Bin(Box::new(lhs?), op, Box::new(rhs)), pos))
@@ -554,9 +548,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         let ret = self.parse_typename()?; //Parse the return type of the function
         Ok(FunProto {
             name,
+            ret,
             attrs,
             args,
-            ret,
         })
     }
 
@@ -570,7 +564,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let body = self.parse_body()?;
                 Ok(AstPos(Ast::FunDef(proto, body), pos))
             }
-            Some(Token(_, _)) | None => Ok(AstPos(Ast::FunProto(proto), pos.clone())),
+            Some(Token(_, _)) | None => Ok(AstPos(Ast::FunProto(proto), pos)),
         }
     }
 

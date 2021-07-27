@@ -3,7 +3,7 @@ pub mod code;
 pub mod lex;
 pub mod parser;
 pub mod types;
-use std::{ffi::OsStr, panic::PanicInfo, path::PathBuf, str::FromStr};
+use std::{panic::PanicInfo, path::PathBuf, str::FromStr};
 
 use bumpalo::Bump;
 use clap::{App, AppSettings, Arg};
@@ -263,9 +263,7 @@ fn main() {
                 std::fs::read_dir(path)
                     .unwrap()
                     .fold(list, |list, s| match s {
-                        Ok(entry)
-                            if entry.path().extension().unwrap_or(OsStr::new("")) == "sprk" =>
-                        {
+                        Ok(entry) if entry.path().extension().unwrap_or_default() == "sprk" => {
                             list.push(entry.path().to_str().unwrap().to_owned());
                             list
                         }
@@ -295,7 +293,7 @@ fn main() {
         let mut file = std::io::BufReader::new(std::fs::File::open(filename).unwrap()); //We can unwrap the file opening because all file names are validated by clap as being existing files
         let lexer = lex::Lexer::from_reader(&mut file, filename.clone());
         ast.extend(
-            parser::Parser::new(lexer.into_iter())
+            parser::Parser::new(lexer)
                 .parse()
                 .unwrap_or_else(|e| panic!("Error when parsing file {}: {}", filename, e)),
         ); //Parse the file and add it to the AST

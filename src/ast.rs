@@ -148,7 +148,7 @@ impl Ast {
         compiler: &'b mut Compiler<'d, 'c>,
     ) -> Option<(Type, Option<StructType<'c>>)> {
         match match self {
-            Self::FunCall(name, _) => compiler.get_fun(name)?.1.ret.clone(),
+            Self::FunCall(name, _) => compiler.get_fun(name)?.1.ret,
             Self::VarDecl {
                 name: _,
                 ty,
@@ -157,7 +157,7 @@ impl Ast {
             Self::Cast(_, ty) => ty.clone(),
             Self::VarAccess(name) => compiler.vars.get(name)?.1.clone(),
             Self::StructLiteral { name, fields: _ } => {
-                Type::Struct(compiler.get_struct(name)?.1.clone())
+                Type::Struct(compiler.get_struct(name)?.1)
             },
             Self::MemberAccess(first, item) => match first.0.get_type(compiler) {
                 Some((Type::Struct(col), _)) | Some((Type::Union(col), _)) => match col
