@@ -345,7 +345,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     Type::Void => {
                         self.just_ret = true;
                         Some(self.build.build_return(None).as_any_value_enum())
-                    },
+                    }
                     ref ty => {
                         let ty = ty.clone();
                         let ret = self.gen(&node.deref().as_ref().unwrap(), false)?;
@@ -365,7 +365,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                                 ty,
                                 node.deref().as_ref().unwrap().get_type(self).unwrap()
                             );
-                            return None
+                            return None;
                         }
                         self.just_ret = true;
                         Some(
@@ -464,7 +464,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 for stmt in true_block {
                     self.gen(&stmt, false);
                     if self.just_ret {
-                        break
+                        break;
                     }
                 }
                 if !self.just_ret {
@@ -483,7 +483,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         for stmt in else_block.as_ref().unwrap().iter() {
                             self.gen(&stmt, false);
                             if self.just_ret {
-                                break
+                                break;
                             }
                         }
                         if !self.just_ret {

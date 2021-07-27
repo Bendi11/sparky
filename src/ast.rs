@@ -142,7 +142,7 @@ impl AstPos {
 
 impl AstPos {
     /// Get the type of this expression, if any
-    pub fn get_type<'a, 'b, 'c, 'd>(&'a self, compiler: &'b Compiler<'d, 'c>) -> Option<Type> {
+    pub fn get_type(&self, compiler: &'_ Compiler<'_, '_>) -> Option<Type> {
         let ty = match self.ast() {
             Ast::FunCall(name, _) => compiler.get_fun(name)?.1.ret,
             Ast::VarDecl {
@@ -215,7 +215,7 @@ impl AstPos {
         })
     }
 
-    fn apply_ptr_ty<'c, F: FnOnce(&Type) -> Option<Type>>(ty: &Type, op: F) -> Option<Type> {
+    fn apply_ptr_ty<F: FnOnce(&Type) -> Option<Type>>(ty: &Type, op: F) -> Option<Type> {
         match ty {
             Type::Ptr(ty) => Self::apply_ptr_ty(ty, op).map(|ty| ty.ptr_type()),
             other => op(other),

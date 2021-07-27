@@ -644,10 +644,10 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                             self.pos += (1, 0);
                             *self.pos.col_mut() = 0;
                             return self.token(); //Get the next token
-                        },
+                        }
                         ('-', '>') => {
                             self.next_char();
-                            return Some(Token(self.pos.clone(), TokenType::Arrow))
+                            return Some(Token(self.pos.clone(), TokenType::Arrow));
                         }
                         _ => (),
                     }

@@ -247,8 +247,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     self.toks.next(); //Consume the token
                     let val = self.expect_next_ident()?; //Get the identifier from the next token
                     prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val, false), pos.clone());
-                }
-                else if let Token(_, TokenType::Arrow) = self.toks.peek().eof()? {
+                } else if let Token(_, TokenType::Arrow) = self.toks.peek().eof()? {
                     self.toks.next(); //Consume the token
                     let val = self.expect_next_ident()?; //Get the identifier from the next token
                     prefix = AstPos(Ast::MemberAccess(Box::new(prefix), val, true), pos.clone());
@@ -407,12 +406,12 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         let Token(pos, _) = self.toks.next().eof()?; //Consume the token
                         let val = self.expect_next_ident()?; //Get the identifier from the next token
                         Ok(AstPos(Ast::MemberAccess(Box::new(expr), val, false), pos))
-                    },
+                    }
                     Token(_, TokenType::Arrow) => {
                         let Token(pos, _) = self.toks.next().eof()?; //Consume the token
                         let val = self.expect_next_ident()?; //Get the identifier from the next token
                         Ok(AstPos(Ast::MemberAccess(Box::new(expr), val, true), pos))
-                    },
+                    }
                     _ => Ok(expr),
                 }
             }
