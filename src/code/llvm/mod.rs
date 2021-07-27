@@ -368,7 +368,25 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 }
             }
             Ast::FunCall(name, args) => match self.get_fun(&name) {
-                Some((f, _)) => {
+                Some((f, p)) => {
+                    //Do initial argument count length
+                    if p.args.len() != args.len() {
+                        error!("{}: Incorrect number of arguments passed to function {}; {} expected, {} passed", node.1, name, p.args.len(), args.len());
+                        return None
+                    }
+
+                    //Do type checking of function arguments
+                    for (i, (arg, (parg, _))) in args.iter().zip(p.args.iter()).enumerate() {
+                        if let Some((ref ty, _)) = arg.0.get_type(self) {
+                            if ty != parg {
+                                error!("{}: Incorrect type of argument {} in function call {}; {} expected, {} passed", arg.1, i + 1, p.name, parg, ty);
+                                return None
+                            }
+                        } else {
+                            error!("{}: Failed to get type of argument {} in function call {}", arg.1, i + 1, p.name);
+                            return None
+                        }
+                    }
                     let args = args
                         .iter()
                         .enumerate()
