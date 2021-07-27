@@ -7,7 +7,12 @@ use inkwell::{
     OptimizationLevel,
 };
 
-use crate::{CompileOpts, OutFormat, ast::{Ast, AstPos, FunProto}, code::linker::Linker, lex::Pos};
+use crate::{
+    ast::{Ast, AstPos, FunProto},
+    code::linker::Linker,
+    lex::Pos,
+    CompileOpts, OutFormat,
+};
 
 use super::{debug, error, Compiler};
 

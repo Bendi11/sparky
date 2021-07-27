@@ -43,7 +43,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         match self.toks.peek().eof()? {
             Token(_, TokenType::Key(Key::Fun)) => self.parse_fun(),
             Token(_, TokenType::Key(Key::Use)) => {
-                let Token(pos, _) = self.toks.next().eof()?; 
+                let Token(pos, _) = self.toks.next().eof()?;
                 let ns = self.expect_next_ident()?;
                 Ok(AstPos(Ast::Using(ns.parse().unwrap()), pos))
             }
@@ -59,10 +59,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     stmts.push(self.parse_decl()?);
                 }
                 self.toks.next();
-                Ok(AstPos(
-                    Ast::Ns(path, stmts),
-                    pos,
-                ))
+                Ok(AstPos(Ast::Ns(path, stmts), pos))
             }
 
             Token(_, TokenType::Key(Key::Struct)) => {

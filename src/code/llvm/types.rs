@@ -75,9 +75,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
         for _ in 0..depth {
             match self.current_ns.get().parent.borrow().as_ref() {
                 Some(parent) => self.current_ns.set(*parent),
-                None => break
+                None => break,
             }
-            
         }
     }
 
@@ -111,7 +110,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Generate code for a function prototype
-    pub(super) fn gen_fun_proto(&self, proto: &FunProto, pos: &Pos) -> Result<FunctionValue<'c>, String> {
+    pub(super) fn gen_fun_proto(
+        &self,
+        proto: &FunProto,
+        pos: &Pos,
+    ) -> Result<FunctionValue<'c>, String> {
         let qualified = self.current_ns.get().qualify(&proto.name).to_string();
         if self.module.get_function(qualified.as_str()).is_some() {
             return Err(format!("Function {} defined twice", qualified));
@@ -257,18 +260,26 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .borrow_mut()
                         .insert(name.clone(), ty.clone());
                     trace!("Generated typedef {}", name);
-                },
+                }
                 Ast::Using(name) => {
                     let ns = match self.root.get_ns(name.clone()) {
                         Some(ns) => ns,
                         None => {
                             warn!("{}: Imported unknown namespace {}", &node.1, name);
-                            continue
+                            continue;
                         }
                     };
-                    self.current_ns.get().nested.borrow_mut().insert(ns.name.clone(), ns);
-                    trace!("Imported namespace {} into namespace {}", name, self.current_ns.get().full_path())
-                },
+                    self.current_ns
+                        .get()
+                        .nested
+                        .borrow_mut()
+                        .insert(ns.name.clone(), ns);
+                    trace!(
+                        "Imported namespace {} into namespace {}",
+                        name,
+                        self.current_ns.get().full_path()
+                    )
+                }
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(&ns);
                     let stmts = self.scan_for_fns(stmts.clone());

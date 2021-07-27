@@ -368,7 +368,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     //Do initial argument count length
                     if p.args.len() != args.len() {
                         error!("{}: Incorrect number of arguments passed to function {}; {} expected, {} passed", node.1, name, p.args.len(), args.len());
-                        return None
+                        return None;
                     }
 
                     //Do type checking of function arguments
@@ -376,11 +376,16 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         if let Some((ref ty, _)) = arg.0.get_type(self) {
                             if ty != parg {
                                 error!("{}: Incorrect type of argument {} in function call {}; {} expected, {} passed", arg.1, i + 1, p.name, parg, ty);
-                                return None
+                                return None;
                             }
                         } else {
-                            error!("{}: Failed to get type of argument {} in function call {}", arg.1, i + 1, p.name);
-                            return None
+                            error!(
+                                "{}: Failed to get type of argument {} in function call {}",
+                                arg.1,
+                                i + 1,
+                                p.name
+                            );
+                            return None;
                         }
                     }
                     let args = args
@@ -509,21 +514,23 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Ast::StructLiteral { name, fields } => {
                 let (ty, def) = match self.get_struct(name) {
                     Some((ty, def)) => (ty, def),
-                    None => { 
-                            error!(
-                                "{}: Using unknown struct type {} when defining struct literal",
-                                node.1,
-                                name
-                            );
-                        return None
+                    None => {
+                        error!(
+                            "{}: Using unknown struct type {} when defining struct literal",
+                            node.1, name
+                        );
+                        return None;
                     }
                 };
                 let ty = ty.clone();
                 let def = def.clone();
 
                 if def.fields.is_none() {
-                    error!("{}: Cannot have literal of opaque struct type {}", node.1, def.name);
-                    return None
+                    error!(
+                        "{}: Cannot have literal of opaque struct type {}",
+                        node.1, def.name
+                    );
+                    return None;
                 }
                 let def_fields = def.fields.as_ref().unwrap(); //Safe, we already checked that the struct is not opaque
 
@@ -532,10 +539,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 for field in fields {
                     let pos = match def_fields.iter().position(|s| s.0 == field.0) {
                         Some(pos) => {
-                            let ty = field.1.0.get_type(self)?.0;
+                            let ty = field.1 .0.get_type(self)?.0;
                             if def_fields[pos].1 != ty {
                                 error!("{}: In struct literal for type {}; incorrect type of field {}, {} expected but value of type {} given", node.1, name, def_fields[pos].0, def_fields[pos].1, ty);
-                                return None
+                                return None;
                             }
                             pos
                         }
