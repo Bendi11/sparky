@@ -18,12 +18,12 @@ fun str_new() Str {
 
 //Get the string's contents as a NULL-terminated C-style string
 fun str_raw(Str ptr str) u8 ptr {
-    if (*str)._cap == (*str).len {
+    if str->_cap == (*str).len {
         extend_cap(str, 1u32);
     };
 
-    ((*std::alloc::ptr_off_add((*str)._raw, ({u64}(*str).len)))) = 0u8;
-    ret (*str)._raw;
+    ((*std::alloc::ptr_off_add(str->_raw, ({u64}str->len)))) = 0u8;
+    ret str->_raw;
 }
 
 //Use an existing NULL-terminated string to fill a string's contents
@@ -51,23 +51,23 @@ fun str_push(Str ptr str, u8 char) void {
         extend_cap(str, 10u32);
     };
 
-    let u8 ptr next = std::alloc::ptr_off_add( (*str)._raw, ({u64}(*str).len));
+    let u8 ptr next = std::alloc::ptr_off_add( str->_raw, ({u64}str->len));
     (*next) = char;
-    (*str).len = (*str).len + 1u32;
+    str->len = str->len + 1u32;
     ret;
 }
 
 //Extend the internal capacity of this string
 fun extend_cap(Str ptr str, u32 count) void {
-    (*str)._cap = (*str)._cap + count;
-    (*str)._raw = std::alloc::realloc((*str)._raw, {u64}( (*str)._cap));
+    str->_cap = str->_cap + count;
+    str->_raw = std::alloc::realloc(str->_raw, {u64}(str->_cap));
     std::io::puts("Reallocated string data!\n");
     ret;
 }
 
 //Write a string's contents to stdout
 fun write_to_stdout(Str ptr str) void {
-    std::io::write_stdout((*str)._raw, {u64}(*str).len);
+    std::io::write_stdout(str->_raw, {u64}str->len);
     ret;
 }
 
