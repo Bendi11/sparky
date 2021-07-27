@@ -1,6 +1,6 @@
 [package]
 name = "sparkc"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
 
@@ -32,6 +32,10 @@ harness = false
 name = "parse"
 path = "benches/parse.rs"
 harness = false
+
+[profile.release]
+codegen-units = 1
+panic = 'abort'
 
 
 [profile.bench]
