@@ -580,10 +580,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     Type::Struct(con) => (con, true),
                     Type::Union(con) => (con, false),
                     other => {
-                        error!("{}: Cannot access member {} of non-struct or union type", node.1, field);
+                        error!(
+                            "{}: Cannot access member {} of non-struct or union type",
+                            node.1, field
+                        );
                         debug!("Cannot generate code for member access expression because the prefix type is {:?}", other);
-                        return None
-                    },
+                        return None;
+                    }
                 };
 
                 match is_struct {

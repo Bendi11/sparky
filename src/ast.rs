@@ -1,10 +1,13 @@
 use std::ops::Deref;
 
-use crate::{code::{ns::Path, Compiler}, lex::{Op, Pos}, types::{self, Container}};
+use crate::{
+    code::{ns::Path, Compiler},
+    lex::{Op, Pos},
+    types,
+};
 
 use super::Type;
 use bitflags::bitflags;
-use inkwell::types::StructType;
 use log::debug;
 
 bitflags! {
@@ -139,10 +142,7 @@ impl AstPos {
 
 impl AstPos {
     /// Get the type of this expression, if any
-    pub fn get_type<'a, 'b, 'c, 'd>(
-        &'a self,
-        compiler: &'b Compiler<'d, 'c>,
-    ) -> Option<Type> {
+    pub fn get_type<'a, 'b, 'c, 'd>(&'a self, compiler: &'b Compiler<'d, 'c>) -> Option<Type> {
         let ty = match self.ast() {
             Ast::FunCall(name, _) => compiler.get_fun(name)?.1.ret,
             Ast::VarDecl {
@@ -193,23 +193,29 @@ impl AstPos {
         };
         //Resolve unknown types
         Self::apply_ptr_ty(&ty, |ty| match ty {
-            Type::Unknown(name) => Some(match (compiler.get_struct(&name), compiler.get_union(&name), compiler.get_typedef(&name)) {
-                (Some((ty, c)), _, _) => Type::Struct(c),
-                (_, Some((ty, c)), _) => Type::Union(c),
-                (_, _, Some(ty)) => ty,
-                (None, None, None) => {
-                    debug!("Failed to get type of prefix expression in member access because the struct, union or typedef'd type {} does not exist", name);
-                    return None
-                }
-            }),
-            other => Some(other.clone())
+            Type::Unknown(name) => Some(
+                match (
+                    compiler.get_struct(&name),
+                    compiler.get_union(&name),
+                    compiler.get_typedef(&name),
+                ) {
+                    (Some((_, c)), _, _) => Type::Struct(c),
+                    (_, Some((_, c)), _) => Type::Union(c),
+                    (_, _, Some(ty)) => ty,
+                    (None, None, None) => {
+                        debug!("Failed to get type of prefix expression in member access because the struct, union or typedef'd type {} does not exist", name);
+                        return None;
+                    }
+                },
+            ),
+            other => Some(other.clone()),
         })
     }
 
     fn apply_ptr_ty<'c, F: FnOnce(&Type) -> Option<Type>>(ty: &Type, op: F) -> Option<Type> {
         match ty {
             Type::Ptr(ty) => Self::apply_ptr_ty(ty, op).map(|ty| ty.ptr_type()),
-            other => op(other)
+            other => op(other),
         }
     }
 }

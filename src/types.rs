@@ -92,29 +92,82 @@ impl Type {
 impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Integer{signed, width}, Self::Integer{signed: osigned, width: owidth}) 
-                if (signed == osigned) && (width == owidth) => true,
+            (
+                Self::Integer { signed, width },
+                Self::Integer {
+                    signed: osigned,
+                    width: owidth,
+                },
+            ) if (signed == osigned) && (width == owidth) => true,
             (Self::Void, Self::Void) => true,
             (Self::Ptr(ty), Self::Ptr(oty)) => ty.eq(oty),
 
-            (Self::Union(c), Self::Union(oc)) 
-                if c == oc => true,
-            (Self::Struct(c), Self::Struct(oc))
-                if c == oc => true,
-            
+            (Self::Union(c), Self::Union(oc)) if c == oc => true,
+            (Self::Struct(c), Self::Struct(oc)) if c == oc => true,
+
             //Named the same thing is considered equal
             (Self::Unknown(name), Self::Struct(oc))
-                if <Path as std::str::FromStr>::from_str(name).unwrap().last().unwrap() == <Path as std::str::FromStr>::from_str(&oc.name).unwrap().last().unwrap() => true,
+                if <Path as std::str::FromStr>::from_str(name)
+                    .unwrap()
+                    .last()
+                    .unwrap()
+                    == <Path as std::str::FromStr>::from_str(&oc.name)
+                        .unwrap()
+                        .last()
+                        .unwrap() =>
+            {
+                true
+            }
             (Self::Struct(c), Self::Unknown(name))
-                if <Path as std::str::FromStr>::from_str(name).unwrap().last().unwrap() == <Path as std::str::FromStr>::from_str(&c.name).unwrap().last().unwrap() => true,
+                if <Path as std::str::FromStr>::from_str(name)
+                    .unwrap()
+                    .last()
+                    .unwrap()
+                    == <Path as std::str::FromStr>::from_str(&c.name)
+                        .unwrap()
+                        .last()
+                        .unwrap() =>
+            {
+                true
+            }
             (Self::Unknown(name), Self::Union(oc))
-                if <Path as std::str::FromStr>::from_str(name).unwrap().last().unwrap() == <Path as std::str::FromStr>::from_str(&oc.name).unwrap().last().unwrap() => true,
+                if <Path as std::str::FromStr>::from_str(name)
+                    .unwrap()
+                    .last()
+                    .unwrap()
+                    == <Path as std::str::FromStr>::from_str(&oc.name)
+                        .unwrap()
+                        .last()
+                        .unwrap() =>
+            {
+                true
+            }
             (Self::Union(c), Self::Unknown(name))
-                if <Path as std::str::FromStr>::from_str(name).unwrap().last().unwrap() == <Path as std::str::FromStr>::from_str(&c.name).unwrap().last().unwrap() => true,
+                if <Path as std::str::FromStr>::from_str(name)
+                    .unwrap()
+                    .last()
+                    .unwrap()
+                    == <Path as std::str::FromStr>::from_str(&c.name)
+                        .unwrap()
+                        .last()
+                        .unwrap() =>
+            {
+                true
+            }
             (Self::Unknown(name), Self::Unknown(oname))
-                if <Path as std::str::FromStr>::from_str(name).unwrap().last().unwrap() == <Path as std::str::FromStr>::from_str(oname).unwrap().last().unwrap() => true,
+                if <Path as std::str::FromStr>::from_str(name)
+                    .unwrap()
+                    .last()
+                    .unwrap()
+                    == <Path as std::str::FromStr>::from_str(oname)
+                        .unwrap()
+                        .last()
+                        .unwrap() =>
+            {
+                true
+            }
 
-            (_, _) => false
+            (_, _) => false,
         }
     }
 }

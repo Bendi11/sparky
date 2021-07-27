@@ -93,7 +93,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     self.get_opaques(stmts.clone());
                     self.exit_ns(ns.count());
                 }
-                
+
                 _ => (),
             }
         }
@@ -106,7 +106,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
         proto: &FunProto,
         pos: &Pos,
     ) -> Result<FunctionValue<'c>, String> {
-
         let qualified = self.current_ns.get().qualify(&proto.name).to_string();
         if self.module.get_function(qualified.as_str()).is_some() {
             return Err(format!("Function {} defined twice", qualified));
@@ -181,7 +180,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Type::Ptr(ty) => self.resolve_unknown(*ty, pos).ptr_type(),
             other => other
         }
-        
     }
 
     /// Get all types and fill the struct bodies
@@ -193,12 +191,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     name,
                     fields: Some(fields),
                 }) => {
-                    
-                    let (ty, col) = self.get_struct(name).unwrap();
-                    /*let ty = self
-                        .module
-                        .get_struct_type(self.current_ns.get().qualify(name).to_string().as_str())
-                        .unwrap();*/
+                    let (ty, _) = self.get_struct(name).unwrap();
                     ty.set_body(
                         fields
                             .iter()
@@ -209,19 +202,21 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     );
 
                     //Make sure no unknown types exist in struct body
-                    let fields: Vec<(String, Type)> = fields.iter().map(|(name, ty)| {
-                        match ty {
-                            Type::Unknown(_) => (name.clone(), self.resolve_unknown(ty.clone(), &node.1)),
+                    let fields: Vec<(String, Type)> = fields
+                        .iter()
+                        .map(|(name, ty)| match ty {
+                            Type::Unknown(_) => {
+                                (name.clone(), self.resolve_unknown(ty.clone(), &node.1))
+                            }
                             ty => (name.clone(), ty.clone()),
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     trace!("Generating struct {} body with fields {:?}", name, fields);
 
                     let mut types = self.current_ns.get().struct_types.borrow_mut();
-                    //let (_, col) = types.get_mut(name).unwrap();
-                    types.entry(name.to_string()).and_modify(|(_, c)| c.fields = Some(fields.clone()));
-                    
-                    //col.fields = Some(fields.clone());
+                    types
+                        .entry(name.to_string())
+                        .and_modify(|(_, c)| c.fields = Some(fields.clone()));
                 }
                 Ast::StructDec(_) => (),
                 Ast::UnionDec(con) => {
@@ -320,13 +315,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         name,
                         self.current_ns.get().full_path()
                     )
-                },
+                }
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(&ns);
                     let stmts = self.get_using(stmts.clone());
                     self.exit_ns(ns.count());
                     ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
-                },
+                }
                 _ => ret.push(node),
             }
         }
