@@ -5,11 +5,6 @@ use crate::{ast::AstPos, code::ns::Path, lex::Pos};
 
 use super::*;
 
-pub enum Either<A, B> {
-    This(A),
-    That(B),
-}
-
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Get a struct type from the given path
     pub fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
@@ -98,6 +93,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     self.get_opaques(stmts.clone());
                     self.exit_ns(ns.count());
                 }
+                
                 _ => (),
             }
         }
@@ -110,6 +106,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         proto: &FunProto,
         pos: &Pos,
     ) -> Result<FunctionValue<'c>, String> {
+
         let qualified = self.current_ns.get().qualify(&proto.name).to_string();
         if self.module.get_function(qualified.as_str()).is_some() {
             return Err(format!("Function {} defined twice", qualified));
@@ -168,6 +165,25 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
     }
 
+    /// Resolve unknown types to struct, union, or typedef'd types
+    pub fn resolve_unknown(&self, ty: Type, pos: &Pos) -> Type {
+        match ty {
+            Type::Unknown(ref name)=> match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
+                (Some(_), Some(_), _) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
+                (Some(u), _, _) => Type::Union(u.1),
+                (_, Some(s), _) => Type::Struct(s.1),
+                (_, _, Some(ty)) => ty,
+                (None, None, None) => {
+                    error!("{}: Unknown union or struct type {}", pos, name);
+                    panic!()
+                },
+            },
+            Type::Ptr(ty) => self.resolve_unknown(*ty, pos).ptr_type(),
+            other => other
+        }
+        
+    }
+
     /// Get all types and fill the struct bodies
     pub fn get_type_bodies(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         let mut ret = Vec::with_capacity(ast.len() / 2);
@@ -177,10 +193,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     name,
                     fields: Some(fields),
                 }) => {
-                    let ty = self
+                    trace!("Generating struct {} body with fields {:?}", name, fields);
+                    let (ty, col) = self.get_struct(name).unwrap();
+                    /*let ty = self
                         .module
                         .get_struct_type(self.current_ns.get().qualify(name).to_string().as_str())
-                        .unwrap();
+                        .unwrap();*/
                     ty.set_body(
                         fields
                             .iter()
@@ -189,10 +207,20 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             .as_slice(),
                         true,
                     );
+
+                    //Make sure no unknown types exist in struct body
+                    let fields: Vec<(String, Type)> = fields.iter().map(|(name, ty)| {
+                        match ty {
+                            Type::Unknown(name) => (name.clone(), self.resolve_unknown(ty.clone(), &node.1)),
+                            ty => (name.clone(), ty.clone()),
+                        }
+                    }).collect();
+
                     let mut types = self.current_ns.get().struct_types.borrow_mut();
-                    let (_, col) = types.get_mut(name).unwrap();
-                    trace!("Generating struct {} body with fields {:?}", name, fields);
-                    col.fields = Some(fields.clone());
+                    //let (_, col) = types.get_mut(name).unwrap();
+                    types.entry(name.to_string()).and_modify(|(_, c)| c.fields = Some(fields.clone()));
+                    
+                    //col.fields = Some(fields.clone());
                 }
                 Ast::StructDec(_) => (),
                 Ast::UnionDec(con) => {
@@ -256,6 +284,23 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .insert(name.clone(), ty.clone());
                     trace!("Generated typedef {}", name);
                 }
+                Ast::Ns(ns, stmts) => {
+                    self.enter_ns(&ns);
+                    let stmts = self.scan_for_fns(stmts.clone());
+                    self.exit_ns(ns.count());
+                    ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
+                }
+                _ => ret.push(node),
+            }
+        }
+        ret
+    }
+
+    /// Get all `using` directives after finding all namespaces
+    fn get_using(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
+        let mut ret = Vec::with_capacity(ast.len());
+        for node in ast {
+            match node.ast() {
                 Ast::Using(name) => {
                     let ns = match self.root.get_ns(name.clone()) {
                         Some(ns) => ns,
@@ -274,13 +319,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         name,
                         self.current_ns.get().full_path()
                     )
-                }
+                },
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(&ns);
-                    let stmts = self.scan_for_fns(stmts.clone());
+                    let stmts = self.get_using(stmts.clone());
                     self.exit_ns(ns.count());
                     ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
-                }
+                },
                 _ => ret.push(node),
             }
         }
@@ -290,6 +335,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// Walk the AST and get any declared types or functions
     pub fn scan_decls(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         let ast = self.get_opaques(ast);
+        let ast = self.get_using(ast);
         let ast = self.get_type_bodies(ast);
         self.scan_for_fns(ast)
     }
@@ -302,10 +348,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 signed: _
             } => self.ctx.custom_width_int_type(*width as u32).as_basic_type_enum(),
             Type::Ptr(internal) => self.llvm_type(internal, pos).ptr_type(inkwell::AddressSpace::Generic).as_basic_type_enum(),
-            Type::Union(u) => self.get_union(&u.name).unwrap_or_else(|| panic!("Failed to get unknown union type {}", u.name)).0.as_basic_type_enum(),
-            Type::Struct(u) => self.get_struct(&u.name).unwrap_or_else(|| panic!("Failed to get unknown struct type {}", u.name)).0.as_basic_type_enum(),
+            Type::Union(u) => self.get_union(&u.name).unwrap_or_else(|| panic!("{}: Failed to get unknown union type {}", pos, u.name)).0.as_basic_type_enum(),
+            Type::Struct(u) => self.get_struct(&u.name).unwrap_or_else(|| panic!("{}: Failed to get unknown struct type {}", pos, u.name)).0.as_basic_type_enum(),
             Type::Unknown(name) => match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
-                (Some(_), Some(_), _) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
+                (Some(_), Some(_), _) => panic!("{}: Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", pos, name),
                 (Some(u), _, _) => u.0.as_basic_type_enum(),
                 (_, Some(s), _) => s.0.as_basic_type_enum(),
                 (_, _, Some(ty)) => self.llvm_type(&ty, pos),
@@ -314,7 +360,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     panic!()
                 },
             },
-            Type::Void => panic!("Cannot create void type in LLVM!"),
+            Type::Void => panic!("{}: Cannot create void type in LLVM!", pos),
         }
     }
 }
