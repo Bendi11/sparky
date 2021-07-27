@@ -373,7 +373,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                     //Do type checking of function arguments
                     for (i, (arg, (parg, _))) in args.iter().zip(p.args.iter()).enumerate() {
-                        if let Some((ref ty, _)) = arg.get_type(self) {
+                        if let Some(ref ty) = arg.get_type(self) {
                             if ty != parg {
                                 error!("{}: Incorrect type of argument {} in function call {}; {} expected, {} passed", arg.1, i + 1, p.name, parg, ty);
                                 return None;
@@ -537,7 +537,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 for field in fields {
                     let pos = match def_fields.iter().position(|s| s.0 == field.0) {
                         Some(pos) => {
-                            let ty = field.1.get_type(self)?.0;
+                            let ty = field.1.get_type(self)?;
                             if def_fields[pos].1 != ty {
                                 error!("{}: In struct literal for type {}; incorrect type of field {}, {} expected but value of type {} given", node.1, name, def_fields[pos].0, def_fields[pos].1, ty);
                                 return None;
@@ -576,9 +576,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 let col = val
                     .get_type(self)
                     .expect("Failed to get type of lhs when accessing member of struct or union");
-                let (_, s_ty, is_struct) = match col {
-                    (Type::Struct(con), Some(s_ty)) => (s_ty, con, true),
-                    (Type::Union(con), Some(u_ty)) => (u_ty, con, false),
+                let (s_ty, is_struct) = match col {
+                    Type::Struct(con) => (con, true),
+                    Type::Union(con) => (con, false),
                     other => {
                         error!("{}: Cannot access member {} of non-struct or union type", node.1, field);
                         debug!("Cannot generate code for member access expression because the prefix type is {:?}", other);

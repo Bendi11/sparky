@@ -193,7 +193,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     name,
                     fields: Some(fields),
                 }) => {
-                    trace!("Generating struct {} body with fields {:?}", name, fields);
+                    
                     let (ty, col) = self.get_struct(name).unwrap();
                     /*let ty = self
                         .module
@@ -211,10 +211,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     //Make sure no unknown types exist in struct body
                     let fields: Vec<(String, Type)> = fields.iter().map(|(name, ty)| {
                         match ty {
-                            Type::Unknown(name) => (name.clone(), self.resolve_unknown(ty.clone(), &node.1)),
+                            Type::Unknown(_) => (name.clone(), self.resolve_unknown(ty.clone(), &node.1)),
                             ty => (name.clone(), ty.clone()),
                         }
                     }).collect();
+                    trace!("Generating struct {} body with fields {:?}", name, fields);
 
                     let mut types = self.current_ns.get().struct_types.borrow_mut();
                     //let (_, col) = types.get_mut(name).unwrap();
