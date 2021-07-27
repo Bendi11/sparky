@@ -53,19 +53,33 @@ impl Default for WinLink {
     fn default() -> Self {
         use std::fs;
         //Get the location of LINK.exe
-        let linker_path = fs::read_dir(r"C:\Program Files(x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC")
-        .unwrap_or_else(|e| panic!("Failed to get location of LINK.EXE: {}", e)).max_by(|this, next| {
-            let this = this.as_ref().unwrap_or_else(|e|panic!("Failed to get location of LINK.EXE: {}", e));
-            let next = next.as_ref().unwrap_or_else(|e| panic!("Failed to get location of LINK.EXE: {}", e));
+        let linker_path = fs::read_dir(
+            r"C:\Program Files(x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC",
+        )
+        .unwrap_or_else(|e| panic!("Failed to get location of LINK.EXE: {}", e))
+        .max_by(|this, next| {
+            let this = this
+                .as_ref()
+                .unwrap_or_else(|e| panic!("Failed to get location of LINK.EXE: {}", e));
+            let next = next
+                .as_ref()
+                .unwrap_or_else(|e| panic!("Failed to get location of LINK.EXE: {}", e));
             let this_ver: Result<Version, _> = this.file_name().to_str().unwrap().parse();
             let next_ver: Result<Version, _> = next.file_name().to_str().unwrap().parse();
             match (this_ver, next_ver) {
                 (Ok(this_ver), Ok(next_ver)) => this_ver.cmp(&next_ver),
                 (Err(_), Ok(_)) => std::cmp::Ordering::Less,
                 (Ok(_), Err(_)) => std::cmp::Ordering::Greater,
-                (_, _) => std::cmp::Ordering::Equal
+                (_, _) => std::cmp::Ordering::Equal,
             }
-        }).unwrap_or_else(|| panic!("Failed to get highest version of LINK.exe")).unwrap().path().join(r"bin\Hostx64\x64\link.exe").to_str().unwrap().to_owned();
+        })
+        .unwrap_or_else(|| panic!("Failed to get highest version of LINK.exe"))
+        .unwrap()
+        .path()
+        .join(r"bin\Hostx64\x64\link.exe")
+        .to_str()
+        .unwrap()
+        .to_owned();
         Self {
             entry: None,
             output: "a.out".to_owned(),
