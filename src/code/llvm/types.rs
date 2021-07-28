@@ -1,7 +1,9 @@
 //! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to
 //! LLVM types
 
-use crate::{ast::AstPos, code::ns::Path, lex::Pos};
+use inkwell::{AddressSpace, module::Linkage, values::GlobalValue};
+
+use crate::{ast::{AstPos, Attributes}, code::ns::Path, lex::Pos};
 
 use super::*;
 
@@ -39,6 +41,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
         match self.current_ns.get().get_fun(path.clone()) {
             Some(s) => Some(s),
             None => self.root.get_fun(path),
+        }
+    }
+
+    /// Get a constant value from the given path
+    pub fn get_const(&self, name: impl AsRef<str>) -> Option<(GlobalValue<'c>, Type)> {
+        let path: Path = name.as_ref().parse().unwrap();
+        match self.current_ns.get().get_const(path.clone()) {
+            Some(s) => Some(s),
+            None => self.root.get_const(path),
         }
     }
 
@@ -347,6 +358,52 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
                 }
                 _ => ret.push(node),
+            }
+        }
+        ret
+    }
+
+    /// Get all constant values 
+    pub fn get_consts(&mut self, ast: Vec<AstPos>) -> Vec<AstPos> {
+        let mut ret = Vec::with_capacity(ast.len());
+        for node in ast {
+            match node.ast() {
+                Ast::GlobalDef(ty, name, val, attrs) => {
+                    let qname = self.current_ns.get().qualify(&name).to_string();
+                    match self.resolve_unknown(ty.clone(), &node.1) {
+                        Type::Struct(_) | Type::Union(_) => {
+                            panic!("{}: Struct and union types cannot be used as global values!", node.1);
+                        },
+                        _ => ()
+                    }
+
+                    trace!("{}: Adding constant value {} with type {} to {}", node.1, qname, ty, self.current_ns.get().full_path());
+                    let global = self.module.add_global(self.llvm_type(ty, &node.1), Some(AddressSpace::Global), qname.as_str());
+                    
+                    if attrs.contains(Attributes::CONST) {
+                        global.set_constant(true);
+                    }
+                    if attrs.contains(Attributes::EXT) {
+                        global.set_linkage(Linkage::External);
+                    }
+
+                    if let Some(val) = val {
+                        global.set_initializer(&match self.gen(val, false) {
+                            Some(val) => BasicValueEnum::try_from(val).unwrap(),
+                            None => {
+                                panic!("{}: Failed to generate code for global variable {}", node.1, self.current_ns.get().qualify(&name));
+                            }
+                        });
+                    }
+                    self.current_ns.get().consts.borrow_mut().insert(name.clone(), (global, ty.clone()));
+                },
+                Ast::Ns(ns, stmts) => {
+                    self.enter_ns(&ns);
+                    let stmts = self.get_consts(stmts.clone());
+                    self.exit_ns(ns.count());
+                    ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
+                },
+                _ => ret.push(node)
             }
         }
         ret

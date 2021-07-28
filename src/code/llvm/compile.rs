@@ -1,4 +1,3 @@
-use std::{path::Path, process::Command};
 
 use inkwell::{
     module::Module,
@@ -106,6 +105,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// Generate all code for a LLVM module and return it
     pub fn finish(mut self, ast: Vec<AstPos>) -> Result<Module<'c>, u16> {
         let ast = self.scan_decls(ast);
+        let ast = self.get_consts(ast);
         self.gen_top(ast)?;
         Ok(self.module)
     }
@@ -117,8 +117,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
         opts: CompileOpts,
         mut linker: L,
     ) -> Result<(), u16> {
-        const LINKER: &str = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.28.29910\\bin\\Hostx64\\x64\\link.exe";
-        use std::process::Stdio;
 
         let module = self.finish(ast)?;
 
@@ -205,20 +203,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             .write_to_file(&module, FileType::Object, &obj)
                             .unwrap();
 
-                        let out = format!("/OUT:{}", opts.out_file.display());
-                        let mut args = vec!["/LIB", obj.to_str().unwrap(), "/NOLOGO", out.as_str()];
-                        args.extend(opts.libraries.iter().map(|s| s.as_str())); //Add all linked libraries
+                        for lib in opts.libraries {
+                            linker.add_library(lib);
+                        }
 
-                        let cmd = Command::new(Path::new(LINKER))
-                            .args(args)
-                            .stderr(Stdio::piped())
-                            .stdout(Stdio::piped())
-                            .spawn()
-                            .unwrap(); //Link the file into a library
-                        println!(
-                            "{}",
-                            String::from_utf8(cmd.wait_with_output().unwrap().stdout).unwrap()
-                        );
+                        linker.add_object_file(obj.to_str().unwrap().to_owned());
+                        linker.set_format(OutFormat::Lib);
+                        //linker.set_entry(Some("main"));
+                        linker.set_output_file(opts.out_file);
+                        linker.link().unwrap();
 
                         std::fs::remove_file(obj).unwrap();
                     }

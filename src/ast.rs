@@ -60,7 +60,7 @@ pub enum Ast {
     UnionDec(types::Container),
 
     /// A constant value definition
-    ConstDef(Type, String, Box<AstPos>),
+    GlobalDef(Type, String, Option<Box<AstPos>>, Attributes),
 
     /// A constant struct literal
     StructLiteral {
