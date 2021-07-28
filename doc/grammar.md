@@ -28,7 +28,7 @@ The keywords and their purposes are:
 - `if`: Control flow checking conditions
 - `else`: Control flow following a failed if check
 - `while`: Looping with conditional checking
-- `const`: Attributes for variables and functions
+- `const`: Attributes for variables and functions, or to declare a constant value
 - `ext`: Mark a function or global variable as externally defined
 - `ptr`: Express a pointer type
 - `let`: Declare a variable 
@@ -66,6 +66,7 @@ The operators and their purposes:
         | "type" <typename> <ident>
         | <nsdecl>
         | <usingdecl>
+        | "let" <attr>* <typename> <ident> ("=" <expr>)? ";"
 
 <nsdecl> ::= "ns" <ident> "{" <program> "}"
 <usingdecl> ::= "use" <ident>
@@ -80,7 +81,7 @@ The operators and their purposes:
         | "static"
         
 (*Top level expressions are the ones that must be parsed in functions first, expressions are parsed in them*)
-<topexpr> ::= "let" <typename> <attr>* <ident> ("=" <expr>)?
+<topexpr> ::= "let" <attr>* <typename> <ident> ("=" <expr>)?
 	| <funcall>
     | "if" <expr> <body> ("else" <body>)?
     | "while" <expr> <body>

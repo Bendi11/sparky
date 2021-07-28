@@ -93,6 +93,25 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 ))
             }
 
+            Token(_, TokenType::Key(Key::Let)) => {
+                let Token(pos, _) = self.toks.next().eof()?;
+                let attrs = self.parse_attrs();
+                let ty = self.parse_typename()?;
+                let name = self.expect_next_ident()?;
+                match self.toks.next().eof()? {
+                    Token(_, TokenType::Semicolon) => Ok(AstPos(Ast::GlobalDef(ty, name, None, attrs), pos)),
+                    Token(_, TokenType::Op(Op::Assign)) => {
+                        let expr = self.parse_expr()?;
+                        self.expect_next(TokenType::Semicolon)?;
+                        Ok(AstPos(Ast::GlobalDef(ty, name, Some(Box::new(expr)), attrs), pos))
+                    },
+                    Token(pos, other) => Err(ParseErr::UnexpectedToken(pos, other, vec![
+                        TokenType::Semicolon,
+                        TokenType::Op(Op::Assign)
+                    ]))
+                }                
+            },
+
             Token(pos, other) => Err(ParseErr::UnexpectedToken(
                 pos.clone(),
                 other.clone(),
@@ -172,8 +191,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             ));
         }
 
-        let ty = self.parse_typename()?; //Get the type of this variable
         let attrs = self.parse_attrs(); //Get attributes, if any
+        let ty = self.parse_typename()?; //Get the type of this variable
         let name = self.expect_next_ident()?;
 
         let decl = AstPos(Ast::VarDecl { name, ty, attrs }, pos);

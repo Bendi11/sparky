@@ -1,7 +1,7 @@
 //! Structs and functions for handling namespaces and getting contents from them
 
 use hashbrown::HashMap;
-use inkwell::{types::StructType, values::FunctionValue};
+use inkwell::{types::StructType, values::{FunctionValue, GlobalValue}};
 use log::debug;
 use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, str::FromStr};
 
@@ -93,6 +93,9 @@ pub struct Ns<'a, 'c> {
     /// A map of function names to function prototypes
     pub funs: RefCell<HashMap<String, (FunctionValue<'c>, FunProto)>>,
 
+    /// Constant values that the user specified
+    pub consts: RefCell<HashMap<String, (GlobalValue<'c>, Type)>>,
+
     /// A map of user - defined type definitions to real types
     pub typedefs: RefCell<HashMap<String, Type>>,
 
@@ -111,6 +114,7 @@ impl<'a, 'c> Ns<'a, 'c> {
             typedefs: RefCell::new(Default::default()),
             funs: RefCell::new(Default::default()),
             nested: RefCell::new(Default::default()),
+            consts: RefCell::new(Default::default()),
         }
     }
 
@@ -163,6 +167,15 @@ impl<'a, 'c> Ns<'a, 'c> {
             None => self,
         };
         ns.funs.borrow().get(path.last()?).cloned()
+    }
+
+    /// Get a constant value from this namespace using the given path
+    pub fn get_const(&'a self, path: Path) -> Option<(GlobalValue<'c>, Type)> {
+        let ns = match path.parent() {
+            Some(parents) => self.get_child(parents.iter())?,
+            None => self,
+        };
+        ns.consts.borrow().get(path.last()?).cloned()
     }
 
     /// Get a typedef from this namespace using the given path
