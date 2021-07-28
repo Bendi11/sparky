@@ -43,22 +43,7 @@ struct OFSTRUCT {
     u16 nErrCode,
     u16 Reserved1,
     u16 Reserved2,
-    u64 _pad1,
-    u64 _pad2,
-    u64 _pad3,
-    u64 _pad4,
-    u64 _pad5,
-    u64 _pad6,
-    u64 _pad7,
-    u64 _pad8,
-    u64 _pad9,
-    u64 _pad10,
-    u64 _pad11,
-    u64 _pad12,
-    u64 _pad13,
-    u64 _pad14,
-    u64 _pad15,
-    u64 _pad16
+    u8[128] fName
 }
 
 }
