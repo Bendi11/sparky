@@ -71,6 +71,9 @@ pub struct CompileOpts {
 
     /// The output file
     out_file: PathBuf,
+
+    /// Ignore LLVM module verification step
+    ignore_checks: bool,
 }
 
 /// Handle compiler errors in a cleaner way
@@ -112,8 +115,8 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                     out.finish(format_args!(
                         "{} {}",
                         match record.level() {
-                            log::Level::Warn => style("[WARNING]").red().bold(),
-                            log::Level::Error => style("[ERROR]").yellow().bold(),
+                            log::Level::Warn => style("[WARNING]").yellow().bold(),
+                            log::Level::Error => style("[ERROR]").red().bold(),
                             _ => unreachable!(),
                         },
                         message
@@ -231,6 +234,12 @@ fn main() {
             .long("verbose")
             .help("Enable verbose logs for the compiler (useful when debugging an issue when compiling)")
             .takes_value(false)
+        )
+        .arg(Arg::with_name("unchecked")
+            .help("If enabled, LLVM module checks will be reduced to warnings instead of fatal errors")
+            .takes_value(false)
+            .short("u")
+            .long("unchecked")
         );
     let args = app.get_matches(); //Get argument matches from environment args
 
@@ -249,6 +258,7 @@ fn main() {
         opt_lvl: args.value_of("optimization").unwrap().parse().unwrap(),
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),
         out_file: PathBuf::from(args.value_of("output-file").unwrap()),
+        ignore_checks: args.is_present("unchecked"),
     };
 
     //Get a list of files to parse into an AST

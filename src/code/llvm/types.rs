@@ -74,9 +74,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
     fn get_opaques(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         for node in ast.iter() {
             match node.ast() {
-                Ast::StructDec(container) | Ast::UnionDec(container) => {
+                Ast::StructDec(container) => {
                     trace!(
-                        "Generating initial opaque llvm type for struct/union type {}",
+                        "Generating initial opaque llvm type for struct type {}",
                         self.current_ns.get().qualify(&container.name)
                     );
                     let name = self.current_ns.get().qualify(&container.name).to_string();
@@ -84,6 +84,19 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     self.current_ns
                         .get()
                         .struct_types
+                        .borrow_mut()
+                        .insert(container.name.clone(), (ty, container.clone()));
+                }
+                Ast::UnionDec(container) => {
+                    trace!(
+                        "Generating initial opaque llvm type for union type {}",
+                        self.current_ns.get().qualify(&container.name)
+                    );
+                    let name = self.current_ns.get().qualify(&container.name).to_string();
+                    let ty = self.ctx.opaque_struct_type(&name);
+                    self.current_ns
+                        .get()
+                        .union_types
                         .borrow_mut()
                         .insert(container.name.clone(), (ty, container.clone()));
                 }
@@ -219,21 +232,32 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .and_modify(|(_, c)| c.fields = Some(fields.clone()));
                 }
                 Ast::StructDec(_) => (),
-                Ast::UnionDec(con) => {
+                Ast::UnionDec(Container {
+                    name,
+                    fields: Some(fields),
+                }) => {
                     let ty = self
                         .module
-                        .get_struct_type(
-                            self.current_ns
-                                .get()
-                                .qualify(&con.name)
-                                .to_string()
-                                .as_str(),
-                        )
+                        .get_struct_type(self.current_ns.get().qualify(&name).to_string().as_str())
                         .unwrap();
-                    let largest = con
-                        .fields
-                        .as_ref()
-                        .unwrap()
+
+                    //Make sure no unknown types exist in struct body
+                    let fields: Vec<(String, Type)> = fields
+                        .iter()
+                        .map(|(name, ty)| match ty {
+                            Type::Unknown(_) => {
+                                (name.clone(), self.resolve_unknown(ty.clone(), &node.1))
+                            }
+                            ty => (name.clone(), ty.clone()),
+                        })
+                        .collect();
+                    trace!(
+                        "Generating code for union {} body with fields {:?}",
+                        name,
+                        fields
+                    );
+
+                    let largest = fields
                         .iter()
                         .max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size()))
                         .expect("Union type with no fields!");
