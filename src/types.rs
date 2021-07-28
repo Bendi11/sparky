@@ -88,7 +88,7 @@ impl Type {
                 .unwrap_or(0),
             Self::Unknown(name) => panic!("Unknown type {}", name),
             Self::Void => panic!("Void type"),
-            Self::Array(ty, len) => ty.size() * len
+            Self::Array(ty, len) => ty.size() * len,
         }
     }
 }
@@ -169,10 +169,9 @@ impl PartialEq for Type {
                         .unwrap() =>
             {
                 true
-            },
+            }
 
-            (Self::Array(ty, len), Self::Array(oty, olen)) 
-                if ty.eq(oty) && len == olen => true, 
+            (Self::Array(ty, len), Self::Array(oty, olen)) if ty.eq(oty) && len == olen => true,
 
             (_, _) => false,
         }

@@ -180,17 +180,23 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 self.toks.next(); //Consume the pointer keyword
                 ty = ty.ptr_type(); //Apply one level of pointer type
                 true
-            },
+            }
             Some(Token(_, TokenType::LeftBrace('['))) => {
                 self.toks.next();
                 let size = match self.toks.next().eof()? {
                     Token(_, TokenType::NumLiteral(num)) => num.parse().unwrap(),
-                    Token(pos, other) => return Err(ParseErr::UnexpectedToken(pos, other, vec![TokenType::NumLiteral("".to_owned())])),
+                    Token(pos, other) => {
+                        return Err(ParseErr::UnexpectedToken(
+                            pos,
+                            other,
+                            vec![TokenType::NumLiteral("".to_owned())],
+                        ))
+                    }
                 };
                 self.expect_next(TokenType::RightBrace(']'))?;
                 ty = Type::Array(Box::new(ty), size);
                 true
-            },
+            }
             _ => false, //Return the type once we are no longer parsing pointer types
         } {}
         Ok(ty)
@@ -459,14 +465,14 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         let Token(pos, _) = self.toks.next().eof()?; //Consume the token
                         let val = self.expect_next_ident()?; //Get the identifier from the next token
                         Ok(AstPos(Ast::MemberAccess(Box::new(expr), val, true), pos))
-                    },
+                    }
                     //Array access
                     Token(_, TokenType::LeftBrace('[')) => {
-                        let Token(pos, _) = self.toks.next().eof()?;                        
+                        let Token(pos, _) = self.toks.next().eof()?;
                         let idx = self.parse_expr()?;
                         self.expect_next(TokenType::RightBrace(']'))?;
                         Ok(AstPos(Ast::Array(Box::new(expr), Box::new(idx)), pos))
-                    },
+                    }
                     _ => Ok(expr),
                 }
             }
