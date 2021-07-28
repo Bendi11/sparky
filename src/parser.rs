@@ -91,7 +91,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     }),
                     pos,
                 ))
-            },
+            }
 
             Token(pos, other) => Err(ParseErr::UnexpectedToken(
                 pos.clone(),

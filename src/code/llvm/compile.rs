@@ -122,19 +122,21 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         let module = self.finish(ast)?;
 
-        let res = module
-            .verify();
-            
+        let res = module.verify();
+
         match opts.ignore_checks {
             true => {
                 if let Err(e) = res {
-                    warn!("LLVM Module verification (ignored due to command line switch): {}", e)
+                    warn!(
+                        "LLVM Module verification (ignored due to command line switch): {}",
+                        e
+                    )
                 }
-            },
+            }
             false => {
                 if let Err(e) = res {
                     error!("LLVM Module verification failed: {}", e);
-                    return Err(1)
+                    return Err(1);
                 }
             }
         }

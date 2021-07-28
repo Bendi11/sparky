@@ -86,7 +86,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .struct_types
                         .borrow_mut()
                         .insert(container.name.clone(), (ty, container.clone()));
-                },
+                }
                 Ast::UnionDec(container) => {
                     trace!(
                         "Generating initial opaque llvm type for union type {}",
@@ -232,16 +232,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .and_modify(|(_, c)| c.fields = Some(fields.clone()));
                 }
                 Ast::StructDec(_) => (),
-                Ast::UnionDec(Container{name, fields: Some(fields)}) => {
+                Ast::UnionDec(Container {
+                    name,
+                    fields: Some(fields),
+                }) => {
                     let ty = self
                         .module
-                        .get_struct_type(
-                            self.current_ns
-                                .get()
-                                .qualify(&name)
-                                .to_string()
-                                .as_str(),
-                        )
+                        .get_struct_type(self.current_ns.get().qualify(&name).to_string().as_str())
                         .unwrap();
 
                     //Make sure no unknown types exist in struct body
@@ -254,9 +251,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             ty => (name.clone(), ty.clone()),
                         })
                         .collect();
-                    trace!("Generating code for union {} body with fields {:?}", name, fields);
+                    trace!(
+                        "Generating code for union {} body with fields {:?}",
+                        name,
+                        fields
+                    );
 
-                    
                     let largest = fields
                         .iter()
                         .max_by(|(_, prev), (_, this)| prev.size().cmp(&this.size()))

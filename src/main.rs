@@ -258,7 +258,7 @@ fn main() {
         opt_lvl: args.value_of("optimization").unwrap().parse().unwrap(),
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),
         out_file: PathBuf::from(args.value_of("output-file").unwrap()),
-        ignore_checks: args.is_present("unchecked")
+        ignore_checks: args.is_present("unchecked"),
     };
 
     //Get a list of files to parse into an AST
