@@ -153,6 +153,7 @@ fn main() {
 
     let app = App::new("sparkc")
         .about("Compiler for the Spark programming language utilizing LLVM as a backend")
+        .version(clap::crate_version!())
         .author("Bendi11 <bkliebmann@gmail.com>")
         .long_about(
 "Compiler for the Spark programming language, supporting LLVM as a code generation backend.
@@ -312,12 +313,23 @@ fn main() {
     let arena = Bump::new();
     let compiler = Compiler::new(&ctx, &arena);
     let name = opts.out_file.clone();
-    match compiler.compile(ast, opts, linker::WinLink::default()) {
+
+    #[cfg(target_os="windows")]
+    let linker = linker::WinLink::default();
+
+    #[cfg(target_os="linux")]
+    let linker = linker::LdLink::default();
+
+    match compiler.compile(ast, opts, linker) {
         Ok(()) => println!("{} compiled successfully!", name.display()),
         Err(count) => eprintln!(
-            "{}: Failed to compile due to {} errors",
+            "{}: Failed to compile due to {} {}",
             name.display(),
-            count
+            count,
+            match count > 1 {
+                true => "errors",
+                false => "error"
+            }
         ),
     }
 }

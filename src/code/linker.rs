@@ -147,3 +147,85 @@ impl Linker for WinLink {
         Ok(())
     }
 }
+
+/// An interface to the most commonly used linux linker, ld
+pub struct LdLink {
+    /// The entry point of the finished binary, if any
+    entry: Option<String>,
+
+    /// The output file name
+    output: String,
+
+    /// The output format of the linker
+    format: OutFormat,
+
+    /// Paths to input linker files
+    input_files: Vec<String>,
+}
+
+impl Default for LdLink {
+    fn default() -> Self {
+        Self {
+            entry: Some("main".to_owned()),
+            output: "a.out".to_owned(),
+            format: OutFormat::Exe,
+            input_files: vec![]
+        }
+    }
+}
+
+impl Linker for LdLink {
+    fn add_object_file(&mut self, obj: impl AsRef<std::path::Path>) {
+        self.input_files.push(obj.as_ref().to_str().unwrap().to_owned())
+    }
+
+    fn set_entry(&mut self, entry: Option<&str>) {
+        self.entry = entry.map(|s| s.to_owned())
+    }
+
+    fn set_output_file(&mut self, output: impl AsRef<std::path::Path>) {
+        self.output = output.as_ref().to_str().unwrap().to_string()
+    }
+
+    fn set_format(&mut self, format: OutFormat) {
+        self.format = format
+    }
+
+    fn link(self) -> io::Result<()> {
+        use std::process::Stdio;
+        let mut args = self.input_files;
+
+        if let Some(entry) = self.entry {
+            args.push(format!("-e{}", entry));
+        }
+
+        args.push(format!(
+            "-o{}",
+            self.output
+                + match self.format {
+                    OutFormat::Exe => "",
+                    OutFormat::Lib => ".lib",
+                    OutFormat::Obj => ".o",
+                    _ => unreachable!(),
+                }
+        ));
+
+        let out = Command::new("ld")
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()?;
+
+        println!(
+            "ld stderr: {}",
+            std::str::from_utf8(out.stderr.as_slice()).unwrap()
+        );
+        println!(
+            "ld stdout: {}",
+            std::str::from_utf8(out.stdout.as_slice()).unwrap()
+        );
+
+        Ok(())
+    }
+}
