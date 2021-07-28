@@ -202,10 +202,10 @@ impl AstPos {
                     compiler.get_union(&name),
                     compiler.get_typedef(&name),
                 ) {
-                    (Some((_, c)), _, _) => Type::Struct(c),
-                    (_, Some((_, c)), _) => Type::Union(c),
-                    (_, _, Some(ty)) => ty,
-                    (None, None, None) => {
+                    (Some((_, c)), None, None) => Type::Struct(c),
+                    (None, Some((_, c)), None) => Type::Union(c),
+                    (None, None, Some(ty)) => ty,
+                    (_, _, _) => {
                         debug!("Failed to get type of prefix expression in member access because the struct, union or typedef'd type {} does not exist", name);
                         return None;
                     }

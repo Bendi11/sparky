@@ -6,6 +6,7 @@ use inkwell::{
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     OptimizationLevel,
 };
+use log::warn;
 
 use crate::{
     ast::{Ast, AstPos, FunProto},
@@ -121,9 +122,22 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         let module = self.finish(ast)?;
 
-        module
-            .verify()
-            .unwrap_or_else(|e| panic!("Failed to verify the LLVM module: {}", e));
+        let res = module
+            .verify();
+            
+        match opts.ignore_checks {
+            true => {
+                if let Err(e) = res {
+                    warn!("LLVM Module verification (ignored due to command line switch): {}", e)
+                }
+            },
+            false => {
+                if let Err(e) = res {
+                    error!("LLVM Module verification failed: {}", e);
+                    return Err(1)
+                }
+            }
+        }
 
         let fpm: PassManager<Module<'c>> = PassManager::create(());
 

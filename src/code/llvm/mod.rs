@@ -349,14 +349,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     ref ty => {
                         let ty = ty.clone();
                         let ret = self.gen(&node.deref().as_ref().unwrap(), false)?;
-                        if ret.get_type()
-                            != self
-                                .current_fn
-                                .unwrap()
-                                .get_type()
-                                .get_return_type()
-                                .unwrap()
-                                .as_any_type_enum()
+                        if node.deref().as_ref().unwrap().get_type(self)?
+                            != ty
                         {
                             error!(
                                 "{}: In function {}: Returning the incorrect type: {} expected, {} returned",
@@ -533,7 +527,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
             }
             Ast::VarAccess(name) => match self.vars.get(name) {
                 Some((val, _)) => match lval {
-                    false => Some(self.build.build_load(*val, "ssa_load").as_any_value_enum()),
+                    false => Some(self.build.build_load(*val, "var_access_ssa_load").as_any_value_enum()),
                     true => Some(val.as_any_value_enum()),
                 },
                 None => {
@@ -681,24 +675,33 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         let field_ty = self.llvm_type(field_ty, &node.1);
                         Some(match lval {
                             true => {
+                                trace!("{}: Generating union member lvalue access with type punning", val.1);
                                 let u = self.gen(val, true)?;
                                 self.build
                                     .build_pointer_cast(
                                         u.into_pointer_value(),
                                         field_ty.ptr_type(inkwell::AddressSpace::Generic),
-                                        "union_member_access_lval_cast",
+                                        "union_member_access_lval_punning",
                                     )
                                     .as_any_value_enum()
                             }
                             false => {
-                                let u = self.gen(val, false)?;
-                                self.build
+                                trace!("{}: Generating union member rvalue access with type punning and load", val.1);
+                                let u = self.gen(val, true)?;
+                                let ptr = self.build
+                                    .build_pointer_cast(
+                                        u.into_pointer_value(),
+                                        field_ty.ptr_type(inkwell::AddressSpace::Generic),
+                                        "union_member_access_rval_punning",
+                                    );
+                                self.build.build_load(ptr, "union_member_access_rval_load").as_any_value_enum()
+                                /*self.build
                                     .build_bitcast(
                                         u.into_struct_value().as_basic_value_enum(),
                                         field_ty,
                                         "union_member_access_rval_cast",
                                     )
-                                    .as_any_value_enum()
+                                    .as_any_value_enum()*/
                             }
                         })
                     }
