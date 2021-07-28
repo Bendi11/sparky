@@ -20,7 +20,7 @@
 		},
 		{
 			"name": "entity.name.class",
-			"match": "(?<=\\bstruct\\s+)\\w(\\w|_|::)*\\b"
+			"match": "(?<=\\b(struct|union)\\s+)\\w(\\w|_|::)*\\b"
 		},
 		{
 			"name": "storage.modifier",
