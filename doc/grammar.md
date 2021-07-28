@@ -5,7 +5,7 @@ The grammar of Spark is roughly standard curly braces semicolon terminated, like
 - Functions with the fun keyword
 
 Examples 
-```
+```rust
 struct Structure {
     i32 num,
     u8 ptr string,
