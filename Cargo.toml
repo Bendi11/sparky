@@ -1,6 +1,6 @@
 [package]
 name = "sparkc"
-version = "0.5.2"
+version = "0.6.2"
 authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
 
