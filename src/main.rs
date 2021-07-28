@@ -115,8 +115,8 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                     out.finish(format_args!(
                         "{} {}",
                         match record.level() {
-                            log::Level::Warn => style("[WARNING]").red().bold(),
-                            log::Level::Error => style("[ERROR]").yellow().bold(),
+                            log::Level::Warn => style("[WARNING]").yellow().bold(),
+                            log::Level::Error => style("[ERROR]").red().bold(),
                             _ => unreachable!(),
                         },
                         message

@@ -642,7 +642,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             .build_struct_gep(
                                 s.into_pointer_value(),
                                 field_idx as u32,
-                                "struct_gep",
+                                "struct_member_access_gep",
                             )
                             .unwrap();
 

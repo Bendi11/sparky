@@ -74,9 +74,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
     fn get_opaques(&self, ast: Vec<AstPos>) -> Vec<AstPos> {
         for node in ast.iter() {
             match node.ast() {
-                Ast::StructDec(container) | Ast::UnionDec(container) => {
+                Ast::StructDec(container) => {
                     trace!(
-                        "Generating initial opaque llvm type for struct/union type {}",
+                        "Generating initial opaque llvm type for struct type {}",
                         self.current_ns.get().qualify(&container.name)
                     );
                     let name = self.current_ns.get().qualify(&container.name).to_string();
@@ -84,6 +84,19 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     self.current_ns
                         .get()
                         .struct_types
+                        .borrow_mut()
+                        .insert(container.name.clone(), (ty, container.clone()));
+                },
+                Ast::UnionDec(container) => {
+                    trace!(
+                        "Generating initial opaque llvm type for union type {}",
+                        self.current_ns.get().qualify(&container.name)
+                    );
+                    let name = self.current_ns.get().qualify(&container.name).to_string();
+                    let ty = self.ctx.opaque_struct_type(&name);
+                    self.current_ns
+                        .get()
+                        .union_types
                         .borrow_mut()
                         .insert(container.name.clone(), (ty, container.clone()));
                 }
