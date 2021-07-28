@@ -1,2 +1,5 @@
-# spark programming language
-An in development programming language that I made for fun, with the goal of a self-hosting compiler and well rouned standard library
+# Spark programming language
+------
+A small, feature-light compiled general purpose programming language utilizing LLVM as a compiler backend. Made with the eventual goal of
+a well-rounded standard library, build system, and package manager. 
+
