@@ -59,6 +59,9 @@ pub enum Ast {
     /// A union type definition
     UnionDec(types::Container),
 
+    /// A constant value definition
+    ConstDef(Type, String, Box<AstPos>),
+
     /// A constant struct literal
     StructLiteral {
         /// The struct type name

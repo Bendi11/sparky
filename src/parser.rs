@@ -93,6 +93,16 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 ))
             }
 
+            Token(_, TokenType::Key(Key::Const)) => {
+                let Token(pos, _) = self.toks.next().eof()?;
+                let ty = self.parse_typename()?;
+                let name = self.expect_next_ident()?;
+                self.expect_next(TokenType::Op(Op::Assign))?;
+                let expr = self.parse_expr()?;
+                self.expect_next(TokenType::Semicolon)?;
+                Ok(AstPos(Ast::ConstDef(ty, name, Box::new(expr)), pos))
+            },
+
             Token(pos, other) => Err(ParseErr::UnexpectedToken(
                 pos.clone(),
                 other.clone(),
