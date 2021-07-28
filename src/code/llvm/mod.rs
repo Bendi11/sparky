@@ -15,8 +15,8 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::Module,
-    types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
-    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
+    values::{AnyValue, AnyValueEnum, BasicValueEnum, FunctionValue, PointerValue},
     IntPredicate,
 };
 
