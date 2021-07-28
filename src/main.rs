@@ -314,10 +314,10 @@ fn main() {
     let compiler = Compiler::new(&ctx, &arena);
     let name = opts.out_file.clone();
 
-    #[cfg(target_os="windows")]
+    #[cfg(target_os = "windows")]
     let linker = linker::WinLink::default();
 
-    #[cfg(target_os="linux")]
+    #[cfg(target_os = "linux")]
     let linker = linker::LdLink::default();
 
     match compiler.compile(ast, opts, linker) {
@@ -328,7 +328,7 @@ fn main() {
             count,
             match count > 1 {
                 true => "errors",
-                false => "error"
+                false => "error",
             }
         ),
     }

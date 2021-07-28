@@ -169,14 +169,15 @@ impl Default for LdLink {
             entry: Some("main".to_owned()),
             output: "a.out".to_owned(),
             format: OutFormat::Exe,
-            input_files: vec![]
+            input_files: vec![],
         }
     }
 }
 
 impl Linker for LdLink {
     fn add_object_file(&mut self, obj: impl AsRef<std::path::Path>) {
-        self.input_files.push(obj.as_ref().to_str().unwrap().to_owned())
+        self.input_files
+            .push(obj.as_ref().to_str().unwrap().to_owned())
     }
 
     fn set_entry(&mut self, entry: Option<&str>) {

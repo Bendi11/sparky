@@ -534,14 +534,18 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 },
                 None => match self.get_const(name) {
                     Some((val, _)) => match lval {
-                        false => Some(self.build.build_load(val.as_pointer_value(), "global_access_ssa_load").as_any_value_enum()),
+                        false => Some(
+                            self.build
+                                .build_load(val.as_pointer_value(), "global_access_ssa_load")
+                                .as_any_value_enum(),
+                        ),
                         true => Some(val.as_any_value_enum()),
                     },
                     None => {
                         error!("{}: Accessing unknown variable {}", node.1, name,);
                         None
                     }
-                }
+                },
             },
             Ast::StructLiteral { name, fields } => {
                 let (ty, def) = match self.get_struct(name) {

@@ -1,7 +1,10 @@
 //! Structs and functions for handling namespaces and getting contents from them
 
 use hashbrown::HashMap;
-use inkwell::{types::StructType, values::{FunctionValue, GlobalValue}};
+use inkwell::{
+    types::StructType,
+    values::{FunctionValue, GlobalValue},
+};
 use log::debug;
 use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, str::FromStr};
 

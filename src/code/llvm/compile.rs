@@ -1,4 +1,3 @@
-
 use inkwell::{
     module::Module,
     passes::PassManager,
@@ -117,7 +116,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
         opts: CompileOpts,
         mut linker: L,
     ) -> Result<(), u16> {
-
         let module = self.finish(ast)?;
 
         let res = module.verify();
