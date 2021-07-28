@@ -463,6 +463,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 },
             },
             Type::Void => panic!("{}: Cannot create void type in LLVM!", pos),
+            Type::Array(ty, len) => self.llvm_type(ty, pos).array_type(*len as u32).as_basic_type_enum()
         }
     }
 }

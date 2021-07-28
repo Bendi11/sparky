@@ -130,6 +130,9 @@ pub enum Ast {
 
     /// Importing a namespace into scope
     Using(Path),
+
+    /// Array member access with operation to get index
+    Array(Box<AstPos>, Box<AstPos>),
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file
@@ -195,6 +198,10 @@ impl AstPos {
                 _ => return None,
             },
             Ast::Bin(lhs, _, _) => return lhs.get_type(compiler),
+            Ast::Array(ast, _) => return match ast.get_type(compiler)? {
+                Type::Array(ty, _) => Some(*ty),
+                _ => None
+            },
             _ => return None,
         };
         //Resolve unknown types

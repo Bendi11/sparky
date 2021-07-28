@@ -32,6 +32,9 @@ pub enum Type {
 
     /// Pointer to a type
     Ptr(Box<Type>),
+
+    /// An array type
+    Array(Box<Type>, usize),
 }
 
 impl Type {
@@ -85,6 +88,7 @@ impl Type {
                 .unwrap_or(0),
             Self::Unknown(name) => panic!("Unknown type {}", name),
             Self::Void => panic!("Void type"),
+            Self::Array(ty, len) => ty.size() * len,
         }
     }
 }
@@ -167,6 +171,8 @@ impl PartialEq for Type {
                 true
             }
 
+            (Self::Array(ty, len), Self::Array(oty, olen)) if ty.eq(oty) && len == olen => true,
+
             (_, _) => false,
         }
     }
@@ -189,6 +195,7 @@ impl fmt::Display for Type {
             Self::Union(s) => write!(f, "Union {}: {{\n{:#?}\n}}", s.name, s.fields),
             Self::Unknown(name) => write!(f, "Unknown type {}", name),
             Self::Void => write!(f, "void"),
+            Self::Array(ty, len) => write!(f, "{} [{}]", ty, len),
         }
     }
 }

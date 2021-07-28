@@ -17,7 +17,7 @@ use inkwell::{
     module::Module,
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
     values::{AnyValue, AnyValueEnum, BasicValueEnum, FunctionValue, PointerValue},
-    IntPredicate,
+    AddressSpace, IntPredicate,
 };
 
 use super::ns::Ns;
@@ -758,6 +758,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .build
                         .build_pointer_cast(lhs.into_pointer_value(), ptr2, "ptr_to_ptr_cast")
                         .as_any_value_enum(),
+                    (AnyTypeEnum::ArrayType(_), BasicTypeEnum::PointerType(_)) => unsafe {
+                        self.build
+                            .build_in_bounds_gep(
+                                lhs.into_pointer_value(),
+                                &[self.ctx.i64_type().const_zero()],
+                                "array_to_ptr_cast_gep",
+                            )
+                            .as_any_value_enum()
+                    },
                     (one, two) => panic!("Cannot cast type {:?} to {:?}", one, two),
                 })
             }
@@ -775,6 +784,51 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 }
                 other => panic!("Unknown unary operator {} being applied", other),
             },
+            Ast::Array(expr, idx) => {
+                let ty = expr.get_type(self)?;
+                if let Type::Integer {
+                    signed: _,
+                    width: _,
+                } = idx.get_type(self)?
+                {
+                } else {
+                    error!(
+                        "{}: Cannot index array with expression of type {}",
+                        node.1,
+                        idx.get_type(self)?
+                    );
+                    return None;
+                }
+
+                let ptr = if let Type::Array(ty, _) = ty {
+                    let ptr = self.gen(expr, true)?.into_pointer_value();
+                    self.build
+                        .build_bitcast(
+                            ptr,
+                            self.llvm_type(ty.deref(), &node.1)
+                                .ptr_type(AddressSpace::Generic),
+                            "array_index_bitcast_to_ptr",
+                        )
+                        .into_pointer_value()
+                } else if let Type::Ptr(_) = ty {
+                    self.gen(expr, true)?.into_pointer_value()
+                } else {
+                    error!("{}: Array index operation on prefix type that is not an array or pointer type", node.1);
+                    return None;
+                };
+
+                let idx = self.gen(idx, false)?.into_int_value();
+                let ptr = unsafe { self.build.build_gep(ptr, &[idx], "array_index_gep") };
+                let res = Some(match lval {
+                    true => ptr.as_any_value_enum(),
+                    false => self
+                        .build
+                        .build_load(ptr, "array_index_load_idx")
+                        .as_any_value_enum(),
+                });
+                trace!("{}: Generated code for array index", node.1);
+                res
+            }
             Ast::Bin(lhs, op, rhs) => self.gen_bin(lhs, rhs, op),
 
             other => unimplemented!("Cannot use expression {:?} inside of a function", other),
