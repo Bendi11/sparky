@@ -1,6 +1,8 @@
 ns std::alloc {
 use std::win
 
+let const u8 ptr NULL = {u8 ptr}0;
+
 //Allocate a certain amount of bytes on the heap 
 fun malloc(u64 nbytes) u8 ptr {
     let win::Handle heap = GetProcessHeap();

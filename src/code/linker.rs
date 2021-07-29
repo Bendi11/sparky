@@ -211,6 +211,8 @@ impl Linker for LdLink {
                 }
         ));
 
+        args.push("-dynamic-linker".to_owned()); //Segfault instantly unless this option is passed
+
         let out = Command::new("ld")
             .args(args)
             .stdin(Stdio::null())
