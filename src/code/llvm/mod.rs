@@ -98,24 +98,25 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     }
                 };
 
-                let lhs_ty = lhs_node.get_type(self)?;
-                let rhs_ty = rhs_node.get_type(self)?;
+                let lhs_ty = lhs_node.get_type(self);
+                let rhs_ty = rhs_node.get_type(self);
                 
                 let rhs = match (&lhs_ty, &rhs_ty) {
-                    (Type::Integer{width, signed: _}, Type::Integer{width: rwidth, signed: _}) => {
+                    (Some(Type::Integer{width, signed: _}), Some(Type::Integer{width: rwidth, signed: _})) => {
                         if width != rwidth {
                             if rwidth > width {
                                 warn!("{}: Right hand side of assignment expression is casted to type of lesser width (narrowing conversion)", rhs_node.1);
                             }
-                            self.build.build_int_cast(rhs.into_int_value(), self.llvm_type(&lhs_ty, &lhs_node.1).into_int_type(), "rhs_assign_cast").as_basic_value_enum()
+                            self.build.build_int_cast(rhs.into_int_value(), self.llvm_type(&lhs_ty.unwrap(), &lhs_node.1).into_int_type(), "rhs_assign_cast").as_basic_value_enum()
                         } else {
                             rhs
                         }
                     },
-                    (other, rother) => {
+                    (Some(other), Some(rother)) if other != rother => {
                         error!("{}: Cannot assign value of type {} to variable of type {} (consider adding an explicit cast)", lhs_node.1, rother, other);
                         return None
-                    }
+                    },
+                    (_, _) => rhs
                 };
 
                 Some(self.build.build_store(lhs, rhs).as_any_value_enum())
