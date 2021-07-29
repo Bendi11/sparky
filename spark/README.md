@@ -1,7 +1,7 @@
 # spark 
 Syntax highlighing for the `spark` programming language. The language was a summer project for fun, its grammar can be found here: 
 
-```bnf
+```ebnf
 (*A program is made up of declarations*)
 <program> ::= <decl>*
 (*A declaration can be either a type definition or function definition*)
