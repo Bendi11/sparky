@@ -1,7 +1,7 @@
 # spark 
 Syntax highlighing for the `spark` programming language. The language was a summer project for fun, its grammar can be found here: 
 
-```ebnf
+```ebnf 
 (*A program is made up of declarations*)
 <program> ::= <decl>*
 (*A declaration can be either a type definition or function definition*)
@@ -9,6 +9,12 @@ Syntax highlighing for the `spark` programming language. The language was a summ
 		| <structdecl>
         | <uniondecl>
         | "type" <typename> <ident>
+        | <nsdecl>
+        | <usingdecl>
+        | "let" <attr>* <typename> <ident> ("=" <expr>)? ";"
+
+<nsdecl> ::= "ns" <ident> "{" <program> "}"
+<usingdecl> ::= "use" <ident>
 
 (*If a struct declaration has no definition, it is parsed as an opaque type*)
 <structdecl> ::= "struct" <ident> ( "{" (<typename> <ident> ",")* (<typename> <ident>)? "}" )?
@@ -20,7 +26,7 @@ Syntax highlighing for the `spark` programming language. The language was a summ
         | "static"
         
 (*Top level expressions are the ones that must be parsed in functions first, expressions are parsed in them*)
-<topexpr> ::= "let" <typename> <attr>* <ident> ("=" <expr>)?
+<topexpr> ::= "let" <attr>* <typename> <ident> ("=" <expr>)?
 	| <funcall>
     | "if" <expr> <body> ("else" <body>)?
     | "while" <expr> <body>
@@ -39,9 +45,10 @@ Syntax highlighing for the `spark` programming language. The language was a summ
 <structliteral> ::= "struct" <ident> "{" (<ident> "=" <expr> ",")* (<ident> "=" <expr>)? } 
 <numberliteral> ::= <digit>+ <inttype>? | "true" | "false"
 
-<typename> ::= <inttype> | <ident> 
-<inttype> ::= ("i" | "u") ("8" | "16" | "32" | "64") | "bool"
-<var> ::= <ident> | <prefix> "." <ident> 
+<typename> ::= <basetype> | <typename> "[" <digit>+ "]"
+<basetype> ::= <inttype> | <ident>
+<inttype> ::= ("i" | "u") ("8" | "16" | "32" | "64" | "size" ) | "bool"
+<var> ::= <ident> | <prefix> ( "." | "->" ) <ident> | <prefix> "[" <digit>+ "]"
 
 (*Prefix expressions are expressions that can come before a member access with the "." operator*)
 <prefix> ::= <var> | <funcall> | "(" <expr> ")"
@@ -65,6 +72,8 @@ Syntax highlighing for the `spark` programming language. The language was a summ
     | "<"
     | "<="
     | "<="
+    | ">>"
+    | "<<"
     
 <ident> ::= <letter>+ (<letter> | <digit> | "_")* 
     
@@ -77,4 +86,6 @@ Syntax highlighing for the `spark` programming language. The language was a summ
        | "q" | "r" | "s" | "t" | "u" | "v" | "w"
        | "x" | "y" | "z" 
 <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" 
+
+
 ```
