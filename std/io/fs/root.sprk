@@ -27,6 +27,12 @@ fun write_file(File file, u8 ptr buf, u32 len) u32 {
     ret written;
 }
 
+/// Close a file
+fun close_file(File file) void {
+    CloseHandle(file.file);
+    ret;
+}
+
 }
 
 ns std::io::fs::winstructs {

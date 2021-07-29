@@ -4,4 +4,8 @@ struct Handle {
     u8 ptr _raw
 }
 
+type u8 Bool
+
 }
+
+fun CloseHandle(std::win::Handle) std::win::Bool
