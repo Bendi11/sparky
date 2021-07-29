@@ -3,7 +3,7 @@ ns std::str {
 //A slice of a string containing a pointer to the first character in the slice and a len
 struct Slice {
     u32 len,
-    u8 ptr start,
+    u8 ptr start
 }
 
 

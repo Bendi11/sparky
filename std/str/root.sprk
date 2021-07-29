@@ -65,6 +65,14 @@ fun extend_cap(Str ptr str, u32 count) void {
     ret;
 }
 
+//Take a slice of a string 
+fun slice(Str ptr str, u32 pos, u32 len) Slice {
+    ret struct Slice {
+        start = {u8 ptr}(({u64}str->_raw) + {u64}pos),
+        len = len
+    };
+}
+
 //Write a string's contents to stdout
 fun write_to_stdout(Str ptr str) void {
     std::io::write_stdout(str->_raw, {u64}str->len);
