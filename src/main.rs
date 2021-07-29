@@ -212,7 +212,7 @@ fn main() {
         .arg(Arg::with_name("output-file")
             .short("o")
             .long("output-file")
-            .help("Specify the path to save the completed output file to")
+            .help("Specify the path to save the completed output file to (excluding file extension)")
             .max_values(1)
             .multiple(false)
             .takes_value(true)
