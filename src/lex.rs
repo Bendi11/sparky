@@ -454,12 +454,16 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
         } {}
 
         match ident.as_str() {
-            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" | "u64" | "i64"  => {
+            "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" | "u64" | "i64" => {
                 Token::new(&self.pos, TokenType::IntType(Type::int_ty(ident)))
-            },
-            "usize" | "isize" => {
-                Token::new(&self.pos, TokenType::IntType(Type::Integer{signed: &ident[0..1] == "i", width: usize::BITS as u8}))
             }
+            "usize" | "isize" => Token::new(
+                &self.pos,
+                TokenType::IntType(Type::Integer {
+                    signed: &ident[0..1] == "i",
+                    width: usize::BITS as u8,
+                }),
+            ),
             ident =>
             //Create either a keyword or an identifier token
             {
@@ -659,15 +663,15 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                         ('-', '>') => {
                             self.next_char();
                             return Some(Token(self.pos.clone(), TokenType::Arrow));
-                        },
+                        }
                         ('>', '>') => {
                             self.next_char();
-                            return Some(Token(self.pos.clone(), TokenType::Op(Op::ShRight)))
-                        },
+                            return Some(Token(self.pos.clone(), TokenType::Op(Op::ShRight)));
+                        }
                         ('<', '<') => {
                             self.next_char();
-                            return Some(Token(self.pos.clone(), TokenType::Op(Op::ShLeft)))
-                        },
+                            return Some(Token(self.pos.clone(), TokenType::Op(Op::ShLeft)));
+                        }
                         _ => (),
                     }
                 }

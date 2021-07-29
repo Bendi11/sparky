@@ -117,7 +117,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 }
                 Ast::Ns(ns, stmts) => {
                     trace!("Entering namespace {}", ns);
-                    self.enter_ns(&ns);
+                    self.enter_ns(ns);
                     self.get_opaques(stmts.clone());
                     self.exit_ns(ns.count());
                 }
@@ -139,8 +139,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
             return Err(format!("Function {} defined twice", qualified));
         }
 
+        let proto_clone = proto.clone();
         if proto.ret == Type::Void {
-            let proto_clone = proto.clone();
             let fun = self.module.add_function(
                 self.current_ns
                     .get()
@@ -165,7 +165,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 .insert(proto.name.clone(), (fun, proto_clone));
             Ok(fun)
         } else {
-            let proto_clone = proto.clone();
             let fun = self.module.add_function(
                 self.current_ns
                     .get()
@@ -279,7 +278,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     ty.set_body(&[self.llvm_type(&largest.1, &node.1)], false);
                 }
                 Ast::Ns(ns, stmts) => {
-                    self.enter_ns(&ns);
+                    self.enter_ns(ns);
                     let stmts = self.get_type_bodies(stmts.clone());
                     self.exit_ns(ns.count());
                     ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
@@ -296,14 +295,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
         for node in ast {
             match node.ast() {
                 Ast::FunProto(proto) => {
-                    self.gen_fun_proto(&proto, &node.1).unwrap();
+                    self.gen_fun_proto(proto, &node.1).unwrap();
                     trace!(
                         "Generated function prototype {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
                 }
                 Ast::FunDef(proto, _) => {
-                    self.gen_fun_proto(&proto, &node.1).unwrap();
+                    self.gen_fun_proto(proto, &node.1).unwrap();
                     trace!(
                         "Generating function prototype for function definition {}",
                         self.current_ns.get().qualify(&proto.name)
@@ -320,7 +319,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     trace!("Generated typedef {}", name);
                 }
                 Ast::Ns(ns, stmts) => {
-                    self.enter_ns(&ns);
+                    self.enter_ns(ns);
                     let stmts = self.scan_for_fns(stmts.clone());
                     self.exit_ns(ns.count());
                     ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
@@ -356,7 +355,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     )
                 }
                 Ast::Ns(ns, stmts) => {
-                    self.enter_ns(&ns);
+                    self.enter_ns(ns);
                     let stmts = self.get_using(stmts.clone());
                     self.exit_ns(ns.count());
                     ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))
@@ -423,7 +422,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .insert(name.clone(), (global, ty.clone()));
                 }
                 Ast::Ns(ns, stmts) => {
-                    self.enter_ns(&ns);
+                    self.enter_ns(ns);
                     let stmts = self.get_consts(stmts.clone());
                     self.exit_ns(ns.count());
                     ret.push(AstPos(Ast::Ns(ns.clone(), stmts), node.1))

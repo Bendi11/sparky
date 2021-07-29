@@ -11,7 +11,14 @@ use crate::{
     Type,
 };
 use hashbrown::HashMap;
-use inkwell::{AddressSpace, IntPredicate, builder::Builder, context::Context, module::Module, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::Module,
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
+    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
+    AddressSpace, IntPredicate,
+};
 
 use super::ns::Ns;
 
@@ -85,7 +92,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Generate code for a binary expression
-    fn gen_bin(&mut self, lhs_node: &AstPos, rhs_node: &AstPos, op: &Op) -> Option<AnyValueEnum<'c>> {
+    fn gen_bin(
+        &mut self,
+        lhs_node: &AstPos,
+        rhs_node: &AstPos,
+        op: &Op,
+    ) -> Option<AnyValueEnum<'c>> {
         match op {
             //Handle assignment separately
             Op::Assign => {
@@ -100,23 +112,36 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 let lhs_ty = lhs_node.get_type(self);
                 let rhs_ty = rhs_node.get_type(self);
-                
+
                 let rhs = match (&lhs_ty, &rhs_ty) {
-                    (Some(Type::Integer{width, signed: _}), Some(Type::Integer{width: rwidth, signed: _})) => {
+                    (
+                        Some(Type::Integer { width, signed: _ }),
+                        Some(Type::Integer {
+                            width: rwidth,
+                            signed: _,
+                        }),
+                    ) => {
                         if width != rwidth {
                             if rwidth > width {
                                 warn!("{}: Right hand side of assignment expression is casted to type of lesser width (narrowing conversion)", rhs_node.1);
                             }
-                            self.build.build_int_cast(rhs.into_int_value(), self.llvm_type(&lhs_ty.unwrap(), &lhs_node.1).into_int_type(), "rhs_assign_cast").as_basic_value_enum()
+                            self.build
+                                .build_int_cast(
+                                    rhs.into_int_value(),
+                                    self.llvm_type(&lhs_ty.unwrap(), &lhs_node.1)
+                                        .into_int_type(),
+                                    "rhs_assign_cast",
+                                )
+                                .as_basic_value_enum()
                         } else {
                             rhs
                         }
-                    },
+                    }
                     (Some(other), Some(rother)) if other != rother => {
                         error!("{}: Cannot assign value of type {} to variable of type {} (consider adding an explicit cast)", lhs_node.1, rother, other);
-                        return None
-                    },
-                    (_, _) => rhs
+                        return None;
+                    }
+                    (_, _) => rhs,
                 };
 
                 Some(self.build.build_store(lhs, rhs).as_any_value_enum())
@@ -125,114 +150,90 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 //use std::mem::discriminant;
                 let lhs_ty = lhs_node.get_type(self)?;
                 let rhs_ty = rhs_node.get_type(self)?;
-                
+
                 let lhs = self.gen(lhs_node, false)?;
                 let lhs = match lhs_ty {
-                    Type::Ptr(_) => self.build.build_ptr_to_int(lhs.into_pointer_value(), self.ctx.custom_width_int_type(usize::BITS), "ptr_to_int_lhs")
-                        ,
-                    Type::Integer{signed: _, width: _} => lhs.into_int_value(),
+                    Type::Ptr(_) => self.build.build_ptr_to_int(
+                        lhs.into_pointer_value(),
+                        self.ctx.custom_width_int_type(usize::BITS),
+                        "ptr_to_int_lhs",
+                    ),
+                    Type::Integer {
+                        signed: _,
+                        width: _,
+                    } => lhs.into_int_value(),
                     _ => {
                         error!("{}: Left hand side of {} expression is not an integer or pointer value", lhs_node.1, op);
-                        return None
+                        return None;
                     }
                 };
 
                 let rhs = self.gen(rhs_node, false)?;
                 let rhs = match rhs_ty {
-                    Type::Ptr(_) => self.build.build_ptr_to_int(rhs.into_pointer_value(), self.ctx.custom_width_int_type(usize::BITS), "ptr_to_int_rhs")
-                        ,
-                    Type::Integer{signed: _, width: _} => rhs.into_int_value(),
+                    Type::Ptr(_) => self.build.build_ptr_to_int(
+                        rhs.into_pointer_value(),
+                        self.ctx.custom_width_int_type(usize::BITS),
+                        "ptr_to_int_rhs",
+                    ),
+                    Type::Integer {
+                        signed: _,
+                        width: _,
+                    } => rhs.into_int_value(),
                     _ => {
                         error!("{}: Right hand side of {} expression is not an integer or pointer value", rhs_node.1, op);
-                        return None
+                        return None;
                     }
                 };
 
                 //Cast rhs to be the same integer type
                 let rhs = if rhs.get_type().get_bit_width() != lhs.get_type().get_bit_width() {
-                    self.build.build_int_cast(rhs, lhs.get_type(), "rhs_operand_int_cast")
+                    self.build
+                        .build_int_cast(rhs, lhs.get_type(), "rhs_operand_int_cast")
                 } else {
                     rhs
                 };
 
                 let res = match op {
-                    Op::Plus => {
+                    Op::Plus => self.build.build_int_add(lhs, rhs, "tmp_iadd"),
+                    Op::Greater => self.build.build_int_compare(
+                        IntPredicate::SGT,
+                        lhs,
+                        rhs,
+                        "int_greater_than_cmp",
+                    ),
+                    Op::Less => self.build.build_int_compare(
+                        IntPredicate::SLT,
+                        lhs,
+                        rhs,
+                        "int_less_than_cmp",
+                    ),
+                    Op::Equal => {
                         self.build
-                            .build_int_add(lhs, rhs, "tmp_iadd")
+                            .build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp")
                     }
-                    Op::Greater => self
-                        .build
-                        .build_int_compare(
-                            IntPredicate::SGT,
-                            lhs,
-                            rhs,
-                            "int_greater_than_cmp",
-                        ),
-                    Op::Less => self
-                        .build
-                        .build_int_compare(
-                            IntPredicate::SLT,
-                            lhs,
-                            rhs,
-                            "int_less_than_cmp",
-                        ),
-                    Op::Equal => self
-                        .build
-                        .build_int_compare(
-                            IntPredicate::EQ,
-                            lhs,
-                            rhs,
-                            "int_eq_cmp",
-                        ),
-                    Op::GreaterEq => self
-                        .build
-                        .build_int_compare(
-                            IntPredicate::SGE,
-                            lhs,
-                            rhs,
-                            "int_greater_than_eq_cmp",
-                        ),                    
-                    Op::NEqual => self
-                        .build
-                        .build_int_compare(
-                            IntPredicate::NE,
-                            lhs,
-                            rhs,
-                            "int_not_eq_cmp",
-                        ),
-                    Op::LessEq => self
-                        .build
-                        .build_int_compare(
-                            IntPredicate::SLE,
-                            lhs,
-                            rhs,
-                            "int_less_than_eq_cmp",
-                        ),
-                    Op::And => self
-                        .build
-                        .build_and(lhs, rhs, "bit_and"),
-                    Op::Or => self
-                        .build
-                        .build_or(lhs, rhs, "bit_or"),
-                    Op::Xor => self
-                        .build
-                        .build_xor(lhs, rhs, "bit_xor"),
-                    Op::Star => self
-                        .build
-                        .build_int_mul(lhs, rhs, "int_mul"),
-                    Op::Divide => self
-                        .build
-                        .build_int_signed_div(lhs, rhs, "int_div"),
-                    Op::Modulo => self
-                        .build
-                        .build_int_signed_rem(
-                            lhs,
-                            rhs,
-                            "int_modulo",
-                        ),
-                    Op::Minus => self
-                        .build
-                        .build_int_sub(lhs, rhs, "int_sub"),
+                    Op::GreaterEq => self.build.build_int_compare(
+                        IntPredicate::SGE,
+                        lhs,
+                        rhs,
+                        "int_greater_than_eq_cmp",
+                    ),
+                    Op::NEqual => {
+                        self.build
+                            .build_int_compare(IntPredicate::NE, lhs, rhs, "int_not_eq_cmp")
+                    }
+                    Op::LessEq => self.build.build_int_compare(
+                        IntPredicate::SLE,
+                        lhs,
+                        rhs,
+                        "int_less_than_eq_cmp",
+                    ),
+                    Op::And => self.build.build_and(lhs, rhs, "bit_and"),
+                    Op::Or => self.build.build_or(lhs, rhs, "bit_or"),
+                    Op::Xor => self.build.build_xor(lhs, rhs, "bit_xor"),
+                    Op::Star => self.build.build_int_mul(lhs, rhs, "int_mul"),
+                    Op::Divide => self.build.build_int_signed_div(lhs, rhs, "int_div"),
+                    Op::Modulo => self.build.build_int_signed_rem(lhs, rhs, "int_modulo"),
+                    Op::Minus => self.build.build_int_sub(lhs, rhs, "int_sub"),
                     Op::AndAnd => {
                         let lhs = self.build.build_int_compare(
                             IntPredicate::SGT,
@@ -246,8 +247,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             self.ctx.bool_type().const_zero(),
                             "and_and_cond_check_rhs",
                         );
-                        self.build
-                            .build_and(lhs, rhs, "cond_and_and_cmp")
+                        self.build.build_and(lhs, rhs, "cond_and_and_cmp")
                     }
                     Op::OrOr => {
                         let lhs = self.build.build_int_compare(
@@ -262,24 +262,29 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             self.ctx.bool_type().const_zero(),
                             "or_or_cond_check_rhs",
                         );
-                        self.build
-                            .build_or(lhs, rhs, "cond_or_or_cmp")
+                        self.build.build_or(lhs, rhs, "cond_or_or_cmp")
                     }
 
                     Op::ShLeft => self.build.build_left_shift(lhs, rhs, "int_left_shift"),
-                    Op::ShRight => self.build.build_right_shift(lhs, rhs, false, "int_right_shift"),
+                    Op::ShRight => self
+                        .build
+                        .build_right_shift(lhs, rhs, false, "int_right_shift"),
                     other => {
-                        error!(
-                            "{}: Cannot use operator '{}'",
-                            lhs_node.1, other
-                        );
+                        error!("{}: Cannot use operator '{}'", lhs_node.1, other);
                         return None;
                     }
                 };
 
                 Some(match lhs_ty {
-                    Type::Ptr(_) => self.build.build_int_to_ptr(res, self.llvm_type(&lhs_ty, &lhs_node.1).into_pointer_type(), "bin_res_to_ptr").as_any_value_enum(),
-                    _ => res.as_any_value_enum()
+                    Type::Ptr(_) => self
+                        .build
+                        .build_int_to_ptr(
+                            res,
+                            self.llvm_type(&lhs_ty, &lhs_node.1).into_pointer_type(),
+                            "bin_res_to_ptr",
+                        )
+                        .as_any_value_enum(),
+                    _ => res.as_any_value_enum(),
                 })
             }
         }
@@ -310,7 +315,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     }
                     ref ty => {
                         let ty = ty.clone();
-                        let ret = self.gen(&node.deref().as_ref().unwrap(), false)?;
+                        let ret = self.gen(node.deref().as_ref().unwrap(), false)?;
                         if node.deref().as_ref().unwrap().get_type(self)? != ty {
                             error!(
                                 "{}: In function {}: Returning the incorrect type: {} expected, {} returned",
@@ -377,12 +382,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
             },
             Ast::AssocFunAccess(item, name, args) => match self.get_fun(name.as_str()) {
                 Some((f, _)) => {
-                    let item = BasicValueEnum::try_from(self.gen(&item.deref(), false)?).unwrap(); //Generate code for the first expression
+                    let item = BasicValueEnum::try_from(self.gen(item.deref(), false)?).unwrap(); //Generate code for the first expression
                     let mut real_args = vec![item];
                     real_args.extend(
                         args
                             .iter()
-                            .map(|n| Some(BasicValueEnum::try_from(self.gen(&n, false)?).expect("Failed to convert any value enum to basic value enum when calling function"))).collect::<Option<Vec<_>>>()? );
+                            .map(|n| Some(BasicValueEnum::try_from(self.gen(n, false)?).expect("Failed to convert any value enum to basic value enum when calling function"))).collect::<Option<Vec<_>>>()? );
                     Some(
                         self.build
                             .build_call(f, real_args.as_ref(), "tmp_assoc_fncall")
@@ -397,7 +402,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 else_block,
             } => {
                 self.just_ret = false;
-                let cond = self.gen(&condition, false)?.into_int_value();
+                let cond = self.gen(condition, false)?.into_int_value();
                 let fun = match self.current_fn {
                     Some(fun) => fun,
                     None => {
@@ -416,7 +421,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 self.build.position_at_end(true_bb);
                 for stmt in true_block {
-                    self.gen(&stmt, false);
+                    self.gen(stmt, false);
                     if self.just_ret {
                         break;
                     }
@@ -435,7 +440,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 match else_block.is_some() {
                     true => {
                         for stmt in else_block.as_ref().unwrap().iter() {
-                            self.gen(&stmt, false);
+                            self.gen(stmt, false);
                             if self.just_ret {
                                 break;
                             }
@@ -464,7 +469,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 self.build.build_unconditional_branch(cond_bb); //Jump to the condition block for the first check
                 self.build.position_at_end(cond_bb);
-                let cond = self.gen(&cond, false)?.into_int_value();
+                let cond = self.gen(cond, false)?.into_int_value();
 
                 self.build
                     .build_conditional_branch(cond, while_bb, after_bb);
@@ -472,7 +477,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 let old_vars = self.vars.clone();
                 for stmt in block {
-                    self.gen(&stmt, false);
+                    self.gen(stmt, false);
                 }
                 self.vars = old_vars; //Drop values that were enclosed in the while loop
 

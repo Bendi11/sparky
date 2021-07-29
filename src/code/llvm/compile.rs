@@ -178,8 +178,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 let machine = target
                     .create_target_machine(
                         &TargetMachine::get_default_triple(),
-                        &TargetMachine::get_host_cpu_name().to_str().unwrap(),
-                        &TargetMachine::get_host_cpu_features().to_str().unwrap(),
+                        TargetMachine::get_host_cpu_name().to_str().unwrap(),
+                        TargetMachine::get_host_cpu_features().to_str().unwrap(),
                         opt,
                         reloc,
                         model,

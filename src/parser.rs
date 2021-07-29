@@ -43,14 +43,14 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let Token(pos, _) = self.toks.next().eof()?;
                 let ns = self.expect_next_ident()?;
                 Ok(AstPos(Ast::Using(ns.parse().unwrap()), pos))
-            },
+            }
 
             Token(_, TokenType::Key(Key::Type)) => {
                 let Token(pos, _) = self.toks.next().eof()?;
                 let ty = self.parse_typename()?;
                 let name = self.expect_next_ident()?;
                 Ok(AstPos(Ast::TypeDef(name, ty), pos))
-            },
+            }
 
             Token(_, TokenType::Key(Key::Ns)) => {
                 let Token(pos, _) = self.toks.next().eof()?;
@@ -128,10 +128,15 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(pos, other) => Err(ParseErr::UnexpectedToken(
                 pos.clone(),
                 other.clone(),
-                vec![TokenType::Key(Key::Fun), TokenType::Key(Key::Struct), 
-                    TokenType::Key(Key::Union), TokenType::Key(Key::Let), 
-                    TokenType::Key(Key::Ns), TokenType::Key(Key::Type),
-                    TokenType::Key(Key::Use)],
+                vec![
+                    TokenType::Key(Key::Fun),
+                    TokenType::Key(Key::Struct),
+                    TokenType::Key(Key::Union),
+                    TokenType::Key(Key::Let),
+                    TokenType::Key(Key::Ns),
+                    TokenType::Key(Key::Type),
+                    TokenType::Key(Key::Use),
+                ],
             )),
         }
     }

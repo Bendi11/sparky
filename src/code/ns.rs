@@ -129,14 +129,14 @@ impl<'a, 'c> Ns<'a, 'c> {
     /// Get a child namespace using an iterator, used in the [get_ns] function
     fn get_child<'b>(&'a self, mut iter: impl Iterator<Item = &'b String>) -> Option<&'a Self> {
         match iter.next() {
-            None => Some(&self),
+            None => Some(self),
             Some(ns) => self.nested.borrow().get(ns)?.get_child(iter),
         }
     }
 
     /// Add a child namespace to this namespace
     pub fn add_ns(&'a self, ns: &'a Self) {
-        *ns.parent.borrow_mut() = Some(&self);
+        *ns.parent.borrow_mut() = Some(self);
         debug!(
             "Adding child namespace {} to namespace {}",
             ns.name,
