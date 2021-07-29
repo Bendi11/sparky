@@ -53,6 +53,8 @@ The operators and their purposes:
 - `<`: Check if the left hand side is less than the right hand side
 - `<=`: Check if the left hand side if less than or equal to the right hand side
 - `>=`: Check if the left hand side is greater than or equal to the right hand side
+- `>>`: Shift an integer value right
+- `<<`: Shift an integer value left
 
 
 ## Grammar in Backus-Naur Form
@@ -102,7 +104,7 @@ The operators and their purposes:
 
 <typename> ::= <basetype> | <typename> "[" <digit>+ "]"
 <basetype> ::= <inttype> | <ident>
-<inttype> ::= ("i" | "u") ("8" | "16" | "32" | "64") | "bool"
+<inttype> ::= ("i" | "u") ("8" | "16" | "32" | "64" | "size" ) | "bool"
 <var> ::= <ident> | <prefix> ( "." | "->" ) <ident> | <prefix> "[" <digit>+ "]"
 
 (*Prefix expressions are expressions that can come before a member access with the "." operator*)
@@ -127,6 +129,8 @@ The operators and their purposes:
     | "<"
     | "<="
     | "<="
+    | ">>"
+    | "<<"
     
 <ident> ::= <letter>+ (<letter> | <digit> | "_")* 
     
