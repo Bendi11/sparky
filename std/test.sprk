@@ -8,6 +8,9 @@ fun main() i32 {
     str::write_to_stdout(&str);
     io::puts("Hello World!!!!!\n");
 
+    let u8 ptr a = {u8 ptr}0;
+    let u8 ptr b = a + 100u64;
+
     let str::Str file_name = str::str_from("test.txt");
     let fs::File file = fs::open_file(&file_name);
     fs::write_file(file, "Hello World!!!\n", str::null::strlen("Hello World!!!\n"));

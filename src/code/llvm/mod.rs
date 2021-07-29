@@ -133,6 +133,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         return None
                     }
                 };
+
+                //Cast rhs to be the same integer type
+                let rhs = if rhs.get_type().get_bit_width() != lhs.get_type().get_bit_width() {
+                    self.build.build_int_cast(rhs, lhs.get_type(), "rhs_operand_int_cast")
+                } else {
+                    rhs
+                };
+
                 let res = match op {
                     Op::Plus => {
                         self.build
