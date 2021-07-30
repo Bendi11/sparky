@@ -472,6 +472,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Some(cond.as_any_value_enum())
             }
             Ast::While { cond, block } => {
+                self.just_ret = false;
                 let fun = self.current_fn.expect("While loop outside of function");
 
                 let cond_bb = self.ctx.append_basic_block(fun, "while_cond_bb");

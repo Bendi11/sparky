@@ -102,7 +102,7 @@ pub fn panic_handler(p: &PanicInfo) {
 
 /// Setup the logging handler with [`fern`]
 fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
-    fern::Dispatch::new()
+    let log = fern::Dispatch::new()
         .level(verbosity)
         .chain(
             fern::Dispatch::new()
@@ -123,8 +123,9 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                     ))
                 })
                 .chain(std::io::stderr()),
-        )
-        .chain(
+        );
+    if verbosity != log::Level::Warn {
+        log.chain(
             fern::Dispatch::new()
                 .format(|out, message, record| {
                     out.finish(format_args!(
@@ -143,7 +144,11 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                 )
                 .level(verbosity),
         )
-        .apply()?;
+        
+    } else {
+        log
+    }.apply()?;
+        
 
     Ok(())
 }
@@ -246,7 +251,7 @@ fn main() {
 
     match args.is_present("verbose") {
         true => setup_logger(log::LevelFilter::Trace),
-        false => setup_logger(log::LevelFilter::Debug),
+        false => setup_logger(log::LevelFilter::Warn),
     }
     .unwrap();
 
