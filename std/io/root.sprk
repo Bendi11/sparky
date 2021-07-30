@@ -16,7 +16,7 @@ fun write_stdout(u8 ptr buf, u64 len) i32 {
 //Write a NULL-terminated string to stdout, returning the number of bytes written
 //to the console
 fun puts(u8 ptr str) i32 {
-    let u32 len = std::str::null::strlen(str);
+    let u32 len = std::string::null::strlen(str);
     ret write_stdout(str, {u64}len);
 }
 

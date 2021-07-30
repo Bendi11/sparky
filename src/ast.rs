@@ -44,6 +44,9 @@ pub enum Ast {
     /// A function definition with the function signature and the body of the function
     FunDef(FunProto, Vec<AstPos>),
 
+    /// An assembly function definition
+    AsmFunDef(FunProto, String, String),
+
     /// A constant number literal
     NumLiteral(Type, String),
 
@@ -228,6 +231,7 @@ impl AstPos {
     fn apply_ptr_ty<F: FnOnce(&Type) -> Option<Type>>(ty: &Type, op: F) -> Option<Type> {
         match ty {
             Type::Ptr(ty) => Self::apply_ptr_ty(ty, op).map(|ty| ty.ptr_type()),
+            Type::Array(ty, len) => Self::apply_ptr_ty(ty, op).map(|ty| Type::Array(Box::new(ty), *len)),
             other => op(other),
         }
     }

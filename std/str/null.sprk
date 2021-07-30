@@ -1,4 +1,4 @@
-ns std::str::null {
+ns std::string::null {
 
 //Return the length in bytes of a NULL-terminated string buffer
 fun strlen(u8 ptr str) u32 {
