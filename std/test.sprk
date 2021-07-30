@@ -3,14 +3,12 @@ use std::string
 use std::io
 use std::io::fs
 
-fun asm testing(i64 a) void {
-"
-    ret rdi
-",
-"=r,rdi"
-}
 
 fun main() i32 {
+    if true {
+        let i32 a = 100;
+    };
+
     let str::Str str = str::new();
 
     str::write_to_stdout(&str);

@@ -76,12 +76,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// Build an alloca for a variable in the current function
     fn entry_alloca(&self, name: &str, ty: BasicTypeEnum<'c>) -> PointerValue<'c> {
         let entry_builder = self.ctx.create_builder();
-        let f = self
+        /*let f = self
             .current_fn
-            .expect("Not in a function, can't allocate on stack");
-        let bb = f
+            .expect("Not in a function, can't allocate on stack");*/
+        let bb = self.build.get_insert_block().unwrap();
+        /*let bb = f
             .get_first_basic_block()
-            .expect("Function has no entry block to allocate in");
+            .expect("Function has no entry block to allocate in");*/
         if let Some(ref ins) = bb.get_first_instruction() {
             entry_builder.position_at(bb, ins);
         } else {
@@ -423,6 +424,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 self.build.build_conditional_branch(cond, true_bb, false_bb);
 
                 self.build.position_at_end(true_bb);
+
+                let old_vars = self.vars.clone();
+
                 for stmt in true_block {
                     self.gen(stmt, false);
                     if self.just_ret {
@@ -435,13 +439,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     self.just_ret = false;
                     trace!("Encountered an early return from an if block, so not inserting a jump");
                 }
-                //true_bb = self.build.get_insert_block().unwrap();
-                //self.build.build_unconditional_branch(after_bb);
+
+                self.vars = old_vars;
 
                 self.build.position_at_end(false_bb);
 
                 match else_block.is_some() {
                     true => {
+                        let old_vars = self.vars.clone();
+
                         for stmt in else_block.as_ref().unwrap().iter() {
                             self.gen(stmt, false);
                             if self.just_ret {
@@ -453,6 +459,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         } else {
                             self.just_ret = false;
                         }
+
+                        self.vars = old_vars;
                         //false_bb = self.build.get_insert_block().unwrap();
                     }
                     false => {
@@ -481,12 +489,20 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 let old_vars = self.vars.clone();
                 for stmt in block {
                     self.gen(stmt, false);
+                    if self.just_ret {
+                        break
+                    }
                 }
                 self.vars = old_vars; //Drop values that were enclosed in the while loop
 
-                let br = self.build.build_unconditional_branch(cond_bb); //Branch back to the condition to check it
+                if !self.just_ret {
+                    self.build.build_unconditional_branch(cond_bb); //Branch back to the condition to check it
+                } else {
+                    self.just_ret = false;
+                }
+                
                 self.build.position_at_end(after_bb); //Continue condegen after the loop block
-                Some(br.as_any_value_enum())
+                Some(cond.as_any_value_enum())
             }
             Ast::VarDecl { ty, name, attrs: _ } => {
                 let var = self.entry_alloca(name.as_str(), self.llvm_type(ty, &node.1));
