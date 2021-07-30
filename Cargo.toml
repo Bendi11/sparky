@@ -5,7 +5,7 @@ authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-clap = "2.33" # For command line arguments
+clap = {version = "3.0.0-beta", features = ["color"] } # For command line arguments
 console = "0.14" # For command line styling
 thiserror = "1.0" # For error handling
 
