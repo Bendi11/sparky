@@ -158,6 +158,7 @@ fn main() {
     let app = App::new("sparkc")
         .about("Compiler for the Spark programming language utilizing LLVM as a backend")
         .version(clap::crate_version!())
+        .setting(clap::AppSettings::ColoredHelp)
         .author("Ben Liebmann <bkliebmann@gmail.com>")
         .long_about(
 "Compiler for the Spark programming language, supporting LLVM as a code generation backend.
