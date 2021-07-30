@@ -1,5 +1,6 @@
 ns std::string::str {
 use std::string::slice
+use std::string::null
 
 //The Str struct holds a string with length and capacity
 struct Str {

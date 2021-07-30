@@ -585,7 +585,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 return Err(ParseErr::UnexpectedToken(
                     line,
                     tok,
-                    vec![TokenType::Ident(String::new())],
+                    vec![TokenType::Ident(String::from("Function name"))],
                 ))
             }
         };
@@ -642,6 +642,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         let Token(pos, _) = self.toks.next().eof()?; //Consume fun keyword
         match self.toks.peek().eof()? {
             Token(_, TokenType::Key(Key::Asm)) => {
+                self.toks.next();
                 let proto = self.parse_fun_proto(Attributes::empty())?;
                 self.expect_next(TokenType::LeftBrace('{'))?;
                 let asm = match self.toks.next().eof()? {

@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use inkwell::{InlineAsmDialect, OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, types::BasicType, values::{BasicValue, CallableValue}};
+use inkwell::{InlineAsmDialect, OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, values::{BasicValue, CallableValue}};
 use log::warn;
 
 use crate::{
@@ -77,7 +77,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
             return None;
         }
-        let f = match self.module.get_function(
+        
+        let fun = match self.module.get_function(
             self.current_ns
                 .get()
                 .qualify(&proto.name)
@@ -88,11 +89,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
             None => self.gen_fun_proto(&proto, &pos).unwrap(),
         };
 
-        let bb = self.ctx.append_basic_block(f, "asm_fn_entry"); //Add the first basic block
+        let bb = self.ctx.append_basic_block(fun, "asm_fn_entry"); //Add the first basic block
         self.build.position_at_end(bb); //Start inserting into the function
 
         //Add argument names to the list of variables we can use
-        for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
+        for (arg, (ty, proto_arg)) in fun.get_param_iter().zip(proto.args.iter()) {
             let alloca = self.entry_alloca(
                 proto_arg.clone().unwrap_or_else(String::new).as_str(),
                 self.llvm_type(ty, &pos),
@@ -106,9 +107,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         //Small hack: Inline asm creates a function pointer, so we create a function pointer and call it in the function body
 
-        let asm_fn = self.llvm_type(&proto.ret, &pos).fn_type(proto.args.iter().map(|(ty, _)| self.llvm_type(ty, &pos)).collect::<Vec<_>>().as_slice(), false);
-        let asm = self.ctx.create_inline_asm(asm_fn, asm, constraints, true, false, Some(InlineAsmDialect::Intel));
-        let params = f.get_params();
+        let asm = self.ctx.create_inline_asm(fun.get_type(), asm, constraints, true, false, Some(InlineAsmDialect::Intel));
+        let params = fun.get_params();
         let callable_asm = CallableValue::try_from(asm).unwrap();
         
         let call = self.build.build_call(callable_asm, &params, "asm_fn_call_asm")

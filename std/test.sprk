@@ -3,6 +3,14 @@ use std::string
 use std::io
 use std::io::fs
 
+fun asm testing() void {
+"
+    ret     
+",
+"
+"
+}
+
 fun main() i32 {
     let str::Str str = str::new();
 
@@ -11,6 +19,6 @@ fun main() i32 {
 
     let str::Str file_name = str::from("test.txt");
     let fs::File file = fs::open_file(&file_name);
-    fs::write_file(file, "Hello World!!!\n", string::strlen("Hello World!!!\n"));
+    fs::write_file(file, "Hello World!!!\n", string::null::strlen("Hello World!!!\n"));
     ret 0;
 }
