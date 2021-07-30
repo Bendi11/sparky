@@ -109,7 +109,7 @@ pub fn panic_handler(p: &PanicInfo) {
 
 /// Setup the logging handler with [`fern`]
 fn setup_logger(verbosity: log::LevelFilter, colorchoice: termcolor::ColorChoice) -> Result<(), log::SetLoggerError> {
-    let logger = TermLogger::new(verbosity, simplelog::ConfigBuilder::new()
+    let logger = TermLogger::new(log::LevelFilter::Warn, simplelog::ConfigBuilder::new()
         .set_level_color(log::Level::Error, Some(Color::Red))
         .set_level_color(log::Level::Warn, Some(Color::Yellow))
         .set_time_level(log::LevelFilter::Off)
