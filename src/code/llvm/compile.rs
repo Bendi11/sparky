@@ -92,19 +92,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
         let bb = self.ctx.append_basic_block(fun, "asm_fn_entry"); //Add the first basic block
         self.build.position_at_end(bb); //Start inserting into the function
 
-        //Add argument names to the list of variables we can use
-        for (arg, (ty, proto_arg)) in fun.get_param_iter().zip(proto.args.iter()) {
-            let alloca = self.entry_alloca(
-                proto_arg.clone().unwrap_or_else(String::new).as_str(),
-                self.llvm_type(ty, &pos),
-            );
-            self.build.build_store(alloca, arg); //Store the initial value in the function parameters
-
-            if let Some(name) = proto_arg {
-                self.vars.insert(name.clone(), (alloca, ty.clone()));
-            }
-        }
-
         //Small hack: Inline asm creates a function pointer, so we create a function pointer and call it in the function body
 
         let asm = self.ctx.create_inline_asm(fun.get_type(), asm, constraints, true, false, Some(InlineAsmDialect::Intel));

@@ -3,11 +3,11 @@ use std::string
 use std::io
 use std::io::fs
 
-fun asm testing() void {
+fun asm testing(i64 a) void {
 "
-    ret     
+    ret rdi
 ",
-"=r"
+"=r,rdi"
 }
 
 fun main() i32 {
