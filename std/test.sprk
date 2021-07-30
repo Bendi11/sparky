@@ -7,8 +7,7 @@ fun asm testing() void {
 "
     ret     
 ",
-"
-"
+"=r"
 }
 
 fun main() i32 {
