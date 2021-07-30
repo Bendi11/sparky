@@ -3,8 +3,8 @@ pub mod code;
 pub mod lex;
 pub mod parser;
 pub mod types;
-use std::{panic::PanicInfo, path::PathBuf, str::FromStr};
 use std::io::Write as IoWrite;
+use std::{panic::PanicInfo, path::PathBuf, str::FromStr};
 
 use bumpalo::Bump;
 use clap::{App, Arg};
@@ -85,12 +85,10 @@ pub struct CompileOpts {
 pub fn panic_handler(p: &PanicInfo) {
     let mut stdout = StandardStream::stderr(match atty::is(atty::Stream::Stderr) {
         true => termcolor::ColorChoice::Auto,
-        false => termcolor::ColorChoice::Never
+        false => termcolor::ColorChoice::Never,
     });
     let _ = stdout.set_color(&ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
-    writeln!(&mut stdout,
-        "A fatal error occurred when compiling"
-    ).ok();
+    writeln!(&mut stdout, "A fatal error occurred when compiling").ok();
     stdout.reset().ok();
     match p.location() {
         Some(loc) => eprintln!("At {}", loc),
@@ -108,23 +106,33 @@ pub fn panic_handler(p: &PanicInfo) {
 }
 
 /// Setup the logging handler with [`fern`]
-fn setup_logger(verbosity: log::LevelFilter, colorchoice: termcolor::ColorChoice) -> Result<(), log::SetLoggerError> {
-    let logger = TermLogger::new(log::LevelFilter::Warn, simplelog::ConfigBuilder::new()
-        .set_level_color(log::Level::Error, Some(Color::Red))
-        .set_level_color(log::Level::Warn, Some(Color::Yellow))
-        .set_time_level(log::LevelFilter::Off)
-        .set_location_level(log::LevelFilter::Off)
-        .build(), simplelog::TerminalMode::Stderr, colorchoice);
+fn setup_logger(
+    verbosity: log::LevelFilter,
+    colorchoice: termcolor::ColorChoice,
+) -> Result<(), log::SetLoggerError> {
+    let logger = TermLogger::new(
+        log::LevelFilter::Warn,
+        simplelog::ConfigBuilder::new()
+            .set_level_color(log::Level::Error, Some(Color::Red))
+            .set_level_color(log::Level::Warn, Some(Color::Yellow))
+            .set_time_level(log::LevelFilter::Off)
+            .set_location_level(log::LevelFilter::Off)
+            .build(),
+        simplelog::TerminalMode::Stderr,
+        colorchoice,
+    );
 
-    let mut loggers = vec![
-        logger as Box<dyn simplelog::SharedLogger>
-    ];
+    let mut loggers = vec![logger as Box<dyn simplelog::SharedLogger>];
     if verbosity != log::LevelFilter::Warn {
-        loggers.push(WriteLogger::new(verbosity, simplelog::ConfigBuilder::new().build(), std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open("sparkc.log").unwrap()
+        loggers.push(WriteLogger::new(
+            verbosity,
+            simplelog::ConfigBuilder::new().build(),
+            std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open("sparkc.log")
+                .unwrap(),
         ) as Box<dyn simplelog::SharedLogger>);
     }
 
@@ -133,7 +141,7 @@ fn setup_logger(verbosity: log::LevelFilter, colorchoice: termcolor::ColorChoice
 
 fn main() {
     std::panic::set_hook(Box::new(panic_handler));
-    
+
     let app = App::new("sparkc")
         .about("Compiler for the Spark programming language utilizing LLVM as a backend")
         .version(clap::crate_version!())
@@ -243,8 +251,8 @@ fn main() {
         true => termcolor::ColorChoice::Never,
         false => match atty::is(atty::Stream::Stderr) {
             true => termcolor::ColorChoice::Auto,
-            false => termcolor::ColorChoice::Never
-        }
+            false => termcolor::ColorChoice::Never,
+        },
     };
 
     match args.is_present("verbose") {
