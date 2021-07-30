@@ -1,4 +1,4 @@
-ns std::str {
+ns std::string::slice {
 
 //A slice of a string containing a pointer to the first character in the slice and a len
 struct Slice {

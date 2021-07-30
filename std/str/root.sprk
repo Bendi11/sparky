@@ -1,4 +1,5 @@
-ns std::str {
+ns std::string::str {
+use std::string::slice
 
 //The Str struct holds a string with length and capacity
 struct Str {
@@ -8,7 +9,7 @@ struct Str {
 }
 
 //Allocate a new string data on the heap with default capacity and 0 len
-fun str_new() Str {
+fun new() Str {
     ret struct Str {
         _raw = std::alloc::malloc(10u64),
         len = 0u32,
@@ -17,7 +18,7 @@ fun str_new() Str {
 }
 
 //Get the string's contents as a NULL-terminated C-style string
-fun str_raw(Str ptr str) u8 ptr {
+fun raw(Str ptr str) u8 ptr {
     if str->_cap == (*str).len {
         extend_cap(str, 1u32);
     };
@@ -27,7 +28,7 @@ fun str_raw(Str ptr str) u8 ptr {
 }
 
 //Use an existing NULL-terminated string to fill a string's contents
-fun str_from(u8 ptr str) Str {
+fun from(u8 ptr str) Str {
     let u32 len = null::strlen(str);
     let Str string = struct Str {
         _raw = std::alloc::malloc({u64}len),
@@ -45,7 +46,7 @@ fun str_from(u8 ptr str) Str {
 }
 
 //Push a character to the string
-fun str_push(Str ptr str, u8 char) void {
+fun push(Str ptr str, u8 char) void {
     //Extend string storage if needed
     if str->_cap == (*str).len {
         extend_cap(str, 10u32);
@@ -66,8 +67,8 @@ fun extend_cap(Str ptr str, u32 count) void {
 }
 
 //Take a slice of a string 
-fun slice(Str ptr str, u32 pos, u32 len) Slice {
-    ret struct Slice {
+fun slice(Str ptr str, u32 pos, u32 len) slice::Slice {
+    ret struct slice::Slice {
         start = {u8 ptr}(({u64}str->_raw) + {u64}pos),
         len = len
     };

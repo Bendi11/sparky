@@ -44,6 +44,9 @@ pub enum Ast {
     /// A function definition with the function signature and the body of the function
     FunDef(FunProto, Vec<AstPos>),
 
+    /// An assembly function definition
+    AsmFunDef(FunProto, String, String),
+
     /// A constant number literal
     NumLiteral(Type, String),
 

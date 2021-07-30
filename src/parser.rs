@@ -577,10 +577,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         }
     }
 
-    /// Parse a function prototype from the input tokens, assumes that the `fun` keyword is the next token to be consumed
-    fn parse_fun_proto(&mut self) -> ParseRes<FunProto> {
-        self.toks.next(); //Consume the fun keyword
-        let attrs = self.parse_attrs();
+    /// Parse a function prototype from the input tokens, assumes that the function name is the next token to be consumed
+    fn parse_fun_proto(&mut self, attrs: Attributes) -> ParseRes<FunProto> {
         let name = match self.toks.next().eof()? {
             Token(_, TokenType::Ident(name)) => name,
             Token(line, tok) => {
@@ -641,16 +639,39 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
     /// Parse a function prototype or defintion
     fn parse_fun(&mut self) -> ParseRes<AstPos> {
-        let pos = self.toks.peek().eof()?.0.clone();
-        let proto = self.parse_fun_proto()?;
-        match self.toks.peek() {
-            Some(Token(pos, TokenType::LeftBrace('{'))) => {
-                let pos = pos.clone();
-                let body = self.parse_body()?;
-                Ok(AstPos(Ast::FunDef(proto, body), pos))
+        let Token(pos, _) = self.toks.next().eof()?; //Consume fun keyword
+        match self.toks.peek().eof()? {
+            Token(_, TokenType::Key(Key::Asm)) => {
+                let proto = self.parse_fun_proto(Attributes::empty())?;
+                self.expect_next(TokenType::LeftBrace('{'))?;
+                let asm = match self.toks.next().eof()? {
+                    Token(_, TokenType::StrLiteral(asm)) => asm,
+                    Token(pos, other) => return Err(ParseErr::UnexpectedToken(pos, other, vec![TokenType::StrLiteral("asm string".to_owned())]))
+                };
+                self.expect_next(TokenType::Comma)?;
+                let constraint = match self.toks.next().eof()? {
+                    Token(_, TokenType::StrLiteral(c)) => c,
+                    Token(pos, other) => return Err(ParseErr::UnexpectedToken(pos, other, vec![TokenType::StrLiteral("asm constraints".to_owned())]))
+                };
+                self.expect_next(TokenType::RightBrace('}'))?;
+
+                Ok(AstPos(Ast::AsmFunDef(proto, asm, constraint), pos))
+            },
+            Token(_, _) => {
+                let attrs = self.parse_attrs();
+                let proto = self.parse_fun_proto(attrs)?;
+                match self.toks.peek() {
+                    Some(Token(pos, TokenType::LeftBrace('{'))) => {
+                        let pos = pos.clone();
+                        let body = self.parse_body()?;
+                        Ok(AstPos(Ast::FunDef(proto, body), pos))
+                    }
+                    Some(Token(_, _)) | None => Ok(AstPos(Ast::FunProto(proto), pos)),
+                }
             }
-            Some(Token(_, _)) | None => Ok(AstPos(Ast::FunProto(proto), pos)),
         }
+        
+        
     }
 
     /// Expect the next token to be an identifier and return `Ok` with the identifier string if it is

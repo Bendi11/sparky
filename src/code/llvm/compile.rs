@@ -1,9 +1,6 @@
-use inkwell::{
-    module::Module,
-    passes::PassManager,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
-    OptimizationLevel,
-};
+use std::convert::TryFrom;
+
+use inkwell::{InlineAsmDialect, OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, types::BasicType, values::{BasicValue, CallableValue}};
 use log::warn;
 
 use crate::{
@@ -19,7 +16,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// Generate code for a full function definition
     pub fn gen_fundef(&mut self, proto: &FunProto, body: &[AstPos], pos: &Pos) -> Option<()> {
         if self.current_fn.is_some() {
-            error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
+            error!("{}: Nested functions are not currently supported, function {} must be moved to the top level", pos, proto.name);
             return None;
         }
 
@@ -74,6 +71,56 @@ impl<'a, 'c> Compiler<'a, 'c> {
         Some(())
     }
 
+    /// Generate an assembly function definition
+    fn gen_asmfundef(&mut self, proto: FunProto, asm: String, constraints: String, pos: Pos) -> Option<()> {
+        if self.current_fn.is_some() {
+            error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
+            return None;
+        }
+        let f = match self.module.get_function(
+            self.current_ns
+                .get()
+                .qualify(&proto.name)
+                .to_string()
+                .as_str(),
+        ) {
+            Some(f) => f,
+            None => self.gen_fun_proto(&proto, &pos).unwrap(),
+        };
+
+        let bb = self.ctx.append_basic_block(f, "asm_fn_entry"); //Add the first basic block
+        self.build.position_at_end(bb); //Start inserting into the function
+
+        //Add argument names to the list of variables we can use
+        for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
+            let alloca = self.entry_alloca(
+                proto_arg.clone().unwrap_or_else(String::new).as_str(),
+                self.llvm_type(ty, &pos),
+            );
+            self.build.build_store(alloca, arg); //Store the initial value in the function parameters
+
+            if let Some(name) = proto_arg {
+                self.vars.insert(name.clone(), (alloca, ty.clone()));
+            }
+        }
+
+        //Small hack: Inline asm creates a function pointer, so we create a function pointer and call it in the function body
+
+        let asm_fn = self.llvm_type(&proto.ret, &pos).fn_type(proto.args.iter().map(|(ty, _)| self.llvm_type(ty, &pos)).collect::<Vec<_>>().as_slice(), false);
+        let asm = self.ctx.create_inline_asm(asm_fn, asm, constraints, true, false, Some(InlineAsmDialect::Intel));
+        let params = f.get_params();
+        let callable_asm = CallableValue::try_from(asm).unwrap();
+        
+        let call = self.build.build_call(callable_asm, &params, "asm_fn_call_asm")
+            .try_as_basic_value()
+            .left();
+        let call = call.as_ref().map(|c| c as &dyn BasicValue);
+        self.build.build_return(call);
+        self.current_fn = None;
+        self.current_proto = None;
+        Some(())
+    }
+
     /// Generate top level expressions in an AST
     fn gen_top(&mut self, ast: Vec<AstPos>) -> Result<(), u16> {
         let mut err = 0;
@@ -83,7 +130,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     if self.gen_fundef(proto, body, &node.1).is_none() {
                         err += 1
                     }
-                }
+                },
+                Ast::AsmFunDef(proto, asm, constraints) => {
+                    if self.gen_asmfundef(proto, asm, constraints, node.1).is_none() {
+                        err += 1
+                    }
+                },
                 Ast::Ns(ref path, stmts) => {
                     self.enter_ns(path);
                     self.gen_top(stmts)?;

@@ -378,7 +378,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             .as_any_value_enum(),
                     )
                 }
-                None => panic!("Calling unknown function {}", name),
+                None => {
+                    error!("{}: Calling unknown function {}", node.1, name);
+                    None
+                }
             },
             Ast::AssocFunAccess(item, name, args) => match self.get_fun(name.as_str()) {
                 Some((f, _)) => {

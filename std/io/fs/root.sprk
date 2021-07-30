@@ -1,5 +1,5 @@
 ns std::io::fs {
-use std::str
+use std::string::str
 use std::win
 
 struct File {
