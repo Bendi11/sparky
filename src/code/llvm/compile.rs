@@ -3,12 +3,7 @@ use std::convert::TryFrom;
 use inkwell::{InlineAsmDialect, OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, values::{BasicValue, CallableValue}};
 use log::warn;
 
-use crate::{
-    ast::{Ast, AstPos, FunProto},
-    code::linker::Linker,
-    lex::Pos,
-    CompileOpts, OutFormat,
-};
+use crate::{CompileOpts, OptLvl, OutFormat, ast::{Ast, AstPos, FunProto}, code::linker::Linker, lex::Pos};
 
 use super::{debug, error, Compiler};
 
@@ -178,32 +173,24 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         let fpm: PassManager<Module<'c>> = PassManager::create(());
 
-        match opts.opt_lvl {
-            crate::OptLvl::Debug => (),
-            crate::OptLvl::Medium => {
-                fpm.add_demote_memory_to_register_pass();
-                fpm.add_promote_memory_to_register_pass();
-                fpm.add_constant_merge_pass();
-                fpm.add_instruction_combining_pass();
-                fpm.add_global_optimizer_pass();
-            }
-            crate::OptLvl::Aggressive => {
-                fpm.add_demote_memory_to_register_pass();
-                fpm.add_promote_memory_to_register_pass();
-                fpm.add_constant_merge_pass();
-                fpm.add_instruction_combining_pass();
-                fpm.add_global_optimizer_pass();
-
-                fpm.add_loop_rotate_pass();
-                fpm.add_argument_promotion_pass();
-                fpm.add_function_inlining_pass();
-                fpm.add_memcpy_optimize_pass();
-                fpm.add_loop_deletion_pass();
-                fpm.add_loop_vectorize_pass();
-                fpm.add_constant_propagation_pass();
-                fpm.add_simplify_lib_calls_pass();
-                fpm.add_strip_symbol_pass();
-            }
+        if opts.opt_lvl >= OptLvl::Medium {
+            fpm.add_constant_merge_pass();
+            fpm.add_demote_memory_to_register_pass();
+            fpm.add_promote_memory_to_register_pass();
+            fpm.add_instruction_combining_pass();
+            fpm.add_global_optimizer_pass();
+            fpm.add_dead_store_elimination_pass();
+        }
+        if opts.opt_lvl >= OptLvl::Aggressive {
+            fpm.add_loop_rotate_pass();
+            fpm.add_argument_promotion_pass();
+            fpm.add_function_inlining_pass();
+            fpm.add_loop_deletion_pass();
+            fpm.add_loop_vectorize_pass();
+            fpm.add_constant_propagation_pass();
+            fpm.add_simplify_lib_calls_pass();
+            fpm.add_strip_symbol_pass();
+            fpm.add_aggressive_dce_pass();
         }
 
         match opts.output_ty {
@@ -212,7 +199,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 .unwrap(),
             other => {
                 Target::initialize_all(&InitializationConfig::default());
-                let opt = OptimizationLevel::Aggressive;
+                let opt = match opts.opt_lvl {
+                    OptLvl::Aggressive => OptimizationLevel::Aggressive,
+                    OptLvl::Debug => OptimizationLevel::None,
+                    OptLvl::Medium => OptimizationLevel::Default
+                };
                 let reloc = RelocMode::Default;
                 let model = CodeModel::Default;
                 let target = Target::from_triple(&TargetMachine::get_default_triple()).unwrap();
@@ -228,6 +219,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     .unwrap();
 
                 machine.add_analysis_passes(&fpm);
+                
+                if opts.opt_lvl == OptLvl::Debug {
+                    machine.set_asm_verbosity(true);
+                }
+                
 
                 match other {
                     OutFormat::Asm => machine
@@ -253,10 +249,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         for lib in opts.libraries {
                             linker.add_library(lib);
                         }
+                        for arg in opts.linker_args {
+                            linker.add_arg(arg);
+                        }
 
                         linker.add_object_file(obj.to_str().unwrap().to_owned());
                         linker.set_format(OutFormat::Lib);
-                        //linker.set_entry(Some("main"));
+                        
                         linker.set_output_file(opts.out_file);
                         linker.link().unwrap();
 
@@ -270,6 +269,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                         for lib in opts.libraries {
                             linker.add_library(lib);
+                        }
+                        for arg in opts.linker_args {
+                            linker.add_arg(arg);
                         }
 
                         linker.add_object_file(obj.to_str().unwrap().to_owned());

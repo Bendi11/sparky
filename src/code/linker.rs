@@ -18,6 +18,9 @@ pub trait Linker: Default + Sized {
         self.add_object_file(lib)
     }
 
+    /// Add a linker argument
+    fn add_arg(&mut self, arg: String);
+
     /// Set the output format for this linker
     fn set_format(&mut self, format: OutFormat);
 
@@ -108,6 +111,10 @@ impl Linker for WinLink {
         self.output = output.as_ref().to_str().unwrap().to_owned()
     }
 
+    fn add_arg(&mut self, arg: String) {
+        self.input_files.push(arg);
+    }
+
     fn link(self) -> io::Result<()> {
         use std::process::Stdio;
         let mut args = self.input_files;
@@ -192,6 +199,10 @@ impl Linker for LdLink {
         self.format = format
     }
 
+    fn add_arg(&mut self, arg: String) {
+        self.input_files.push(arg)
+    }
+
     fn link(self) -> io::Result<()> {
         use std::process::Stdio;
         let mut args = self.input_files;
@@ -211,7 +222,7 @@ impl Linker for LdLink {
                 }
         ));
 
-        args.push("-dynamic-linker".to_owned()); //Segfault instantly unless this option is passed
+        //args.push("--dynamic-linker".to_owned()); //Segfault instantly unless this option is passed
 
         let out = Command::new("ld")
             .args(args)

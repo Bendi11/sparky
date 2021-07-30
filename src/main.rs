@@ -14,11 +14,11 @@ pub use types::Type;
 use crate::code::{linker, Compiler};
 
 /// Optimization level that can be given as a command line argument
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OptLvl {
-    Aggressive,
-    Medium,
     Debug,
+    Medium,
+    Aggressive,
 }
 
 impl FromStr for OptLvl {
@@ -74,6 +74,9 @@ pub struct CompileOpts {
 
     /// Ignore LLVM module verification step
     ignore_checks: bool,
+
+    /// Additional linker arguments supplied by the user
+    linker_args: Vec<String>,
 }
 
 /// Handle compiler errors in a cleaner way
@@ -246,6 +249,15 @@ fn main() {
             .takes_value(false)
             .short("u")
             .long("unchecked")
+        )
+        .arg(Arg::with_name("linker-args")
+            .help("Pass additional arguments to the platform-specific linker")
+            .long("linker-arg")
+            .multiple(true)
+            .number_of_values(1)
+            .empty_values(false)
+            .allow_hyphen_values(true)
+            .takes_value(true)
         );
     let args = app.get_matches(); //Get argument matches from environment args
 
@@ -265,6 +277,7 @@ fn main() {
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),
         out_file: PathBuf::from(args.value_of("output-file").unwrap()),
         ignore_checks: args.is_present("unchecked"),
+        linker_args: args.values_of("linker-args").map(|s| s.map(|val| val.to_owned()).collect::<Vec<_>>()).unwrap_or_default()
     };
 
     //Get a list of files to parse into an AST
