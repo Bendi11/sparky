@@ -1,0 +1,26 @@
+{
+    "name": "spark",
+    "publisher": "Bendi11",
+    "displayName": "sparklang",
+    "description": "Syntax highlighting for the spark programming language",
+    "version": "0.8.0",
+    "engines": {
+        "vscode": "^1.46.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "spark",
+            "aliases": ["Spark", "spark"],
+            "extensions": [".sprk",".sprkh"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "spark",
+            "scopeName": "source.spark",
+            "path": "./syntaxes/spark.tmLanguage.json"
+        }]
+    }
+}

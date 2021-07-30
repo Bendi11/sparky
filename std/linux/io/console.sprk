@@ -1,0 +1,10 @@
+ns std::io::console {
+
+//Write a C-style NULL-terminated string to stdout
+fun puts(u8 ptr str) void {
+    let usize len = std::string::null::strlen(str);
+    std::linux::_sys::write(1u32, str, len);
+    ret;
+}
+
+}
