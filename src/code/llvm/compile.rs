@@ -168,7 +168,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
 
         match opts.output_ty {
-            OutFormat::IR => module.print_to_file(opts.out_file.with_extension("ll")).unwrap(),
+            OutFormat::IR => module
+                .print_to_file(opts.out_file.with_extension("ll"))
+                .unwrap(),
             other => {
                 Target::initialize_all(&InitializationConfig::default());
                 let opt = OptimizationLevel::Aggressive;
@@ -190,10 +192,18 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 match other {
                     OutFormat::Asm => machine
-                        .write_to_file(&module, FileType::Assembly, &opts.out_file.with_extension("s"))
+                        .write_to_file(
+                            &module,
+                            FileType::Assembly,
+                            &opts.out_file.with_extension("s"),
+                        )
                         .unwrap(),
                     OutFormat::Obj => machine
-                        .write_to_file(&module, FileType::Object, &opts.out_file.with_extension("o"))
+                        .write_to_file(
+                            &module,
+                            FileType::Object,
+                            &opts.out_file.with_extension("o"),
+                        )
                         .unwrap(),
                     OutFormat::Lib => {
                         let obj = opts.out_file.with_extension("obj");
