@@ -83,25 +83,29 @@ pub struct CompileOpts {
 
 /// Handle compiler errors in a cleaner way
 pub fn panic_handler(p: &PanicInfo) {
-    let mut stdout = StandardStream::stderr(match atty::is(atty::Stream::Stderr) {
+    let mut stderr = StandardStream::stderr(match atty::is(atty::Stream::Stderr) {
         true => termcolor::ColorChoice::Auto,
         false => termcolor::ColorChoice::Never,
     });
-    let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
-    writeln!(&mut stdout, "A fatal error occurred when compiling").ok();
-    stdout.reset().ok();
+    stderr
+        .set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true))
+        .ok();
+    writeln!(&mut stderr, "A fatal error occurred when compiling").ok();
+    stderr.reset().ok();
     match p.location() {
-        Some(loc) => eprintln!("At {}", loc),
-        None => eprintln!("In an unknown location"),
+        Some(loc) => writeln!(stderr, "At {}", loc),
+        None => writeln!(stderr, "In an unknown location"),
     }
+    .ok();
     match (
         p.payload().downcast_ref::<&str>(),
         p.payload().downcast_ref::<String>(),
     ) {
-        (Some(s), _) => eprintln!("Error: {}", s),
-        (_, Some(s)) => eprintln!("Error: {}", s),
-        (None, None) => eprintln!("With a non-displayable error"),
+        (Some(s), _) => writeln!(stderr, "Error: {}", s),
+        (_, Some(s)) => writeln!(stderr, "Error: {}", s),
+        (None, None) => writeln!(stderr, "With a non-displayable error"),
     }
+    .ok();
     std::process::exit(-1);
 }
 
