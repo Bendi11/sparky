@@ -77,12 +77,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
     fn entry_alloca(&self, name: &str, ty: BasicTypeEnum<'c>) -> PointerValue<'c> {
         let entry_builder = self.ctx.create_builder();
         /*let f = self
-            .current_fn
-            .expect("Not in a function, can't allocate on stack");*/
+        .current_fn
+        .expect("Not in a function, can't allocate on stack");*/
         let bb = self.build.get_insert_block().unwrap();
         /*let bb = f
-            .get_first_basic_block()
-            .expect("Function has no entry block to allocate in");*/
+        .get_first_basic_block()
+        .expect("Function has no entry block to allocate in");*/
         if let Some(ref ins) = bb.get_first_instruction() {
             entry_builder.position_at(bb, ins);
         } else {
@@ -491,7 +491,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 for stmt in block {
                     self.gen(stmt, false);
                     if self.just_ret {
-                        break
+                        break;
                     }
                 }
                 self.vars = old_vars; //Drop values that were enclosed in the while loop
@@ -501,7 +501,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 } else {
                     self.just_ret = false;
                 }
-                
+
                 self.build.position_at_end(after_bb); //Continue condegen after the loop block
                 Some(cond.as_any_value_enum())
             }

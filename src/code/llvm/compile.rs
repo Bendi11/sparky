@@ -1,9 +1,20 @@
 use std::convert::TryFrom;
 
-use inkwell::{InlineAsmDialect, OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine}, values::{BasicValue, CallableValue}};
+use inkwell::{
+    module::Module,
+    passes::PassManager,
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
+    values::{BasicValue, CallableValue},
+    InlineAsmDialect, OptimizationLevel,
+};
 use log::warn;
 
-use crate::{CompileOpts, OptLvl, OutFormat, ast::{Ast, AstPos, FunProto}, code::linker::Linker, lex::Pos};
+use crate::{
+    ast::{Ast, AstPos, FunProto},
+    code::linker::Linker,
+    lex::Pos,
+    CompileOpts, OptLvl, OutFormat,
+};
 
 use super::{debug, error, Compiler};
 
@@ -67,12 +78,18 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Generate an assembly function definition
-    fn gen_asmfundef(&mut self, proto: FunProto, asm: String, constraints: String, pos: Pos) -> Option<()> {
+    fn gen_asmfundef(
+        &mut self,
+        proto: FunProto,
+        asm: String,
+        constraints: String,
+        pos: Pos,
+    ) -> Option<()> {
         if self.current_fn.is_some() {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
             return None;
         }
-        
+
         let fun = match self.module.get_function(
             self.current_ns
                 .get()
@@ -89,11 +106,20 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         //Small hack: Inline asm creates a function pointer, so we create a function pointer and call it in the function body
 
-        let asm = self.ctx.create_inline_asm(fun.get_type(), asm, constraints, true, false, Some(InlineAsmDialect::Intel));
+        let asm = self.ctx.create_inline_asm(
+            fun.get_type(),
+            asm,
+            constraints,
+            true,
+            false,
+            Some(InlineAsmDialect::Intel),
+        );
         let params = fun.get_params();
         let callable_asm = CallableValue::try_from(asm).unwrap();
-        
-        let call = self.build.build_call(callable_asm, &params, "asm_fn_call_asm")
+
+        let call = self
+            .build
+            .build_call(callable_asm, &params, "asm_fn_call_asm")
             .try_as_basic_value()
             .left();
         let call = call.as_ref().map(|c| c as &dyn BasicValue);
@@ -112,12 +138,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     if self.gen_fundef(proto, body, &node.1).is_none() {
                         err += 1
                     }
-                },
+                }
                 Ast::AsmFunDef(proto, asm, constraints) => {
-                    if self.gen_asmfundef(proto, asm, constraints, node.1).is_none() {
+                    if self
+                        .gen_asmfundef(proto, asm, constraints, node.1)
+                        .is_none()
+                    {
                         err += 1
                     }
-                },
+                }
                 Ast::Ns(ref path, stmts) => {
                     self.enter_ns(path);
                     self.gen_top(stmts)?;
@@ -202,7 +231,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 let opt = match opts.opt_lvl {
                     OptLvl::Aggressive => OptimizationLevel::Aggressive,
                     OptLvl::Debug => OptimizationLevel::None,
-                    OptLvl::Medium => OptimizationLevel::Default
+                    OptLvl::Medium => OptimizationLevel::Default,
                 };
                 let reloc = RelocMode::Default;
                 let model = CodeModel::Default;
@@ -219,11 +248,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     .unwrap();
 
                 machine.add_analysis_passes(&fpm);
-                
+
                 if opts.opt_lvl == OptLvl::Debug {
                     machine.set_asm_verbosity(true);
                 }
-                
 
                 match other {
                     OutFormat::Asm => machine
@@ -255,7 +283,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                         linker.add_object_file(obj.to_str().unwrap().to_owned());
                         linker.set_format(OutFormat::Lib);
-                        
+
                         linker.set_output_file(opts.out_file);
                         linker.link().unwrap();
 

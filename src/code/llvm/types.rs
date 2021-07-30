@@ -300,7 +300,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         "Generated function prototype {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
-                },
+                }
                 Ast::FunDef(proto, _) => {
                     self.gen_fun_proto(proto, &node.1).unwrap();
                     trace!(
@@ -308,7 +308,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         self.current_ns.get().qualify(&proto.name)
                     );
                     ret.push(node);
-                },
+                }
                 Ast::AsmFunDef(proto, _, _) => {
                     self.gen_fun_proto(proto, &node.1).unwrap();
                     trace!(
@@ -316,7 +316,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         self.current_ns.get().qualify(&proto.name)
                     );
                     ret.push(node);
-                },
+                }
                 //Insert a user-defined typedef
                 Ast::TypeDef(name, ty) => {
                     self.current_ns

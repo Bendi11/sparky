@@ -231,7 +231,9 @@ impl AstPos {
     fn apply_ptr_ty<F: FnOnce(&Type) -> Option<Type>>(ty: &Type, op: F) -> Option<Type> {
         match ty {
             Type::Ptr(ty) => Self::apply_ptr_ty(ty, op).map(|ty| ty.ptr_type()),
-            Type::Array(ty, len) => Self::apply_ptr_ty(ty, op).map(|ty| Type::Array(Box::new(ty), *len)),
+            Type::Array(ty, len) => {
+                Self::apply_ptr_ty(ty, op).map(|ty| Type::Array(Box::new(ty), *len))
+            }
             other => op(other),
         }
     }

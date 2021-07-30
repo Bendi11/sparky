@@ -105,28 +105,25 @@ pub fn panic_handler(p: &PanicInfo) {
 
 /// Setup the logging handler with [`fern`]
 fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
-    let log = fern::Dispatch::new()
-        .level(verbosity)
-        .chain(
-            fern::Dispatch::new()
-                .filter(|meta| {
-                    // Reject messages with the `Error` log level.
-                    meta.level() == log::LevelFilter::Error
-                        || meta.level() == log::LevelFilter::Warn
-                })
-                .format(|out, message, record| {
-                    out.finish(format_args!(
-                        "{} {}",
-                        match record.level() {
-                            log::Level::Warn => style("[WARNING]").yellow().bold(),
-                            log::Level::Error => style("[ERROR]").red().bold(),
-                            _ => unreachable!(),
-                        },
-                        message
-                    ))
-                })
-                .chain(std::io::stderr()),
-        );
+    let log = fern::Dispatch::new().level(verbosity).chain(
+        fern::Dispatch::new()
+            .filter(|meta| {
+                // Reject messages with the `Error` log level.
+                meta.level() == log::LevelFilter::Error || meta.level() == log::LevelFilter::Warn
+            })
+            .format(|out, message, record| {
+                out.finish(format_args!(
+                    "{} {}",
+                    match record.level() {
+                        log::Level::Warn => style("[WARNING]").yellow().bold(),
+                        log::Level::Error => style("[ERROR]").red().bold(),
+                        _ => unreachable!(),
+                    },
+                    message
+                ))
+            })
+            .chain(std::io::stderr()),
+    );
     if verbosity != log::Level::Warn {
         log.chain(
             fern::Dispatch::new()
@@ -147,11 +144,10 @@ fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
                 )
                 .level(verbosity),
         )
-        
     } else {
         log
-    }.apply()?;
-        
+    }
+    .apply()?;
 
     Ok(())
 }
@@ -277,7 +273,10 @@ fn main() {
         output_ty: args.value_of("output-type").unwrap().parse().unwrap(),
         out_file: PathBuf::from(args.value_of("output-file").unwrap()),
         ignore_checks: args.is_present("unchecked"),
-        linker_args: args.values_of("linker-args").map(|s| s.map(|val| val.to_owned()).collect::<Vec<_>>()).unwrap_or_default()
+        linker_args: args
+            .values_of("linker-args")
+            .map(|s| s.map(|val| val.to_owned()).collect::<Vec<_>>())
+            .unwrap_or_default(),
     };
 
     //Get a list of files to parse into an AST
