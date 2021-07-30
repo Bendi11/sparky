@@ -87,7 +87,7 @@ pub fn panic_handler(p: &PanicInfo) {
         true => termcolor::ColorChoice::Auto,
         false => termcolor::ColorChoice::Never,
     });
-    let _ = stdout.set_color(&ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+    let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
     writeln!(&mut stdout, "A fatal error occurred when compiling").ok();
     stdout.reset().ok();
     match p.location() {
