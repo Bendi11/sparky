@@ -5,12 +5,15 @@ authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-clap = {version = "3.0.0-beta", features = ["color"] } # For command line arguments
-console = "0.14" # For command line styling
+clap = {version = "3.0.0-beta", features = ["color", "wrap_help"] } # For command line arguments
+
+termcolor = "1.1" # For command line styling (combined with clap's dependency)
+atty = "0.2" # No color codes if output is being piped (combined with clap's dependency)
+
 thiserror = "1.0" # For error handling
 
 log = { version = "0.4" } # For logging in the compiler
-fern = "0.6" # For logging in the compiler
+simplelog = "0.10" # For logging in the compiler
 
 hashbrown = "0.11.2" # For mapping strings to values throughout the compiler
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] } # For actual code generation

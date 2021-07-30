@@ -4,11 +4,13 @@ pub mod lex;
 pub mod parser;
 pub mod types;
 use std::{panic::PanicInfo, path::PathBuf, str::FromStr};
+use std::io::Write as IoWrite;
 
 use bumpalo::Bump;
 use clap::{App, Arg};
-use console::style;
 use inkwell::context::Context;
+use simplelog::{Color, CombinedLogger, TermLogger, WriteLogger};
+use termcolor::{ColorSpec, StandardStream, WriteColor};
 pub use types::Type;
 
 use crate::code::{linker, Compiler};
@@ -81,13 +83,15 @@ pub struct CompileOpts {
 
 /// Handle compiler errors in a cleaner way
 pub fn panic_handler(p: &PanicInfo) {
-    eprintln!(
-        "{}",
-        style("A fatal error occurred when compiling")
-            .bright()
-            .red()
-            .bold()
-    );
+    let mut stdout = StandardStream::stderr(match atty::is(atty::Stream::Stderr) {
+        true => termcolor::ColorChoice::Auto,
+        false => termcolor::ColorChoice::Never
+    });
+    let _ = stdout.set_color(&ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+    writeln!(&mut stdout,
+        "A fatal error occurred when compiling"
+    ).ok();
+    stdout.reset().ok();
     match p.location() {
         Some(loc) => eprintln!("At {}", loc),
         None => eprintln!("In an unknown location"),
@@ -104,52 +108,27 @@ pub fn panic_handler(p: &PanicInfo) {
 }
 
 /// Setup the logging handler with [`fern`]
-fn setup_logger(verbosity: log::LevelFilter) -> Result<(), fern::InitError> {
-    let log = fern::Dispatch::new().level(verbosity).chain(
-        fern::Dispatch::new()
-            .filter(|meta| {
-                // Reject messages with the `Error` log level.
-                meta.level() == log::LevelFilter::Error || meta.level() == log::LevelFilter::Warn
-            })
-            .format(|out, message, record| {
-                out.finish(format_args!(
-                    "{} {}",
-                    match record.level() {
-                        log::Level::Warn => style("[WARNING]").yellow().bold(),
-                        log::Level::Error => style("[ERROR]").red().bold(),
-                        _ => unreachable!(),
-                    },
-                    message
-                ))
-            })
-            .chain(std::io::stderr()),
-    );
-    if verbosity != log::Level::Warn {
-        log.chain(
-            fern::Dispatch::new()
-                .format(|out, message, record| {
-                    out.finish(format_args!(
-                        "[{}][{}] {}",
-                        record.target(),
-                        record.level(),
-                        message
-                    ))
-                })
-                .chain(
-                    std::fs::OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(true)
-                        .open("sparkc.log")?,
-                )
-                .level(verbosity),
-        )
-    } else {
-        log
-    }
-    .apply()?;
+fn setup_logger(verbosity: log::LevelFilter, colorchoice: termcolor::ColorChoice) -> Result<(), log::SetLoggerError> {
+    let logger = TermLogger::new(verbosity, simplelog::ConfigBuilder::new()
+        .set_level_color(log::Level::Error, Some(Color::Red))
+        .set_level_color(log::Level::Warn, Some(Color::Yellow))
+        .set_time_level(log::LevelFilter::Off)
+        .set_location_level(log::LevelFilter::Off)
+        .build(), simplelog::TerminalMode::Stderr, colorchoice);
 
-    Ok(())
+    let mut loggers = vec![
+        logger as Box<dyn simplelog::SharedLogger>
+    ];
+    if verbosity != log::LevelFilter::Warn {
+        loggers.push(WriteLogger::new(verbosity, simplelog::ConfigBuilder::new().build(), std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open("sparkc.log").unwrap()
+        ) as Box<dyn simplelog::SharedLogger>);
+    }
+
+    CombinedLogger::init(loggers)
 }
 
 fn main() {
@@ -252,12 +231,25 @@ fn main() {
             .multiple_occurrences(true)
             .allow_hyphen_values(true)
             .takes_value(true)
+        )
+        .arg(Arg::new("no-color")
+            .about("If enabled, no color is used when writing messages to stdout / stderr")
+            .takes_value(false)
+            .long("nc")
         );
     let args = app.get_matches(); //Get argument matches from environment args
 
+    let color = match args.is_present("no-color") {
+        true => termcolor::ColorChoice::Never,
+        false => match atty::is(atty::Stream::Stderr) {
+            true => termcolor::ColorChoice::Auto,
+            false => termcolor::ColorChoice::Never
+        }
+    };
+
     match args.is_present("verbose") {
-        true => setup_logger(log::LevelFilter::Trace),
-        false => setup_logger(log::LevelFilter::Warn),
+        true => setup_logger(log::LevelFilter::Trace, color),
+        false => setup_logger(log::LevelFilter::Warn, color),
     }
     .unwrap();
 

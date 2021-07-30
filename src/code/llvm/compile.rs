@@ -188,13 +188,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 if let Err(e) = res {
                     warn!(
                         "LLVM Module verification (ignored due to command line switch): {}",
-                        e
+                        e.to_string_lossy()
                     )
                 }
             }
             false => {
                 if let Err(e) = res {
-                    error!("LLVM Module verification failed: {}", e);
+                    error!("LLVM Module verification failed: {}", e.to_string_lossy());
                     return Err(1);
                 }
             }
