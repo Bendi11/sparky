@@ -34,6 +34,7 @@ The keywords and their purposes are:
 - `let`: Declare a variable 
 - `ns`: Declare a namespace
 - `use`: Import a namespace into another namespace
+- `asm`: Declare a function as inline assembly
 
 ## Operators
 The operators and their purposes: 
@@ -62,7 +63,7 @@ The operators and their purposes:
 (*A program is made up of declarations*)
 <program> ::= <decl>*
 (*A declaration can be either a type definition or function definition*)
-<decl> ::= "fun" <attr>* <ident> "(" (<typename> <ident> ",")* (<typename> <ident>)? ")" <typename> <body>?
+<decl> ::= <fundecl>
 		| <structdecl>
         | <uniondecl>
         | "type" <typename> <ident>
@@ -70,6 +71,10 @@ The operators and their purposes:
         | <usingdecl>
         | "let" <attr>* <typename> <ident> ("=" <expr>)? ";"
 
+<fundecl> ::= "fun" <attr>* <funproto> <body>?
+           |  "fun" "asm" <funproto> "{" <strliteral> "," <strliteral> "}"
+
+<funproto> ::= <ident> "(" (<typename> <ident> ",")* (<typename> <ident>)? ")" <typename>
 <nsdecl> ::= "ns" <ident> "{" <program> "}"
 <usingdecl> ::= "use" <ident>
 
@@ -98,7 +103,9 @@ The operators and their purposes:
 <unary> ::= <operator> <expr>
 <cast>   ::= "{"<typename>"}"<expr>
 
-<literal> ::= <numberliteral> | "\"" <ident> "\"" | <structliteral>
+
+<literal> ::= <numberliteral> | <strliteral> | <structliteral>
+<strliteral> ::= "\"" <ident> "\""
 <structliteral> ::= "struct" <ident> "{" (<ident> "=" <expr> ",")* (<ident> "=" <expr>)? } 
 <numberliteral> ::= <digit>+ <inttype>? | "true" | "false"
 

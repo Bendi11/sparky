@@ -72,6 +72,9 @@ pub enum Key {
 
     /// The `use` keyword is used to import namespaces
     Use,
+
+    /// The `asm` keyword is used to declare a function as inline assembly
+    Asm,
 }
 
 impl fmt::Display for Key {
@@ -95,6 +98,7 @@ impl fmt::Display for Key {
             Self::False => write!(f, "false"),
             Self::Ns => write!(f, "ns"),
             Self::Use => write!(f, "use"),
+            Self::Asm => write!(f, "asm"),
         }
     }
 }
@@ -122,6 +126,7 @@ impl convert::TryFrom<&str> for Key {
             "false" => Ok(Self::False),
             "ns" => Ok(Self::Ns),
             "use" => Ok(Self::Use),
+            "asm" => Ok(Self::Asm),
             _ => Err(()),
         }
     }

@@ -1,5 +1,5 @@
 ns std::io::fs {
-use std::str
+use std::string::str
 use std::win
 
 struct File {
@@ -8,7 +8,7 @@ struct File {
 
 /// Open a file and return it as a File struct
 fun open_file(str::Str ptr file_name) File {
-    let win::Handle handle = CreateFileA(str::str_raw(file_name), 268435456i32, 0i32, {winstructs::SECURITY_ATTRIBUTES ptr}0, 2i32, 128i32, struct win::Handle {_raw = {u8 ptr}0});
+    let win::Handle handle = CreateFileA(str::raw(file_name), 268435456i32, 0i32, {winstructs::SECURITY_ATTRIBUTES ptr}0, 2i32, 128i32, struct win::Handle {_raw = {u8 ptr}0});
     if ({i64}handle._raw) == -1i64 {
         std::io::puts("Failed to open file!\n");
     };
