@@ -11,4 +11,4 @@ paths.txt
 .vscode-test
 *.vsix
 vsc-ex
-test
+/test
