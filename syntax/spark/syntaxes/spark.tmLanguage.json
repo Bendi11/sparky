@@ -8,7 +8,7 @@
 		},
 		{
 			"name": "keyword.control",
-			"match": "\\b(if|while|ret|else)\\b"
+			"match": "\\b(if|while|ret|else|switch)\\b"
 		},
 		{
 			"name": "comment.line",

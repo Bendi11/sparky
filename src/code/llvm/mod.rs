@@ -11,21 +11,14 @@ use crate::{
     Type,
 };
 use hashbrown::HashMap;
-use inkwell::{
-    builder::Builder,
-    context::Context,
-    module::Module,
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
-    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
-    AddressSpace, IntPredicate,
-};
+use inkwell::{AddressSpace, IntPredicate, basic_block::BasicBlock, builder::Builder, context::Context, module::Module, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
 use super::ns::Ns;
 
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
 pub struct Compiler<'a, 'c> {
     /// The LLVM context
-    ctx: &'c Context,
+    pub ctx: &'c Context,
 
     /// The arena allocator for namespaces
     arena: &'a Bump,
@@ -291,17 +284,39 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
     }
 
+    /// Generate code for an if / while / switch statement body, clearing local variables declared in the body and
+    /// not inserting a jump to the after_bb if a return statement was encountered
+    fn gen_body(&mut self, body: &Vec<AstPos>, after_bb: BasicBlock<'c>) -> Option<()> {
+        let old_vars = self.vars.clone();
+
+        for stmt in body {
+            self.gen(stmt, false)?;
+            if self.just_ret {
+                break;
+            }
+        }
+        if !self.just_ret {
+            self.build.build_unconditional_branch(after_bb);
+        } else {
+            self.just_ret = false;
+            trace!("Encountered an early return from a block, so not inserting a jump");
+        }
+
+        self.vars = old_vars;
+        Some(())
+    }
+
     /// Generate code for one expression, only used for generating function bodies, no delcarations.
     /// ## Note
     /// Returns [None] on error, and writes error message to stderr
     pub fn gen(&mut self, node: &AstPos, lval: bool) -> Option<AnyValueEnum<'c>> {
         match node.ast() {
-            Ast::NumLiteral(ty, num) => Some(
-                self.llvm_type(ty, &node.1)
-                    .into_int_type()
-                    .const_int_from_string(num.as_str(), inkwell::types::StringRadix::Decimal)
+            Ast::NumLiteral(num) => Some(
+                self.ctx
+                    .custom_width_int_type(num.width as u32)
+                    .const_int_from_string(num.val.to_str_radix(10).as_str(), inkwell::types::StringRadix::Decimal)
                     .unwrap()
-                    .as_any_value_enum(),
+                    .as_any_value_enum()
             ),
             Ast::Ret(node) => {
                 match self
@@ -384,22 +399,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     None
                 }
             },
-            Ast::AssocFunAccess(item, name, args) => match self.get_fun(name.as_str()) {
-                Some((f, _)) => {
-                    let item = BasicValueEnum::try_from(self.gen(item.deref(), false)?).unwrap(); //Generate code for the first expression
-                    let mut real_args = vec![item];
-                    real_args.extend(
-                        args
-                            .iter()
-                            .map(|n| Some(BasicValueEnum::try_from(self.gen(n, false)?).expect("Failed to convert any value enum to basic value enum when calling function"))).collect::<Option<Vec<_>>>()? );
-                    Some(
-                        self.build
-                            .build_call(f, real_args.as_ref(), "tmp_assoc_fncall")
-                            .as_any_value_enum(),
-                    )
-                }
-                None => panic!("Calling unknown associated function {}", name),
-            },
             Ast::If {
                 cond: condition,
                 true_block,
@@ -425,43 +424,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 self.build.position_at_end(true_bb);
 
-                let old_vars = self.vars.clone();
-
-                for stmt in true_block {
-                    self.gen(stmt, false);
-                    if self.just_ret {
-                        break;
-                    }
-                }
-                if !self.just_ret {
-                    self.build.build_unconditional_branch(after_bb);
-                } else {
-                    self.just_ret = false;
-                    trace!("Encountered an early return from an if block, so not inserting a jump");
-                }
-
-                self.vars = old_vars;
+                self.gen_body(true_block, after_bb)?;
 
                 self.build.position_at_end(false_bb);
 
                 match else_block.is_some() {
                     true => {
-                        let old_vars = self.vars.clone();
-
-                        for stmt in else_block.as_ref().unwrap().iter() {
-                            self.gen(stmt, false);
-                            if self.just_ret {
-                                break;
-                            }
-                        }
-                        if !self.just_ret {
-                            self.build.build_unconditional_branch(after_bb);
-                        } else {
-                            self.just_ret = false;
-                        }
-
-                        self.vars = old_vars;
-                        //false_bb = self.build.get_insert_block().unwrap();
+                        self.gen_body(else_block.as_ref().unwrap(), after_bb)?;
                     }
                     false => {
                         self.build.build_unconditional_branch(after_bb);
@@ -487,20 +456,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     .build_conditional_branch(cond, while_bb, after_bb);
                 self.build.position_at_end(while_bb);
 
-                let old_vars = self.vars.clone();
-                for stmt in block {
-                    self.gen(stmt, false);
-                    if self.just_ret {
-                        break;
-                    }
-                }
-                self.vars = old_vars; //Drop values that were enclosed in the while loop
 
-                if !self.just_ret {
-                    self.build.build_unconditional_branch(cond_bb); //Branch back to the condition to check it
-                } else {
-                    self.just_ret = false;
-                }
+                self.gen_body(block, cond_bb)?;
 
                 self.build.position_at_end(after_bb); //Continue condegen after the loop block
                 Some(cond.as_any_value_enum())
@@ -810,6 +767,45 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 res
             }
             Ast::Bin(lhs, op, rhs) => self.gen_bin(lhs, rhs, op),
+            Ast::Switch(cond, cases, default) => {
+                let cond = BasicValueEnum::try_from(self.gen(cond, false)?).ok()?;
+                let current_bb = self.build.get_insert_block()?;
+                let default_bb = self.ctx.append_basic_block(self.current_fn?, "switch_default_bb");
+                let after_bb = self.ctx.append_basic_block(self.current_fn?, "after_switch_bb");
+
+                let mut llvm_cases = vec![];
+                for (case_vals, body) in cases {
+                    self.just_ret = false;
+                    let case_bb = self.ctx.append_basic_block(self.current_fn?, "switch_case_bb");
+                    self.build.position_at_end(case_bb);
+                    self.gen_body(body, after_bb)?;
+
+                    for case_val in case_vals {
+                        let case_val = self.ctx
+                            .custom_width_int_type(case_val.width as u32)
+                            .const_int_arbitrary_precision(case_val.val.to_u64_digits().1.as_slice());
+                        llvm_cases.push((case_val, case_bb));
+                    }
+                }
+
+                self.build.position_at_end(default_bb);
+                match default {
+                    Some(body) => {
+                        self.gen_body(body, after_bb)?;
+                    },
+                    None => {
+                        self.build.build_unconditional_branch(after_bb);
+                    }
+                }
+
+                self.build.position_at_end(current_bb);
+                let switch = self.build.build_switch(cond.into_int_value(), default_bb, llvm_cases.as_slice());
+
+                self.build.position_at_end(after_bb);
+                
+                Some(switch.as_any_value_enum())
+                
+            },
 
             other => unimplemented!("Cannot use expression {:?} inside of a function", other),
         }

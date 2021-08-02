@@ -75,6 +75,9 @@ pub enum Key {
 
     /// The `asm` keyword is used to declare a function as inline assembly
     Asm,
+
+    /// The `switch` keyword is used to declare a switch statement
+    Switch,
 }
 
 impl fmt::Display for Key {
@@ -99,6 +102,7 @@ impl fmt::Display for Key {
             Self::Ns => write!(f, "ns"),
             Self::Use => write!(f, "use"),
             Self::Asm => write!(f, "asm"),
+            Self::Switch => write!(f, "switch"),
         }
     }
 }
@@ -127,6 +131,7 @@ impl convert::TryFrom<&str> for Key {
             "ns" => Ok(Self::Ns),
             "use" => Ok(Self::Use),
             "asm" => Ok(Self::Asm),
+            "switch" => Ok(Self::Switch),
             _ => Err(()),
         }
     }
@@ -564,6 +569,14 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             //Lex a number literal from the input
             c if c.is_numeric() => {
                 let mut num = String::from(c); //Get a string of the number literal
+                match self.chars.peek() {
+                    Some(Ok(n)) if n.is_numeric() => num.push(self.next_char().unwrap().unwrap()),
+                    Some(Ok(prefix)) => match prefix {
+                        'x' | 'b' | 'o' => num.push(self.next_char().unwrap().unwrap()),
+                        _ => ()
+                    },
+                    _ => ()
+                }
                 while match self.chars.peek() {
                     Some(Ok(n)) if n.is_numeric() => {
                         num.push(self.next_char().unwrap().unwrap()); //Consume the number character

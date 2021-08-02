@@ -35,6 +35,7 @@ The keywords and their purposes are:
 - `ns`: Declare a namespace
 - `use`: Import a namespace into another namespace
 - `asm`: Declare a function as inline assembly
+- `switch`: Declare a switch statement
 
 ## Operators
 The operators and their purposes: 
@@ -92,6 +93,11 @@ The operators and their purposes:
 	| <funcall>
     | "if" <expr> <body> ("else" <body>)?
     | "while" <expr> <body>
+    | <switchexpr>
+
+<switchexpr> ::= "switch" <expr> "{" ( <switchcase> "," )* <switchcase>? "}"
+<switchcase> ::= ( <numberliteral> "|" )* <numberliteral> "->" <body> 
+              |  "else" "->" <body>
 
 
 (*The body of a function or if statement*)
