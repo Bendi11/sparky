@@ -134,7 +134,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
         proto: &FunProto,
         pos: &Pos,
     ) -> Result<FunctionValue<'c>, String> {
-        let qualified = self.current_ns.get().qualify(&proto.name).to_string();
+        let qualified = match proto.attrs.contains(Attributes::EXT) {
+            false => self.current_ns.get().qualify(&proto.name).to_string(),
+            true => proto.name.clone(),
+        };
         if self.module.get_function(qualified.as_str()).is_some() {
             return Err(format!("Function {} defined twice", qualified));
         }
@@ -142,11 +145,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         let proto_clone = proto.clone();
         if proto.ret == Type::Void {
             let fun = self.module.add_function(
-                self.current_ns
-                    .get()
-                    .qualify(proto.name.as_str())
-                    .to_string()
-                    .as_str(),
+                &qualified,
                 self.ctx.void_type().fn_type(
                     proto
                         .args
@@ -156,7 +155,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .as_slice(),
                     false,
                 ),
-                None,
+                match proto.attrs.contains(Attributes::EXT) {
+                    true => Some(Linkage::External),
+                    false => None,
+                },
             );
             self.current_ns
                 .get()
@@ -166,11 +168,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Ok(fun)
         } else {
             let fun = self.module.add_function(
-                self.current_ns
-                    .get()
-                    .qualify(&proto.name)
-                    .to_string()
-                    .as_str(),
+                &qualified,
                 self.llvm_type(&proto.ret, pos).fn_type(
                     proto
                         .args
@@ -180,7 +178,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         .as_slice(),
                     false,
                 ),
-                None,
+                match proto.attrs.contains(Attributes::EXT) {
+                    true => Some(Linkage::External),
+                    false => None,
+                },
             );
             self.current_ns
                 .get()
@@ -317,15 +318,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     );
                     ret.push(node);
                 }
-                //Insert a user-defined typedef
-                Ast::TypeDef(name, ty) => {
-                    self.current_ns
-                        .get()
-                        .typedefs
-                        .borrow_mut()
-                        .insert(name.clone(), ty.clone());
-                    trace!("Generated typedef {}", name);
-                }
+                
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(ns);
                     let stmts = self.scan_for_fns(stmts.clone());
@@ -361,6 +354,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         name,
                         self.current_ns.get().full_path()
                     )
+                },
+                //Insert a user-defined typedef
+                Ast::TypeDef(name, ty) => {
+                    self.current_ns
+                        .get()
+                        .typedefs
+                        .borrow_mut()
+                        .insert(name.clone(), ty.clone());
+                    trace!("Generated typedef {}", name);
                 }
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(ns);

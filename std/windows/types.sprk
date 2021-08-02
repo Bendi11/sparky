@@ -1,0 +1,6 @@
+ns std::win::types {
+
+type u8 ptr Handle
+type u8 Bool
+
+}

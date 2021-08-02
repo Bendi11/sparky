@@ -1,0 +1,12 @@
+ns std::io::fs {
+use std::win::types
+
+//The File struct holds a HANDLE on windows that is used to access the file in the windows
+//API
+struct File {
+    types::Handle handle
+}
+
+fun ext WriteFile(types::Handle hFile, u8 ptr lpBuffer, u32 nNumberOfBytesToWrite, u32 ptr lpNumberOfBytesWritten, u8 ptr _unused) types::Bool
+
+}

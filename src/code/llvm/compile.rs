@@ -10,7 +10,7 @@ use inkwell::{
 use log::warn;
 
 use crate::{
-    ast::{Ast, AstPos, FunProto},
+    ast::{Ast, AstPos, FunProto, Attributes},
     code::linker::Linker,
     lex::Pos,
     CompileOpts, OptLvl, OutFormat,
@@ -21,6 +21,13 @@ use super::{debug, error, Compiler};
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Generate code for a full function definition
     pub fn gen_fundef(&mut self, proto: &FunProto, body: &[AstPos], pos: &Pos) -> Option<()> {
+        let qualified = match proto.attrs.contains(Attributes::EXT) {
+            true => proto.name.clone(),
+            false => self.current_ns
+                .get()
+                .qualify(&proto.name)
+                .to_string()
+        };
         if self.current_fn.is_some() {
             error!("{}: Nested functions are not currently supported, function {} must be moved to the top level", pos, proto.name);
             return None;
@@ -29,11 +36,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         let old_vars = self.vars.clone();
 
         let f = match self.module.get_function(
-            self.current_ns
-                .get()
-                .qualify(&proto.name)
-                .to_string()
-                .as_str(),
+            &qualified
         ) {
             Some(f) => f,
             None => self.gen_fun_proto(proto, pos).unwrap(),
@@ -85,17 +88,20 @@ impl<'a, 'c> Compiler<'a, 'c> {
         constraints: String,
         pos: Pos,
     ) -> Option<()> {
+        let qualified = match proto.attrs.contains(Attributes::EXT) {
+            true => proto.name.clone(),
+            false => self.current_ns
+                .get()
+                .qualify(&proto.name)
+                .to_string()
+        };
         if self.current_fn.is_some() {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
             return None;
         }
 
         let fun = match self.module.get_function(
-            self.current_ns
-                .get()
-                .qualify(&proto.name)
-                .to_string()
-                .as_str(),
+            &qualified,
         ) {
             Some(f) => f,
             None => self.gen_fun_proto(&proto, &pos).unwrap(),
