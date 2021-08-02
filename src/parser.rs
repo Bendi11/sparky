@@ -315,14 +315,36 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                                 default = Some(body);
                             },
                             Token(_, _) => {
-                                let (val, _) = self.parse_numliteral()?;
-                                self.expect_next(TokenType::Arrow)?;
+                                let mut case_vals = vec![];
+                                loop {
+                                    match self.toks.peek().eof()? {
+                                        Token(_, TokenType::NumLiteral(_)) => {
+                                            let (val, _) = self.parse_numliteral()?;
+                                            case_vals.push(val);
+                                        },
+                                        Token(_, TokenType::Op(Op::Or)) => {
+                                            self.toks.next();
+                                        },
+                                        Token(_, TokenType::Arrow) => {
+                                            self.toks.next();
+                                            break
+                                        },
+                                        Token(_, _) => {
+                                            let Token(pos, other) = self.toks.next().eof()?;
+                                            return Err(ParseErr::UnexpectedToken(pos, other, vec![
+                                                TokenType::NumLiteral("switch case".to_owned()),
+                                                TokenType::Op(Op::Or),
+                                                TokenType::Arrow
+                                            ]))
+                                        }
+                                    }
+                                }
                                 let body = self.parse_body()?;
                                 match self.toks.peek() {
                                     Some(Token(_, TokenType::Comma)) => { self.toks.next(); },
                                     _ => ()
                                 }
-                                cases.push((val, body))
+                                cases.push((case_vals, body))
                             }
                         }
                     }

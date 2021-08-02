@@ -770,32 +770,37 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Ast::Switch(cond, cases, default) => {
                 let cond = BasicValueEnum::try_from(self.gen(cond, false)?).ok()?;
                 let current_bb = self.build.get_insert_block()?;
-                
+                let default_bb = self.ctx.append_basic_block(self.current_fn?, "switch_default_bb");
+                let after_bb = self.ctx.append_basic_block(self.current_fn?, "after_switch_bb");
 
                 let mut llvm_cases = vec![];
-                for (case_val, body) in cases {
-                    let case_val = self.ctx
-                        .custom_width_int_type(case_val.width as u32)
-                        .const_int_arbitrary_precision(case_val.val.to_u64_digits().1.as_slice());
-
+                for (case_vals, body) in cases {
+                    self.just_ret = false;
                     let case_bb = self.ctx.append_basic_block(self.current_fn?, "switch_case_bb");
                     self.build.position_at_end(case_bb);
-                    self.gen_body(body, current_bb)?;
-                    llvm_cases.push((case_val, case_bb));
-                }
+                    self.gen_body(body, after_bb)?;
 
-                let after_bb = self.ctx.append_basic_block(self.current_fn?, "after_switch_bb");
-                self.build.position_at_end(after_bb);
-                match default {
-                    Some(body) => {
-                        self.gen_body(body, current_bb)?;
-                    },
-                    None => {
-                        self.build.build_unconditional_branch(current_bb);
+                    for case_val in case_vals {
+                        let case_val = self.ctx
+                            .custom_width_int_type(case_val.width as u32)
+                            .const_int_arbitrary_precision(case_val.val.to_u64_digits().1.as_slice());
+                        llvm_cases.push((case_val, case_bb));
                     }
                 }
 
-                let switch = self.build.build_switch(cond.into_int_value(), after_bb, llvm_cases.as_slice());
+                self.build.position_at_end(default_bb);
+                match default {
+                    Some(body) => {
+                        self.gen_body(body, after_bb)?;
+                    },
+                    None => {
+                        self.build.build_unconditional_branch(after_bb);
+                    }
+                }
+
+                self.build.position_at_end(current_bb);
+                let switch = self.build.build_switch(cond.into_int_value(), default_bb, llvm_cases.as_slice());
+
                 self.build.position_at_end(after_bb);
                 
                 Some(switch.as_any_value_enum())

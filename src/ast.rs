@@ -149,7 +149,7 @@ pub enum Ast {
     Array(Box<AstPos>, Box<AstPos>),
 
     /// A switch statement for jump tables, plus a default case
-    Switch(Box<AstPos>, Vec<(NumLiteral, Vec<AstPos>)>, Option<Vec<AstPos>>),
+    Switch(Box<AstPos>, Vec<(Vec<NumLiteral>, Vec<AstPos>)>, Option<Vec<AstPos>>),
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file
