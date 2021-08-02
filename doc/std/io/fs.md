@@ -22,46 +22,44 @@ The `fs` module should provide an API to interact with files in a cross-platform
 - `opt_flag APPEND_EXISTING = 5`: Append to a file if it already exists
 
 ## Functions
-----
-
 ```rust
 fun write(File ptr file, u8 ptr buf, usize len) isize
 ```
-Write a specified amount of bytes from a byte buffer to the given `File` object, returning an error indicated with a negative return value,
+> Write a specified amount of bytes from a byte buffer to the given `File` object, returning an error indicated with a negative return value,
 or the amount of bytes written to the file.
 ----
 ```rust
 fun read(File ptr file, u8 ptr buf, usize len) isize
 ```
-Read the specified amount of bytes from the file into the specified byte array, returning a negative error code or the amount of bytes read from the file.
+> Read the specified amount of bytes from the file into the specified byte array, returning a negative error code or the amount of bytes read from the file.
 ----
 ```rust
 fun open(u8 ptr filename, Opts openopts) File ptr
 ```
-Open or create a file from the specified path, using the specified file flags for permissions and behavior if the 
-file already exists / doesn't exist. Returns `NULL` on error or an allocated file struct on success.
+> Open or create a file from the specified path, using the specified file flags for permissions and behavior if the 
+> file already exists / doesn't exist. Returns `NULL` on error or an allocated file struct on success.
 ----
 ```rust
 fun close(File ptr file) bool
 ```
-Close the specified file, returning `true` if the file was closed successfully or `false` if an error was encountered
-while closing the file.
+> Close the specified file, returning `true` if the file was closed successfully or `false` if an error was encountered
+> while closing the file.
 ----
 ```rust
 fun opts_default() Opts
 ```
-Return an `Opts` struct with default values per-platform, but with the flags:
-- `CREATE_NEW`
-- `READ`
-- `WRITE`
-- `TRUNCATE_EXISTING`
+> Return an `Opts` struct with default values per-platform, but with the flags:
+> - `CREATE_NEW`
+> - `READ`
+> - `WRITE`
+> - `TRUNCATE_EXISTING`
 ----
 ```rust
 fun add_opt_flag(Opts ptr opts, opt_flag flag) void
 ```
-Add a given flag to the `Opts` struct
+> Add a given flag to the `Opts` struct
 ----
 ```rust
 fun rem_opt_flag(Opts ptr opts, opt_flag flag) void
 ```
-Remove the given flag from the `Opts` struct
+> Remove the given flag from the `Opts` struct
