@@ -154,6 +154,9 @@ pub enum Ast {
         Vec<(Vec<NumLiteral>, Vec<AstPos>)>,
         Option<Vec<AstPos>>,
     ),
+
+    /// Exit a scope early without returning
+    Break,
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file

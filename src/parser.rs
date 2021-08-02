@@ -359,6 +359,10 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     }
                     Ok(AstPos(Ast::Switch(Box::new(cond), cases, default), pos))
                 }
+                Key::Break => {
+                    let Token(pos, _) = self.toks.next().eof()?;
+                    Ok(AstPos(Ast::Break, pos))
+                }
                 other => Err(ParseErr::UnexpectedToken(
                     pos.clone(),
                     TokenType::Key(*other),
@@ -368,7 +372,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         TokenType::Key(Key::Ret),
                         TokenType::Key(Key::Switch),
                         TokenType::Key(Key::While),
+                        TokenType::Key(Key::Break),
                         TokenType::Ident(String::new()),
+                        TokenType::LeftBrace('('),
                     ],
                 )),
             },
@@ -404,9 +410,14 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 pos.clone(),
                 unexpected.clone(),
                 vec![
-                    TokenType::Ident(String::new()),
                     TokenType::Key(Key::If),
                     TokenType::Key(Key::Let),
+                    TokenType::Key(Key::Ret),
+                    TokenType::Key(Key::Switch),
+                    TokenType::Key(Key::While),
+                    TokenType::Key(Key::Break),
+                    TokenType::Ident(String::new()),
+                    TokenType::LeftBrace('('),
                 ],
             )),
         }

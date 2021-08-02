@@ -11,15 +11,7 @@ use crate::{
     Type,
 };
 use hashbrown::HashMap;
-use inkwell::{
-    basic_block::BasicBlock,
-    builder::Builder,
-    context::Context,
-    module::Module,
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
-    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
-    AddressSpace, IntPredicate,
-};
+use inkwell::{AddressSpace, IntPredicate, basic_block::BasicBlock, builder::Builder, context::Context, module::Module, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
 use super::ns::Ns;
 
@@ -46,6 +38,9 @@ pub struct Compiler<'a, 'c> {
     /// The function that we are currently generating code in
     current_fn: Option<FunctionValue<'c>>,
 
+    /// The label we will go to when a break statement is encountered
+    break_lbl: Option<BasicBlock<'c>>,
+
     /// If we just wrote a return instruction
     just_ret: bool,
 
@@ -71,19 +66,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
             root,
             just_ret: false,
             current_ns: Cell::new(root),
+            break_lbl: None,
         }
     }
 
     /// Build an alloca for a variable in the current function
     fn entry_alloca(&self, name: &str, ty: BasicTypeEnum<'c>) -> PointerValue<'c> {
         let entry_builder = self.ctx.create_builder();
-        /*let f = self
-        .current_fn
-        .expect("Not in a function, can't allocate on stack");*/
         let bb = self.build.get_insert_block().unwrap();
-        /*let bb = f
-        .get_first_basic_block()
-        .expect("Function has no entry block to allocate in");*/
         if let Some(ref ins) = bb.get_first_instruction() {
             entry_builder.position_at(bb, ins);
         } else {
@@ -296,6 +286,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// not inserting a jump to the after_bb if a return statement was encountered
     fn gen_body(&mut self, body: &[AstPos], after_bb: BasicBlock<'c>) -> Option<()> {
         let old_vars = self.vars.clone();
+        let old_break_lbl = self.break_lbl;
+        self.break_lbl = Some(after_bb);
 
         for stmt in body {
             self.gen(stmt, false)?;
@@ -311,6 +303,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
 
         self.vars = old_vars;
+        self.break_lbl = old_break_lbl;
         Some(())
     }
 
@@ -360,6 +353,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                                 .as_any_value_enum(),
                         )
                     }
+                }
+            },
+            Ast::Break => {
+                if let Some(break_lbl) = self.break_lbl {
+                    self.just_ret = true;
+                    Some(self.build.build_unconditional_branch(break_lbl).as_any_value_enum())
+                } else {
+                    error!("{}: Cannot use break statement here; there is nowhere to break to", node.1);
+                    None
                 }
             }
             Ast::FunCall(name, args) => match self.get_fun(&name) {
@@ -435,13 +437,42 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 self.build.position_at_end(true_bb);
 
-                self.gen_body(true_block, after_bb)?;
+
+                let old_vars = self.vars.clone();
+
+                for stmt in true_block {
+                    self.gen(stmt, false)?;
+                    if self.just_ret {
+                        break;
+                    }
+                }
+                if !self.just_ret {
+                    self.build.build_unconditional_branch(after_bb);
+                } else {
+                    self.just_ret = false;
+                    trace!("Encountered an early return from a block, so not inserting a jump");
+                }
+
+                self.vars = old_vars;
 
                 self.build.position_at_end(false_bb);
 
                 match else_block.is_some() {
                     true => {
-                        self.gen_body(else_block.as_ref().unwrap(), after_bb)?;
+                        let old_vars = self.vars.clone();
+                        for stmt in else_block.as_ref().unwrap() {
+                            self.gen(stmt, false)?;
+                            if self.just_ret {
+                                break;
+                            }
+                        }
+                        if !self.just_ret {
+                            self.build.build_unconditional_branch(after_bb);
+                        } else {
+                            self.just_ret = false;
+                            trace!("Encountered an early return from a block, so not inserting a jump");
+                        }
+                        self.vars = old_vars;
                     }
                     false => {
                         self.build.build_unconditional_branch(after_bb);

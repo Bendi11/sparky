@@ -36,6 +36,7 @@ The keywords and their purposes are:
 - `use`: Import a namespace into another namespace
 - `asm`: Declare a function as inline assembly
 - `switch`: Declare a switch statement
+- `break`: Exit a while loop, if body, or switch case early
 
 ## Operators
 The operators and their purposes: 
@@ -94,6 +95,7 @@ The operators and their purposes:
     | "if" <expr> <body> ("else" <body>)?
     | "while" <expr> <body>
     | <switchexpr>
+    | "break"
 
 <switchexpr> ::= "switch" <expr> "{" ( <switchcase> "," )* <switchcase>? "}"
 <switchcase> ::= ( <numberliteral> "|" )* <numberliteral> "->" <body> 
