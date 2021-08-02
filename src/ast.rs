@@ -149,7 +149,11 @@ pub enum Ast {
     Array(Box<AstPos>, Box<AstPos>),
 
     /// A switch statement for jump tables, plus a default case
-    Switch(Box<AstPos>, Vec<(Vec<NumLiteral>, Vec<AstPos>)>, Option<Vec<AstPos>>),
+    Switch(
+        Box<AstPos>,
+        Vec<(Vec<NumLiteral>, Vec<AstPos>)>,
+        Option<Vec<AstPos>>,
+    ),
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file
@@ -251,25 +255,4 @@ impl AstPos {
             other => op(other),
         }
     }
-
-    /// Check if this expression can be evaluated at compile-time
-    pub const fn is_constexpr(&self) -> bool {
-        match self.ast() {
-            Ast::NumLiteral(_) => true,
-            _ => false
-        }
-    }
-
-    /// Get the constant expression value from this AST node
-    pub fn get_constexpr_int<'c>(&self, compiler: &'_ Compiler<'c, '_>) -> Option<inkwell::values::IntValue<'c>> {
-        match self.ast() {
-            Ast::NumLiteral(literal) => {
-                Some(compiler.ctx
-                    .custom_width_int_type(literal.width as u32)
-                    .const_int_arbitrary_precision(literal.val.to_u64_digits().1.as_slice())
-                )
-            },
-            _ => None
-        }
-    } 
 }

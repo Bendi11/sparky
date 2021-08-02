@@ -11,7 +11,15 @@ use crate::{
     Type,
 };
 use hashbrown::HashMap;
-use inkwell::{AddressSpace, IntPredicate, basic_block::BasicBlock, builder::Builder, context::Context, module::Module, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{
+    basic_block::BasicBlock,
+    builder::Builder,
+    context::Context,
+    module::Module,
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
+    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
+    AddressSpace, IntPredicate,
+};
 
 use super::ns::Ns;
 
@@ -286,7 +294,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
     /// Generate code for an if / while / switch statement body, clearing local variables declared in the body and
     /// not inserting a jump to the after_bb if a return statement was encountered
-    fn gen_body(&mut self, body: &Vec<AstPos>, after_bb: BasicBlock<'c>) -> Option<()> {
+    fn gen_body(&mut self, body: &[AstPos], after_bb: BasicBlock<'c>) -> Option<()> {
         let old_vars = self.vars.clone();
 
         for stmt in body {
@@ -314,9 +322,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Ast::NumLiteral(num) => Some(
                 self.ctx
                     .custom_width_int_type(num.width as u32)
-                    .const_int_from_string(num.val.to_str_radix(10).as_str(), inkwell::types::StringRadix::Decimal)
+                    .const_int_from_string(
+                        num.val.to_str_radix(10).as_str(),
+                        inkwell::types::StringRadix::Decimal,
+                    )
                     .unwrap()
-                    .as_any_value_enum()
+                    .as_any_value_enum(),
             ),
             Ast::Ret(node) => {
                 match self
@@ -455,7 +466,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 self.build
                     .build_conditional_branch(cond, while_bb, after_bb);
                 self.build.position_at_end(while_bb);
-
 
                 self.gen_body(block, cond_bb)?;
 
@@ -770,20 +780,29 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Ast::Switch(cond, cases, default) => {
                 let cond = BasicValueEnum::try_from(self.gen(cond, false)?).ok()?;
                 let current_bb = self.build.get_insert_block()?;
-                let default_bb = self.ctx.append_basic_block(self.current_fn?, "switch_default_bb");
-                let after_bb = self.ctx.append_basic_block(self.current_fn?, "after_switch_bb");
+                let default_bb = self
+                    .ctx
+                    .append_basic_block(self.current_fn?, "switch_default_bb");
+                let after_bb = self
+                    .ctx
+                    .append_basic_block(self.current_fn?, "after_switch_bb");
 
                 let mut llvm_cases = vec![];
                 for (case_vals, body) in cases {
                     self.just_ret = false;
-                    let case_bb = self.ctx.append_basic_block(self.current_fn?, "switch_case_bb");
+                    let case_bb = self
+                        .ctx
+                        .append_basic_block(self.current_fn?, "switch_case_bb");
                     self.build.position_at_end(case_bb);
                     self.gen_body(body, after_bb)?;
 
                     for case_val in case_vals {
-                        let case_val = self.ctx
+                        let case_val = self
+                            .ctx
                             .custom_width_int_type(case_val.width as u32)
-                            .const_int_arbitrary_precision(case_val.val.to_u64_digits().1.as_slice());
+                            .const_int_arbitrary_precision(
+                                case_val.val.to_u64_digits().1.as_slice(),
+                            );
                         llvm_cases.push((case_val, case_bb));
                     }
                 }
@@ -792,20 +811,23 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 match default {
                     Some(body) => {
                         self.gen_body(body, after_bb)?;
-                    },
+                    }
                     None => {
                         self.build.build_unconditional_branch(after_bb);
                     }
                 }
 
                 self.build.position_at_end(current_bb);
-                let switch = self.build.build_switch(cond.into_int_value(), default_bb, llvm_cases.as_slice());
+                let switch = self.build.build_switch(
+                    cond.into_int_value(),
+                    default_bb,
+                    llvm_cases.as_slice(),
+                );
 
                 self.build.position_at_end(after_bb);
-                
+
                 Some(switch.as_any_value_enum())
-                
-            },
+            }
 
             other => unimplemented!("Cannot use expression {:?} inside of a function", other),
         }

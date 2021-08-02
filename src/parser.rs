@@ -1,6 +1,11 @@
 use std::iter::Peekable;
 
-use crate::{Type, ast::{Ast, AstPos, Attributes, FunProto, NumLiteral}, lex::{Key, Op, Pos, Token, TokenType}, types::Container};
+use crate::{
+    ast::{Ast, AstPos, Attributes, FunProto, NumLiteral},
+    lex::{Key, Op, Pos, Token, TokenType},
+    types::Container,
+    Type,
+};
 use num_bigint::BigInt;
 use thiserror::Error;
 
@@ -290,7 +295,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         _ => Some(self.parse_expr()?),
                     };
                     Ok(AstPos(Ast::Ret(Box::new(val)), pos))
-                },
+                }
                 Key::Switch => {
                     let Token(pos, _) = self.toks.next().eof()?;
                     let cond = self.parse_expr()?;
@@ -302,18 +307,18 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         match self.toks.peek().eof()? {
                             Token(_, TokenType::RightBrace('}')) => {
                                 self.toks.next();
-                                break
-                            },
+                                break;
+                            }
                             Token(_, TokenType::Key(Key::Else)) => {
-                                let Token(_,  _) = self.toks.next().eof()?;
+                                let Token(_, _) = self.toks.next().eof()?;
                                 self.expect_next(TokenType::Arrow)?;
                                 let body = self.parse_body()?;
-                                match self.toks.peek() {
-                                    Some(Token(_, TokenType::Comma)) => { self.toks.next(); },
-                                    _ => ()
+                                if let Some(Token(_, TokenType::Comma)) = self.toks.peek() {
+                                    self.toks.next();
                                 }
+
                                 default = Some(body);
-                            },
+                            }
                             Token(_, _) => {
                                 let mut case_vals = vec![];
                                 loop {
@@ -321,29 +326,33 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                                         Token(_, TokenType::NumLiteral(_)) => {
                                             let (val, _) = self.parse_numliteral()?;
                                             case_vals.push(val);
-                                        },
+                                        }
                                         Token(_, TokenType::Op(Op::Or)) => {
                                             self.toks.next();
-                                        },
+                                        }
                                         Token(_, TokenType::Arrow) => {
                                             self.toks.next();
-                                            break
-                                        },
+                                            break;
+                                        }
                                         Token(_, _) => {
                                             let Token(pos, other) = self.toks.next().eof()?;
-                                            return Err(ParseErr::UnexpectedToken(pos, other, vec![
-                                                TokenType::NumLiteral("switch case".to_owned()),
-                                                TokenType::Op(Op::Or),
-                                                TokenType::Arrow
-                                            ]))
+                                            return Err(ParseErr::UnexpectedToken(
+                                                pos,
+                                                other,
+                                                vec![
+                                                    TokenType::NumLiteral("switch case".to_owned()),
+                                                    TokenType::Op(Op::Or),
+                                                    TokenType::Arrow,
+                                                ],
+                                            ));
                                         }
                                     }
                                 }
                                 let body = self.parse_body()?;
-                                match self.toks.peek() {
-                                    Some(Token(_, TokenType::Comma)) => { self.toks.next(); },
-                                    _ => ()
+                                if let Some(Token(_, TokenType::Comma)) = self.toks.peek() {
+                                    self.toks.next();
                                 }
+
                                 cases.push((case_vals, body))
                             }
                         }
@@ -431,23 +440,21 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(pos, TokenType::Key(Key::True)) => {
                 return Ok((
                     NumLiteral {
-                        
                         signed: false,
                         width: 1,
                         val: BigInt::from(1),
                     },
-                    pos
+                    pos,
                 ))
             }
             Token(pos, TokenType::Key(Key::False)) => {
                 return Ok((
                     NumLiteral {
-                        
                         signed: false,
                         width: 1,
                         val: BigInt::from(0),
                     },
-                    pos
+                    pos,
                 ))
             }
             Token(pos, tok) => {
@@ -467,7 +474,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 "0x" => (16, true),
                 "0b" => (1, true),
                 "0o" => (8, true),
-                _ => (10, false)
+                _ => (10, false),
             }
         } else {
             (10, false)
@@ -475,30 +482,44 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
         match self.toks.peek().eof()? {
             Token(_, TokenType::IntType(ty)) => {
-                let (signed, width) = if let Type::Integer{signed, width} = ty {
+                let (signed, width) = if let Type::Integer { signed, width } = ty {
                     (*signed, *width)
                 } else {
                     unreachable!()
                 };
 
                 let Token(pos, _) = self.toks.next().eof()?;
-                Ok((NumLiteral {
-                    val: BigInt::parse_bytes(match trim {
-                        true => num[2..].as_bytes(),
-                        false => num[..].as_bytes()
-                    }, radix).unwrap(),
-                    signed,
-                    width
-                }, pos))
+                Ok((
+                    NumLiteral {
+                        val: BigInt::parse_bytes(
+                            match trim {
+                                true => num[2..].as_bytes(),
+                                false => num[..].as_bytes(),
+                            },
+                            radix,
+                        )
+                        .unwrap(),
+                        signed,
+                        width,
+                    },
+                    pos,
+                ))
             }
-            _ => Ok((NumLiteral {
-                val: BigInt::parse_bytes(match trim {
-                    true => num[2..].as_bytes(),
-                    false => num.as_bytes()
-                }, radix).unwrap(),
-                signed: true,
-                width: 32
-            }, pos)),
+            _ => Ok((
+                NumLiteral {
+                    val: BigInt::parse_bytes(
+                        match trim {
+                            true => num[2..].as_bytes(),
+                            false => num.as_bytes(),
+                        },
+                        radix,
+                    )
+                    .unwrap(),
+                    signed: true,
+                    width: 32,
+                },
+                pos,
+            )),
         }
     }
 

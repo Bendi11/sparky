@@ -573,9 +573,9 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
                     Some(Ok(n)) if n.is_numeric() => num.push(self.next_char().unwrap().unwrap()),
                     Some(Ok(prefix)) => match prefix {
                         'x' | 'b' | 'o' => num.push(self.next_char().unwrap().unwrap()),
-                        _ => ()
+                        _ => (),
                     },
-                    _ => ()
+                    _ => (),
                 }
                 while match self.chars.peek() {
                     Some(Ok(n)) if n.is_numeric() => {
