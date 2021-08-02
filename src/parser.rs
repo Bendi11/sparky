@@ -296,11 +296,23 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     let cond = self.parse_expr()?;
                     self.expect_next(TokenType::LeftBrace('{'))?;
                     let mut cases = vec![];
+                    let mut default = None;
+
                     loop {
                         match self.toks.peek().eof()? {
                             Token(_, TokenType::RightBrace('}')) => {
                                 self.toks.next();
                                 break
+                            },
+                            Token(_, TokenType::Key(Key::Else)) => {
+                                let Token(_,  _) = self.toks.next().eof()?;
+                                self.expect_next(TokenType::Arrow)?;
+                                let body = self.parse_body()?;
+                                match self.toks.peek() {
+                                    Some(Token(_, TokenType::Comma)) => { self.toks.next(); },
+                                    _ => ()
+                                }
+                                default = Some(body);
                             },
                             Token(_, _) => {
                                 let (val, _) = self.parse_numliteral()?;
@@ -314,7 +326,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                             }
                         }
                     }
-                    Ok(AstPos(Ast::Switch(Box::new(cond), cases), pos))
+                    Ok(AstPos(Ast::Switch(Box::new(cond), cases, default), pos))
                 }
                 other => Err(ParseErr::UnexpectedToken(
                     pos.clone(),
@@ -460,7 +472,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             _ => Ok((NumLiteral {
                 val: BigInt::parse_bytes(match trim {
                     true => num[2..].as_bytes(),
-                    false => num[..].as_bytes()
+                    false => num.as_bytes()
                 }, radix).unwrap(),
                 signed: true,
                 width: 32

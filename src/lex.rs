@@ -569,8 +569,16 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             //Lex a number literal from the input
             c if c.is_numeric() => {
                 let mut num = String::from(c); //Get a string of the number literal
+                match self.chars.peek() {
+                    Some(Ok(n)) if n.is_numeric() => num.push(self.next_char().unwrap().unwrap()),
+                    Some(Ok(prefix)) => match prefix {
+                        'x' | 'b' | 'o' => num.push(self.next_char().unwrap().unwrap()),
+                        _ => ()
+                    },
+                    _ => ()
+                }
                 while match self.chars.peek() {
-                    Some(Ok(n)) if n.is_numeric() || n.is_ascii_alphabetic() => {
+                    Some(Ok(n)) if n.is_numeric() => {
                         num.push(self.next_char().unwrap().unwrap()); //Consume the number character
                         true
                     }

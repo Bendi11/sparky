@@ -314,7 +314,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Ast::NumLiteral(num) => Some(
                 self.ctx
                     .custom_width_int_type(num.width as u32)
-                    .const_int_arbitrary_precision(num.val.to_u64_digits().1.as_slice())
+                    .const_int_from_string(num.val.to_str_radix(10).as_str(), inkwell::types::StringRadix::Decimal)
+                    .unwrap()
                     .as_any_value_enum()
             ),
             Ast::Ret(node) => {
@@ -766,9 +767,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 res
             }
             Ast::Bin(lhs, op, rhs) => self.gen_bin(lhs, rhs, op),
-            Ast::Switch(cond, cases) => {
+            Ast::Switch(cond, cases, default) => {
                 let cond = BasicValueEnum::try_from(self.gen(cond, false)?).ok()?;
-                let after_bb = self.ctx.append_basic_block(self.current_fn?, "after_switch_bb");
+                let current_bb = self.build.get_insert_block()?;
+                
 
                 let mut llvm_cases = vec![];
                 for (case_val, body) in cases {
@@ -778,9 +780,21 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                     let case_bb = self.ctx.append_basic_block(self.current_fn?, "switch_case_bb");
                     self.build.position_at_end(case_bb);
-                    self.gen_body(body, after_bb)?;
+                    self.gen_body(body, current_bb)?;
                     llvm_cases.push((case_val, case_bb));
                 }
+
+                let after_bb = self.ctx.append_basic_block(self.current_fn?, "after_switch_bb");
+                self.build.position_at_end(after_bb);
+                match default {
+                    Some(body) => {
+                        self.gen_body(body, current_bb)?;
+                    },
+                    None => {
+                        self.build.build_unconditional_branch(current_bb);
+                    }
+                }
+
                 let switch = self.build.build_switch(cond.into_int_value(), after_bb, llvm_cases.as_slice());
                 self.build.position_at_end(after_bb);
                 

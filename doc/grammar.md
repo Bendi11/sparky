@@ -97,6 +97,7 @@ The operators and their purposes:
 
 <switchexpr> ::= "switch" <expr> "{" ( <switchcase> "," )* <switchcase>? "}"
 <switchcase> ::= <numberliteral> "->" <body> 
+              |  "else" "->" <body>
 
 
 (*The body of a function or if statement*)
