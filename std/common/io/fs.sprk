@@ -1,0 +1,11 @@
+ns std::io::fs {
+
+type u8 opt_flag;
+let const opt_flag CREATE_NEW = 0u8;
+let const opt_flag ALWAYS_CREATE = 1u8;
+let const opt_flag READ = 2u8;
+let const opt_flag WRITE = 3u8;
+let const opt_flag TRUNCATE_EXISTING = 4u8;
+let const opt_flag APPEND_EXISTING = 5u8;
+
+}

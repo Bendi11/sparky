@@ -7,6 +7,54 @@ struct File {
     types::Handle handle
 }
 
-fun ext WriteFile(types::Handle hFile, u8 ptr lpBuffer, u32 nNumberOfBytesToWrite, u32 ptr lpNumberOfBytesWritten, u8 ptr _unused) types::Bool
+struct Opts {
+    types::Dword dwDesiredAccess,
+    types::Dword dwFlagsAndAttributes
+}
+
+//Open or create the specified file, depending on the given open options
+//returns NULL on failure, and an allocated File struct on success.
+//Currently corresponds to the CreateFileA function on windows
+fun open(u8 ptr filename, Opts openopts) File ptr {
+
+}
+
+
+ns _internal {
+
+    use std::win::types
+
+    struct OverLapped {
+        u32 ptr Internal,
+        u32 ptr InternalHigh,
+        OverLapped_DUMMYUNIONNAME DUMMYUNIONNAME,
+        types::Handle hEvent
+    }
+    union OverLapped_DUMMYUNIONNAME {
+        OverLapped_DUMMYSTRUCTNAME DUMMYSTRUCTNAME,
+        u8 ptr Pointer
+    }
+    struct OverLapped_DUMMYSTRUCTNAME {
+        u32 Offset,
+        u32 OffsetHigh
+    }
+
+    struct SecurityAttributes {
+        i32 nLength,
+        u8 ptr lpSecurityDescriptor,
+        types::Bool bInheritHandle
+    }
+
+    fun ext WriteFile(types::Handle hFile, u8 ptr lpBuffer, u32 nNumberOfBytesToWrite, u32 ptr lpNumberOfBytesWritten, OverLapped ptr lpOverlapped) types::Bool
+    fun ext CreateFileA(u8 ptr lpFileName, 
+        types::Dword dwDesiredAccess, 
+        types::Dword dwShareMode, 
+        SecurityAttributes ptr lpSecurityAttributes, 
+        types::Dword dwCreationDisposition, 
+        types::Dword dwFlagsAnd Attributes, 
+        types::Handle hTemplateFile
+    ) types::Handle
+
+}
 
 }
