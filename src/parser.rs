@@ -303,7 +303,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                                 break
                             },
                             Token(_, _) => {
-                                let val = self.parse_expr()?;
+                                let (val, _) = self.parse_numliteral()?;
                                 self.expect_next(TokenType::Arrow)?;
                                 let body = self.parse_body()?;
                                 match self.toks.peek() {
@@ -390,33 +390,30 @@ impl<L: Iterator<Item = Token>> Parser<L> {
     }
 
     /// Parse a number literal or bool literal from the token stream
-    fn parse_numliteral(&mut self) -> ParseRes<AstPos> {
+    fn parse_numliteral(&mut self) -> ParseRes<(NumLiteral, Pos)> {
         //Get the number string
         let (num, pos) = match self.toks.next().eof()? {
             Token(pos, TokenType::NumLiteral(num)) => (num, pos),
             Token(pos, TokenType::Key(Key::True)) => {
-                return Ok(AstPos(
-                    Ast::NumLiteral(
-                        NumLiteral {
-                            signed: false,
-                            width: 1,
-                            val: BigInt::from(1),
-                        }
-                    ),
-                    pos,
+                return Ok((
+                    NumLiteral {
+                        
+                        signed: false,
+                        width: 1,
+                        val: BigInt::from(1),
+                    },
+                    pos
                 ))
             }
             Token(pos, TokenType::Key(Key::False)) => {
-                return Ok(AstPos(
-                    Ast::NumLiteral(
-                        NumLiteral {
-                            
-                            signed: false,
-                            width: 1,
-                            val: BigInt::from(0),
-                        }
-                    ),
-                    pos,
+                return Ok((
+                    NumLiteral {
+                        
+                        signed: false,
+                        width: 1,
+                        val: BigInt::from(0),
+                    },
+                    pos
                 ))
             }
             Token(pos, tok) => {
@@ -451,23 +448,23 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 };
 
                 let Token(pos, _) = self.toks.next().eof()?;
-                Ok(AstPos(Ast::NumLiteral(NumLiteral {
+                Ok((NumLiteral {
                     val: BigInt::parse_bytes(match trim {
                         true => num[2..].as_bytes(),
                         false => num[..].as_bytes()
                     }, radix).unwrap(),
                     signed,
                     width
-                }), pos))
+                }, pos))
             }
-            _ => Ok(AstPos(Ast::NumLiteral(NumLiteral {
+            _ => Ok((NumLiteral {
                 val: BigInt::parse_bytes(match trim {
                     true => num[2..].as_bytes(),
                     false => num[..].as_bytes()
                 }, radix).unwrap(),
                 signed: true,
                 width: 32
-            }), pos)),
+            }, pos)),
         }
     }
 
@@ -563,7 +560,10 @@ impl<L: Iterator<Item = Token>> Parser<L> {
 
             Token(_, TokenType::NumLiteral(_))
             | Token(_, TokenType::Key(Key::True))
-            | Token(_, TokenType::Key(Key::False)) => self.parse_numliteral(),
+            | Token(_, TokenType::Key(Key::False)) => {
+                let (num, pos) = self.parse_numliteral()?;
+                Ok(AstPos(Ast::NumLiteral(num), pos))
+            }
 
             //Struct literal
             Token(_, TokenType::Key(Key::Struct)) => {
