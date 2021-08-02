@@ -1,5 +1,6 @@
 ns std::io::fs {
 use std::win::types
+use std::consts
 
 //The File struct holds a HANDLE on windows that is used to access the file in the windows
 //API
@@ -7,16 +8,64 @@ struct File {
     types::Handle handle
 }
 
+//The `Opts` struct holds platform-specific flags for the creation and opening
+//of files
 struct Opts {
     types::Dword dwDesiredAccess,
-    types::Dword dwFlagsAndAttributes
+    types::Dword dwFlagsAndAttributes,
+    types::Dword dwCreationDisposition
 }
 
 //Open or create the specified file, depending on the given open options
 //returns NULL on failure, and an allocated File struct on success.
 //Currently corresponds to the CreateFileA function on windows
 fun open(u8 ptr filename, Opts openopts) File ptr {
+    let types::Handle handle = _internal::CreateFileA(
+        filename,
+        openopts.dwDesiredAccess,
+        0u32,
+        {_internal::SecurityAttributes ptr}0,
+        openopts.dwCreationDisposition,
+        openopts.dwFlagsAndAttributes,
+        {types::Handle}0
+    );
+    if handle == types::INVALID_HANDLE_VALUE {
+        ret consts::NULL;
+    };
+    let File ptr file = std::alloc::malloc(64usize);
+    file->handle = handle;
+    ret file;
+}
 
+//Return the default options for file creation / opening
+fun opts_default() Opts {
+    ret struct Opts {
+        dwDesiredAccess = 2147483648u32 | 1073741824u32,
+        dwFlagsAndAttributes = 0u32,
+        dwCreationDisposition = 1u32
+    };
+}
+
+fun add_opt_flag(Opts ptr opts, opt_flag flag) void {
+    switch flag {
+        //CREATE_NEW
+        0u8 -> {
+            opts->dwCreationDisposition = 1u32;
+        }
+        //ALWAYS_CREATE
+        1u8 -> {
+            opts->dwCreationDisposition = 2u32;
+        },
+        //READ
+        2u8 -> {
+            opts->dwDesiredAccess = opts->dwDesiredAccess | 2147483648u32;
+        }
+        //WRITE
+        3u8 -> {
+            opts->dwDesiredAccess = opts->dwDesiredAccess | 1073741824u32;
+        }
+    };
+    ret;
 }
 
 
@@ -51,7 +100,7 @@ ns _internal {
         types::Dword dwShareMode, 
         SecurityAttributes ptr lpSecurityAttributes, 
         types::Dword dwCreationDisposition, 
-        types::Dword dwFlagsAnd Attributes, 
+        types::Dword dwFlagsAndAttributes, 
         types::Handle hTemplateFile
     ) types::Handle
 

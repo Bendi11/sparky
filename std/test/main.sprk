@@ -2,15 +2,5 @@
 
 fun main() i32 {
     let i32 a = 10;
-    switch a {
-        10 | 13 -> {
-            a = 101;
-        }
-    };
-    while true {
-        if a == 101 {
-            break;
-        };
-    };
     ret a;
 }

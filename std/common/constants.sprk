@@ -1,0 +1,5 @@
+ns std::consts {
+
+let const u8 ptr NULL = {u8 ptr}0;
+
+}

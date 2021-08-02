@@ -206,6 +206,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 },
             },
             Type::Ptr(ty) => self.resolve_unknown(*ty, pos).ptr_type(),
+            Type::Array(ty, len) => Type::Array(Box::new(self.resolve_unknown(*ty, pos)), len),
             other => other
         }
     }
@@ -296,14 +297,26 @@ impl<'a, 'c> Compiler<'a, 'c> {
         for node in ast {
             match node.ast() {
                 Ast::FunProto(proto) => {
-                    self.gen_fun_proto(proto, &node.1).unwrap();
+                    let mut proto = proto.clone();
+                    proto.ret = self.resolve_unknown(proto.ret, &node.1);
+                    for (arg, _) in proto.args.iter_mut() {
+                        *arg = self.resolve_unknown(arg.clone(), &node.1);
+                    }
+
+                    self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
                         "Generated function prototype {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
                 }
                 Ast::FunDef(proto, _) => {
-                    self.gen_fun_proto(proto, &node.1).unwrap();
+                    let mut proto = proto.clone();
+                    proto.ret = self.resolve_unknown(proto.ret, &node.1);
+                    for (arg, _) in proto.args.iter_mut() {
+                        *arg = self.resolve_unknown(arg.clone(), &node.1);
+                    }
+
+                    self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
                         "Generating function prototype for function definition {}",
                         self.current_ns.get().qualify(&proto.name)
@@ -311,7 +324,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     ret.push(node);
                 }
                 Ast::AsmFunDef(proto, _, _) => {
-                    self.gen_fun_proto(proto, &node.1).unwrap();
+                    let mut proto = proto.clone();
+                    proto.ret = self.resolve_unknown(proto.ret, &node.1);
+                    for (arg, _) in proto.args.iter_mut() {
+                        *arg = self.resolve_unknown(arg.clone(), &node.1);
+                    }
+
+                    self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
                         "Generating function prototype for assembly function definition {}",
                         self.current_ns.get().qualify(&proto.name)
@@ -357,11 +376,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 },
                 //Insert a user-defined typedef
                 Ast::TypeDef(name, ty) => {
+                    let ty = self.resolve_unknown(ty.clone(), &node.1);
                     self.current_ns
                         .get()
                         .typedefs
                         .borrow_mut()
-                        .insert(name.clone(), ty.clone());
+                        .insert(name.clone(), ty);
                     trace!("Generated typedef {}", name);
                 }
                 Ast::Ns(ns, stmts) => {
@@ -382,8 +402,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
         for node in ast {
             match node.ast() {
                 Ast::GlobalDef(ty, name, val, attrs) => {
+                    let ty = self.resolve_unknown(ty.clone(), &node.1);
+
                     let qname = self.current_ns.get().qualify(&name).to_string();
-                    match self.resolve_unknown(ty.clone(), &node.1) {
+                    match ty {
                         Type::Struct(_) | Type::Union(_) => {
                             panic!(
                                 "{}: Struct and union types cannot be used as global values!",
@@ -401,7 +423,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         self.current_ns.get().full_path()
                     );
                     let global = self.module.add_global(
-                        self.llvm_type(ty, &node.1),
+                        self.llvm_type(&ty, &node.1),
                         Some(AddressSpace::Global),
                         qname.as_str(),
                     );

@@ -1,6 +1,6 @@
 ns std::io::fs {
 
-type u8 opt_flag;
+type u8 opt_flag
 let const opt_flag CREATE_NEW = 0u8;
 let const opt_flag ALWAYS_CREATE = 1u8;
 let const opt_flag READ = 2u8;
