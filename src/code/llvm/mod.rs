@@ -11,7 +11,15 @@ use crate::{
     Type,
 };
 use hashbrown::HashMap;
-use inkwell::{AddressSpace, IntPredicate, basic_block::BasicBlock, builder::Builder, context::Context, module::Module, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{
+    basic_block::BasicBlock,
+    builder::Builder,
+    context::Context,
+    module::Module,
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
+    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
+    AddressSpace, IntPredicate,
+};
 
 use super::ns::Ns;
 
@@ -354,13 +362,20 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         )
                     }
                 }
-            },
+            }
             Ast::Break => {
                 if let Some(break_lbl) = self.break_lbl {
                     self.just_ret = true;
-                    Some(self.build.build_unconditional_branch(break_lbl).as_any_value_enum())
+                    Some(
+                        self.build
+                            .build_unconditional_branch(break_lbl)
+                            .as_any_value_enum(),
+                    )
                 } else {
-                    error!("{}: Cannot use break statement here; there is nowhere to break to", node.1);
+                    error!(
+                        "{}: Cannot use break statement here; there is nowhere to break to",
+                        node.1
+                    );
                     None
                 }
             }
@@ -437,7 +452,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 self.build.position_at_end(true_bb);
 
-
                 let old_vars = self.vars.clone();
 
                 for stmt in true_block {
@@ -470,7 +484,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             self.build.build_unconditional_branch(after_bb);
                         } else {
                             self.just_ret = false;
-                            trace!("Encountered an early return from a block, so not inserting a jump");
+                            trace!(
+                                "Encountered an early return from a block, so not inserting a jump"
+                            );
                         }
                         self.vars = old_vars;
                     }
