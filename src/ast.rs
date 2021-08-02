@@ -80,9 +80,6 @@ pub enum Ast {
     /// A struct or union field access, plus wether to dereference the left hand side
     MemberAccess(Box<AstPos>, String, bool),
 
-    /// An associated function is being called on a value
-    AssocFunAccess(Box<AstPos>, String, Vec<AstPos>),
-
     /// A variable declaration with type, name, and attributes of the variable
     VarDecl {
         /// The type of variable being declared

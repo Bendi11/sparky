@@ -384,22 +384,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     None
                 }
             },
-            Ast::AssocFunAccess(item, name, args) => match self.get_fun(name.as_str()) {
-                Some((f, _)) => {
-                    let item = BasicValueEnum::try_from(self.gen(item.deref(), false)?).unwrap(); //Generate code for the first expression
-                    let mut real_args = vec![item];
-                    real_args.extend(
-                        args
-                            .iter()
-                            .map(|n| Some(BasicValueEnum::try_from(self.gen(n, false)?).expect("Failed to convert any value enum to basic value enum when calling function"))).collect::<Option<Vec<_>>>()? );
-                    Some(
-                        self.build
-                            .build_call(f, real_args.as_ref(), "tmp_assoc_fncall")
-                            .as_any_value_enum(),
-                    )
-                }
-                None => panic!("Calling unknown associated function {}", name),
-            },
             Ast::If {
                 cond: condition,
                 true_block,
