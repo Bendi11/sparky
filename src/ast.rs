@@ -9,6 +9,7 @@ use crate::{
 use super::Type;
 use bitflags::bitflags;
 use log::debug;
+use num_bigint::BigInt;
 
 bitflags! {
     pub struct Attributes: u8 {
@@ -19,6 +20,19 @@ bitflags! {
         /// The function is local to its object file
         const STATIC = 0b00000100;
     }
+}
+
+/// The `NumLiteral` struct holds a constant number value in a big integer, plus type information
+#[derive(Debug, Clone)]
+pub struct NumLiteral {
+    /// The number literal value
+    pub val: BigInt,
+
+    /// If the number literal is signed
+    pub signed: bool,
+
+    /// The bit width of the number literal
+    pub width: u8,
 }
 
 /// The `FunProto` struct holds information about a function like its name, return type, argument names, and
@@ -48,7 +62,7 @@ pub enum Ast {
     AsmFunDef(FunProto, String, String),
 
     /// A constant number literal
-    NumLiteral(Type, String),
+    NumLiteral(NumLiteral),
 
     /// A constant string literal
     StrLiteral(String),
@@ -133,6 +147,9 @@ pub enum Ast {
 
     /// Array member access with operation to get index
     Array(Box<AstPos>, Box<AstPos>),
+
+    /// A switch statement for jump tables
+    Switch(Box<AstPos>, Vec<(AstPos, Vec<AstPos>)>),
 }
 
 /// The `AstPos` struct holds both an abstract syntax tree node and a position in the source file
@@ -187,7 +204,7 @@ impl AstPos {
                     return None
                 }
             },
-            Ast::NumLiteral(ty, _) => ty.clone(),
+            Ast::NumLiteral(l) => Type::Integer{width: l.width, signed: l.signed},
             Ast::StrLiteral(_) => Type::Ptr(Box::new(Type::Integer {
                 width: 8,
                 signed: false,
@@ -234,4 +251,25 @@ impl AstPos {
             other => op(other),
         }
     }
+
+    /// Check if this expression can be evaluated at compile-time
+    pub const fn is_constexpr(&self) -> bool {
+        match self.ast() {
+            Ast::NumLiteral(_) => true,
+            _ => false
+        }
+    }
+
+    /// Get the constant expression value from this AST node
+    pub fn get_constexpr_int<'c>(&self, compiler: &'_ Compiler<'c, '_>) -> Option<inkwell::values::IntValue<'c>> {
+        match self.ast() {
+            Ast::NumLiteral(literal) => {
+                Some(compiler.ctx
+                    .custom_width_int_type(literal.width as u32)
+                    .const_int_arbitrary_precision(literal.val.to_u64_digits().1.as_slice())
+                )
+            },
+            _ => None
+        }
+    } 
 }

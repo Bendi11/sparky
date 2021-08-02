@@ -25,7 +25,7 @@ use super::ns::Ns;
 /// The `Compiler` struct is used to generate an executable with LLVM from the parsed AST.
 pub struct Compiler<'a, 'c> {
     /// The LLVM context
-    ctx: &'c Context,
+    pub ctx: &'c Context,
 
     /// The arena allocator for namespaces
     arena: &'a Bump,
@@ -296,12 +296,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
     /// Returns [None] on error, and writes error message to stderr
     pub fn gen(&mut self, node: &AstPos, lval: bool) -> Option<AnyValueEnum<'c>> {
         match node.ast() {
-            Ast::NumLiteral(ty, num) => Some(
-                self.llvm_type(ty, &node.1)
-                    .into_int_type()
-                    .const_int_from_string(num.as_str(), inkwell::types::StringRadix::Decimal)
-                    .unwrap()
-                    .as_any_value_enum(),
+            Ast::NumLiteral(num) => Some(
+                self.ctx
+                    .custom_width_int_type(num.width as u32)
+                    .const_int_arbitrary_precision(num.val.to_u64_digits().1.as_slice())
+                    .as_any_value_enum()
             ),
             Ast::Ret(node) => {
                 match self

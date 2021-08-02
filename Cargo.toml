@@ -19,6 +19,7 @@ hashbrown = "0.11.2" # For mapping strings to values throughout the compiler
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] } # For actual code generation
 utf8-chars = "1" # For reading a BufReader character by character without reading entire file to string
 bitflags = "1.2" # For function and variable attributes
+num-bigint = "0.4" # For num literals in AST nodes
 
 bumpalo = "3.7" # Bump arena allocator for namespaces
 semver = "1.0" # Finding the highest LINK.exe version on windows

@@ -1,11 +1,7 @@
 use std::iter::Peekable;
 
-use crate::{
-    ast::{Ast, AstPos, Attributes, FunProto},
-    lex::{Key, Op, Pos, Token, TokenType},
-    types::Container,
-    Type,
-};
+use crate::{Type, ast::{Ast, AstPos, Attributes, FunProto, NumLiteral}, lex::{Key, Op, Pos, Token, TokenType}, types::Container};
+use num_bigint::BigInt;
 use thiserror::Error;
 
 /// The `ParseRes<T>` type is a wrapper over the standard libraries Result type with [ParseErr] always set as the
@@ -294,6 +290,31 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         _ => Some(self.parse_expr()?),
                     };
                     Ok(AstPos(Ast::Ret(Box::new(val)), pos))
+                },
+                Key::Switch => {
+                    let Token(pos, _) = self.toks.next().eof()?;
+                    let cond = self.parse_expr()?;
+                    self.expect_next(TokenType::LeftBrace('{'))?;
+                    let mut cases = vec![];
+                    loop {
+                        match self.toks.peek().eof()? {
+                            Token(_, TokenType::RightBrace('}')) => {
+                                self.toks.next();
+                                break
+                            },
+                            Token(_, _) => {
+                                let val = self.parse_expr()?;
+                                self.expect_next(TokenType::Arrow)?;
+                                let body = self.parse_body()?;
+                                match self.toks.peek() {
+                                    Some(Token(_, TokenType::Comma)) => { self.toks.next(); },
+                                    _ => ()
+                                }
+                                cases.push((val, body))
+                            }
+                        }
+                    }
+                    Ok(AstPos(Ast::Switch(Box::new(cond), cases), pos))
                 }
                 other => Err(ParseErr::UnexpectedToken(
                     pos.clone(),
@@ -301,6 +322,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     vec![
                         TokenType::Key(Key::If),
                         TokenType::Key(Key::Let),
+                        TokenType::Key(Key::Ret),
+                        TokenType::Key(Key::Switch),
+                        TokenType::Key(Key::While),
                         TokenType::Ident(String::new()),
                     ],
                 )),
@@ -373,11 +397,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(pos, TokenType::Key(Key::True)) => {
                 return Ok(AstPos(
                     Ast::NumLiteral(
-                        Type::Integer {
+                        NumLiteral {
                             signed: false,
                             width: 1,
-                        },
-                        "1".to_owned(),
+                            val: BigInt::from(1),
+                        }
                     ),
                     pos,
                 ))
@@ -385,11 +409,12 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(pos, TokenType::Key(Key::False)) => {
                 return Ok(AstPos(
                     Ast::NumLiteral(
-                        Type::Integer {
+                        NumLiteral {
+                            
                             signed: false,
                             width: 1,
-                        },
-                        "0".to_owned(),
+                            val: BigInt::from(0),
+                        }
                     ),
                     pos,
                 ))
@@ -406,22 +431,43 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 ))
             }
         };
+        let (radix, trim) = if let Some(prefix) = num.get(0..2) {
+            match prefix {
+                "0x" => (16, true),
+                "0b" => (1, true),
+                "0o" => (8, true),
+                _ => (10, false)
+            }
+        } else {
+            (10, false)
+        };
+
         match self.toks.peek().eof()? {
             Token(_, TokenType::IntType(ty)) => {
-                let ty = ty.clone();
+                let (signed, width) = if let Type::Integer{signed, width} = ty {
+                    (*signed, *width)
+                } else {
+                    unreachable!()
+                };
+
                 let Token(pos, _) = self.toks.next().eof()?;
-                Ok(AstPos(Ast::NumLiteral(ty, num), pos))
+                Ok(AstPos(Ast::NumLiteral(NumLiteral {
+                    val: BigInt::parse_bytes(match trim {
+                        true => num[2..].as_bytes(),
+                        false => num[..].as_bytes()
+                    }, radix).unwrap(),
+                    signed,
+                    width
+                }), pos))
             }
-            _ => Ok(AstPos(
-                Ast::NumLiteral(
-                    Type::Integer {
-                        signed: true,
-                        width: 32,
-                    },
-                    num,
-                ),
-                pos,
-            )),
+            _ => Ok(AstPos(Ast::NumLiteral(NumLiteral {
+                val: BigInt::parse_bytes(match trim {
+                    true => num[2..].as_bytes(),
+                    false => num[..].as_bytes()
+                }, radix).unwrap(),
+                signed: true,
+                width: 32
+            }), pos)),
         }
     }
 

@@ -570,7 +570,7 @@ impl<'a, R: BufRead + ?Sized + fmt::Debug> Lexer<'a, R> {
             c if c.is_numeric() => {
                 let mut num = String::from(c); //Get a string of the number literal
                 while match self.chars.peek() {
-                    Some(Ok(n)) if n.is_numeric() => {
+                    Some(Ok(n)) if n.is_numeric() || n.is_ascii_alphabetic() => {
                         num.push(self.next_char().unwrap().unwrap()); //Consume the number character
                         true
                     }
