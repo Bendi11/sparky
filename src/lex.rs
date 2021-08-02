@@ -78,6 +78,9 @@ pub enum Key {
 
     /// The `switch` keyword is used to declare a switch statement
     Switch,
+
+    /// The `break` keyword is used to exit a scope early
+    Break,
 }
 
 impl fmt::Display for Key {
@@ -103,6 +106,7 @@ impl fmt::Display for Key {
             Self::Use => write!(f, "use"),
             Self::Asm => write!(f, "asm"),
             Self::Switch => write!(f, "switch"),
+            Self::Break => write!(f, "break"),
         }
     }
 }
@@ -132,6 +136,7 @@ impl convert::TryFrom<&str> for Key {
             "use" => Ok(Self::Use),
             "asm" => Ok(Self::Asm),
             "switch" => Ok(Self::Switch),
+            "break" => Ok(Self::Break),
             _ => Err(()),
         }
     }

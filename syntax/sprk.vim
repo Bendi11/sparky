@@ -6,7 +6,7 @@ if exists("b:current_syntax")
     finish
 endif
 
-syn keyword sprkControlFlow if while ret 
+syn keyword sprkControlFlow if while ret break switch
 
 syn match sprkTypeName '\(\(i\|u\)\(8\|16\|32\|64\|size\)\)\|bool' display
 syn match sprkCustomName '\w\(\(\w\|:\|_\|\d\)*\)' contained display
