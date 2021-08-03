@@ -10,7 +10,7 @@ use inkwell::{
 use log::warn;
 
 use crate::{
-    ast::{Ast, AstPos, FunProto, Attributes},
+    ast::{Ast, AstPos, Attributes, FunProto},
     code::linker::Linker,
     lex::Pos,
     CompileOpts, OptLvl, OutFormat,
@@ -23,10 +23,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     pub fn gen_fundef(&mut self, proto: &FunProto, body: &[AstPos], pos: &Pos) -> Option<()> {
         let qualified = match proto.attrs.contains(Attributes::EXT) {
             true => proto.name.clone(),
-            false => self.current_ns
-                .get()
-                .qualify(&proto.name)
-                .to_string()
+            false => self.current_ns.get().qualify(&proto.name).to_string(),
         };
         if self.current_fn.is_some() {
             error!("{}: Nested functions are not currently supported, function {} must be moved to the top level", pos, proto.name);
@@ -35,9 +32,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
         let old_vars = self.vars.clone();
 
-        let f = match self.module.get_function(
-            &qualified
-        ) {
+        let f = match self.module.get_function(&qualified) {
             Some(f) => f,
             None => self.gen_fun_proto(proto, pos).unwrap(),
         };
@@ -90,19 +85,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
     ) -> Option<()> {
         let qualified = match proto.attrs.contains(Attributes::EXT) {
             true => proto.name.clone(),
-            false => self.current_ns
-                .get()
-                .qualify(&proto.name)
-                .to_string()
+            false => self.current_ns.get().qualify(&proto.name).to_string(),
         };
         if self.current_fn.is_some() {
             error!("Nested functions are not currently supported, function {} must be moved to the top level", proto.name);
             return None;
         }
 
-        let fun = match self.module.get_function(
-            &qualified,
-        ) {
+        let fun = match self.module.get_function(&qualified) {
             Some(f) => f,
             None => self.gen_fun_proto(&proto, &pos).unwrap(),
         };

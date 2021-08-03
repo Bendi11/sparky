@@ -194,44 +194,61 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 let (res, cmp) = match op {
                     Op::Plus => (self.build.build_int_add(lhs, rhs, "tmp_iadd"), false),
-                    Op::Greater => (self.build.build_int_compare(
-                        IntPredicate::SGT,
-                        lhs,
-                        rhs,
-                        "int_greater_than_cmp",
-                    ), true),
-                    Op::Less => (self.build.build_int_compare(
-                        IntPredicate::SLT,
-                        lhs,
-                        rhs,
-                        "int_less_than_cmp",
-                    ), true),
-                    Op::Equal => {
-                        (self.build
-                            .build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"), true)
-                    }
-                    Op::GreaterEq => (self.build.build_int_compare(
-                        IntPredicate::SGE,
-                        lhs,
-                        rhs,
-                        "int_greater_than_eq_cmp",
-                    ), true),
-                    Op::NEqual => {
-                        (self.build
-                            .build_int_compare(IntPredicate::NE, lhs, rhs, "int_not_eq_cmp"), true)
-                    }
-                    Op::LessEq => (self.build.build_int_compare(
-                        IntPredicate::SLE,
-                        lhs,
-                        rhs,
-                        "int_less_than_eq_cmp",
-                    ), true),
+                    Op::Greater => (
+                        self.build.build_int_compare(
+                            IntPredicate::SGT,
+                            lhs,
+                            rhs,
+                            "int_greater_than_cmp",
+                        ),
+                        true,
+                    ),
+                    Op::Less => (
+                        self.build.build_int_compare(
+                            IntPredicate::SLT,
+                            lhs,
+                            rhs,
+                            "int_less_than_cmp",
+                        ),
+                        true,
+                    ),
+                    Op::Equal => (
+                        self.build
+                            .build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"),
+                        true,
+                    ),
+                    Op::GreaterEq => (
+                        self.build.build_int_compare(
+                            IntPredicate::SGE,
+                            lhs,
+                            rhs,
+                            "int_greater_than_eq_cmp",
+                        ),
+                        true,
+                    ),
+                    Op::NEqual => (
+                        self.build
+                            .build_int_compare(IntPredicate::NE, lhs, rhs, "int_not_eq_cmp"),
+                        true,
+                    ),
+                    Op::LessEq => (
+                        self.build.build_int_compare(
+                            IntPredicate::SLE,
+                            lhs,
+                            rhs,
+                            "int_less_than_eq_cmp",
+                        ),
+                        true,
+                    ),
                     Op::And => (self.build.build_and(lhs, rhs, "bit_and"), false),
                     Op::Or => (self.build.build_or(lhs, rhs, "bit_or"), false),
                     Op::Xor => (self.build.build_xor(lhs, rhs, "bit_xor"), false),
                     Op::Star => (self.build.build_int_mul(lhs, rhs, "int_mul"), false),
                     Op::Divide => (self.build.build_int_signed_div(lhs, rhs, "int_div"), false),
-                    Op::Modulo => (self.build.build_int_signed_rem(lhs, rhs, "int_modulo"), false),
+                    Op::Modulo => (
+                        self.build.build_int_signed_rem(lhs, rhs, "int_modulo"),
+                        false,
+                    ),
                     Op::Minus => (self.build.build_int_sub(lhs, rhs, "int_sub"), false),
                     Op::AndAnd => {
                         let lhs = self.build.build_int_compare(
@@ -264,10 +281,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         (self.build.build_or(lhs, rhs, "cond_or_or_cmp"), true)
                     }
 
-                    Op::ShLeft => (self.build.build_left_shift(lhs, rhs, "int_left_shift"), false),
-                    Op::ShRight => (self
-                        .build
-                        .build_right_shift(lhs, rhs, false, "int_right_shift"), false),
+                    Op::ShLeft => (
+                        self.build.build_left_shift(lhs, rhs, "int_left_shift"),
+                        false,
+                    ),
+                    Op::ShRight => (
+                        self.build
+                            .build_right_shift(lhs, rhs, false, "int_right_shift"),
+                        false,
+                    ),
                     other => {
                         error!("{}: Cannot use operator '{}'", lhs_node.1, other);
                         return None;
@@ -843,13 +865,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     self.gen_body(body, after_bb)?;
 
                     for case_val in case_vals {
-                        let case_val = self.ctx
+                        let case_val = self
+                            .ctx
                             .custom_width_int_type(case_val.width as u32)
                             .const_int_from_string(
                                 case_val.val.to_str_radix(10).as_str(),
                                 inkwell::types::StringRadix::Decimal,
                             )
-                            .unwrap();                        
+                            .unwrap();
                         llvm_cases.push((case_val, case_bb));
                     }
                 }

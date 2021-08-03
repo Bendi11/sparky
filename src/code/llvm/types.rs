@@ -337,7 +337,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     );
                     ret.push(node);
                 }
-                
+
                 Ast::Ns(ns, stmts) => {
                     self.enter_ns(ns);
                     let stmts = self.scan_for_fns(stmts.clone());
@@ -373,7 +373,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         name,
                         self.current_ns.get().full_path()
                     )
-                },
+                }
                 //Insert a user-defined typedef
                 Ast::TypeDef(name, ty) => {
                     let ty = self.resolve_unknown(ty.clone(), &node.1);
