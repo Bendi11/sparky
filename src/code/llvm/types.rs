@@ -219,7 +219,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Ast::StructDec(Container {
                     name,
                     fields: Some(fields),
-                    typeid
+                    typeid,
                 }) => {
                     let (ty, _) = self.get_struct(name).unwrap();
                     ty.set_body(
@@ -241,7 +241,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             ty => (name.clone(), ty.clone()),
                         })
                         .collect();
-                    trace!("Generating struct {}-{} body with fields {:?}", name, typeid, fields);
+                    trace!(
+                        "Generating struct {}-{} body with fields {:?}",
+                        name,
+                        typeid,
+                        fields
+                    );
 
                     let mut types = self.current_ns.get().struct_types.borrow_mut();
                     types
@@ -252,7 +257,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Ast::UnionDec(Container {
                     name,
                     fields: Some(fields),
-                    typeid
+                    typeid,
                 }) => {
                     let ty = self
                         .module
@@ -338,7 +343,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         "Generating function prototype for assembly function definition {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
-                    ret.push(AstPos(Ast::AsmFunDef(proto, asm.clone(), cons.clone()), node.1));
+                    ret.push(AstPos(
+                        Ast::AsmFunDef(proto, asm.clone(), cons.clone()),
+                        node.1,
+                    ));
                 }
 
                 Ast::Ns(ns, stmts) => {

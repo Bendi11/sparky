@@ -147,8 +147,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Some(self.build.build_store(lhs, rhs).as_any_value_enum())
             }
             op => {
-                let lhs_ty = lhs_node.get_type(self).expect("failed to get lhs type of binary expression");
-                let rhs_ty = rhs_node.get_type(self).expect("failed to get rhs type of binary expression");
+                let lhs_ty = lhs_node
+                    .get_type(self)
+                    .expect("failed to get lhs type of binary expression");
+                let rhs_ty = rhs_node
+                    .get_type(self)
+                    .expect("failed to get rhs type of binary expression");
 
                 let lhs = self.gen(lhs_node, false)?;
                 let lhs = match lhs_ty {

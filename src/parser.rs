@@ -84,7 +84,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                             Ast::StructDec(Container {
                                 name,
                                 fields: Some(body),
-                                typeid: *TYPEID.lock().unwrap()
+                                typeid: *TYPEID.lock().unwrap(),
                             }),
                             pos,
                         ))
@@ -92,7 +92,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     _ => {
                         *TYPEID.try_lock().unwrap() += 1;
                         Ok(AstPos(
-                            Ast::StructDec(Container { name, fields: None, typeid: *TYPEID.lock().unwrap()}),
+                            Ast::StructDec(Container {
+                                name,
+                                fields: None,
+                                typeid: *TYPEID.lock().unwrap(),
+                            }),
                             pos,
                         ))
                     }
@@ -108,7 +112,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     Ast::UnionDec(Container {
                         name,
                         fields: Some(body),
-                        typeid: *TYPEID.lock().unwrap()
+                        typeid: *TYPEID.lock().unwrap(),
                     }),
                     pos,
                 ))
