@@ -30,9 +30,9 @@ fun open(u8 ptr filename, Opts openopts) File ptr {
         {types::Handle}0
     );
     if handle == types::INVALID_HANDLE_VALUE {
-        ret consts::NULL;
+        ret {File ptr}consts::NULL;
     };
-    let File ptr file = std::alloc::malloc(64usize);
+    let File ptr file = {File ptr}std::alloc::malloc(64usize);
     file->handle = handle;
     ret file;
 }

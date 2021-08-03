@@ -1,4 +1,5 @@
 use std::iter::Peekable;
+use std::sync::Mutex;
 
 use crate::{
     ast::{Ast, AstPos, Attributes, FunProto, NumLiteral},
@@ -12,6 +13,11 @@ use thiserror::Error;
 /// The `ParseRes<T>` type is a wrapper over the standard libraries Result type with [ParseErr] always set as the
 /// error variant type
 pub type ParseRes<T> = Result<T, ParseErr>;
+
+lazy_static::lazy_static! {
+    /// The typeid counter assigned when parsing struct definitions
+    static ref TYPEID: Mutex<usize> = Mutex::new(0);
+}
 
 /// The `Parser` struct takes lexed tokens from a [Lexer](crate::lex::Lexer) and parses it into a completed [Ast](crate::ast::Ast)
 pub struct Parser<L: Iterator<Item = Token>> {
@@ -73,18 +79,23 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 match self.toks.peek() {
                     Some(Token(_, TokenType::LeftBrace('{'))) => {
                         let body = self.parse_struct_def_body()?;
+                        *TYPEID.try_lock().unwrap() += 1;
                         Ok(AstPos(
                             Ast::StructDec(Container {
                                 name,
                                 fields: Some(body),
+                                typeid: *TYPEID.lock().unwrap()
                             }),
                             pos,
                         ))
                     }
-                    _ => Ok(AstPos(
-                        Ast::StructDec(Container { name, fields: None }),
-                        pos,
-                    )),
+                    _ => {
+                        *TYPEID.try_lock().unwrap() += 1;
+                        Ok(AstPos(
+                            Ast::StructDec(Container { name, fields: None, typeid: *TYPEID.lock().unwrap()}),
+                            pos,
+                        ))
+                    }
                 }
             }
 
@@ -92,10 +103,12 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let Token(pos, _) = self.toks.next().eof()?;
                 let name = self.expect_next_ident()?;
                 let body = self.parse_struct_def_body()?;
+                *TYPEID.try_lock().unwrap() += 1;
                 Ok(AstPos(
                     Ast::UnionDec(Container {
                         name,
                         fields: Some(body),
+                        typeid: *TYPEID.lock().unwrap()
                     }),
                     pos,
                 ))

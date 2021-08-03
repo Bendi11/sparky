@@ -147,8 +147,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Some(self.build.build_store(lhs, rhs).as_any_value_enum())
             }
             op => {
-                let lhs_ty = lhs_node.get_type(self)?;
-                let rhs_ty = rhs_node.get_type(self)?;
+                let lhs_ty = lhs_node.get_type(self).expect("failed to get lhs type of binary expression");
+                let rhs_ty = rhs_node.get_type(self).expect("failed to get rhs type of binary expression");
 
                 let lhs = self.gen(lhs_node, false)?;
                 let lhs = match lhs_ty {
@@ -541,8 +541,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Some(cond.as_any_value_enum())
             }
             Ast::VarDecl { ty, name, attrs: _ } => {
-                let var = self.entry_alloca(name.as_str(), self.llvm_type(ty, &node.1));
-                self.vars.insert(name.clone(), (var, ty.clone()));
+                let ty = self.resolve_unknown(ty.clone(), &node.1);
+                let var = self.entry_alloca(name.as_str(), self.llvm_type(&ty, &node.1));
+                self.vars.insert(name.clone(), (var, ty));
                 Some(var.as_any_value_enum())
             }
             Ast::VarAccess(name) => match self.vars.get(name) {
