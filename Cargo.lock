@@ -782,6 +782,7 @@ dependencies = [
  "criterion",
  "hashbrown",
  "inkwell",
+ "lazy_static",
  "log",
  "num-bigint",
  "semver 1.0.3",

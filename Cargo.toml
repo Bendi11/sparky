@@ -9,6 +9,7 @@ clap = {version = "3.0.0-beta", features = ["color", "wrap_help"] } # For comman
 
 termcolor = "1.1" # For command line styling (combined with clap's dependency)
 atty = "0.2" # No color codes if output is being piped (combined with clap's dependency)
+lazy_static = "1.4" # Typeid counter
 
 thiserror = "1.0" # For error handling
 

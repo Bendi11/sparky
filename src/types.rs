@@ -1,19 +1,34 @@
 use std::{fmt, ops::Deref};
 
-use crate::code::ns::Path;
-
 /// The `Container` struct contains all information about a struct / union type in Spark
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq)]
 pub struct Container {
     /// The name of the struct / union type
     pub name: String,
 
     /// The contained data in the struct / union or `None` if the type is opaque
     pub fields: Option<Vec<(String, Type)>>,
+
+    /// The ID of this type
+    pub typeid: usize,
+}
+
+impl fmt::Display for Container {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{} ({})", self.name, self.typeid)?;
+        if let Some(ref fields) = self.fields {
+            write!(f, "{{\n")?;
+            for (name, ty) in fields {
+                writeln!(f, "    {} {},\n", ty, name)?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
+    }
 }
 
 /// The `Type` enum enumerates all possible types for expressions like integer, pointer, struct, and union types
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
     /// A primitive integer type with bit width and sign
     Integer { signed: bool, width: u8 },
@@ -93,88 +108,9 @@ impl Type {
     }
 }
 
-impl PartialEq for Type {
+impl PartialEq for Container {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                Self::Integer { signed, width },
-                Self::Integer {
-                    signed: osigned,
-                    width: owidth,
-                },
-            ) if (signed == osigned) && (width == owidth) => true,
-            (Self::Void, Self::Void) => true,
-            (Self::Ptr(ty), Self::Ptr(oty)) => ty.eq(oty),
-
-            (Self::Union(c), Self::Union(oc)) if c == oc => true,
-            (Self::Struct(c), Self::Struct(oc)) if c == oc => true,
-
-            //Named the same thing is considered equal
-            (Self::Unknown(name), Self::Struct(oc))
-                if <Path as std::str::FromStr>::from_str(name)
-                    .unwrap()
-                    .last()
-                    .unwrap()
-                    == <Path as std::str::FromStr>::from_str(&oc.name)
-                        .unwrap()
-                        .last()
-                        .unwrap() =>
-            {
-                true
-            }
-            (Self::Struct(c), Self::Unknown(name))
-                if <Path as std::str::FromStr>::from_str(name)
-                    .unwrap()
-                    .last()
-                    .unwrap()
-                    == <Path as std::str::FromStr>::from_str(&c.name)
-                        .unwrap()
-                        .last()
-                        .unwrap() =>
-            {
-                true
-            }
-            (Self::Unknown(name), Self::Union(oc))
-                if <Path as std::str::FromStr>::from_str(name)
-                    .unwrap()
-                    .last()
-                    .unwrap()
-                    == <Path as std::str::FromStr>::from_str(&oc.name)
-                        .unwrap()
-                        .last()
-                        .unwrap() =>
-            {
-                true
-            }
-            (Self::Union(c), Self::Unknown(name))
-                if <Path as std::str::FromStr>::from_str(name)
-                    .unwrap()
-                    .last()
-                    .unwrap()
-                    == <Path as std::str::FromStr>::from_str(&c.name)
-                        .unwrap()
-                        .last()
-                        .unwrap() =>
-            {
-                true
-            }
-            (Self::Unknown(name), Self::Unknown(oname))
-                if <Path as std::str::FromStr>::from_str(name)
-                    .unwrap()
-                    .last()
-                    .unwrap()
-                    == <Path as std::str::FromStr>::from_str(oname)
-                        .unwrap()
-                        .last()
-                        .unwrap() =>
-            {
-                true
-            }
-
-            (Self::Array(ty, len), Self::Array(oty, olen)) if ty.eq(oty) && len == olen => true,
-
-            (_, _) => false,
-        }
+        self.typeid == other.typeid
     }
 }
 
@@ -191,8 +127,8 @@ impl fmt::Display for Type {
                 width
             ),
             Self::Ptr(ty) => write!(f, "pointer to {}", ty),
-            Self::Struct(s) => write!(f, "Struct {}: {{\n{:#?}\n}}", s.name, s.fields),
-            Self::Union(s) => write!(f, "Union {}: {{\n{:#?}\n}}", s.name, s.fields),
+            Self::Struct(s) => write!(f, "{}", s),
+            Self::Union(s) => write!(f, "{}", s),
             Self::Unknown(name) => write!(f, "Unknown type {}", name),
             Self::Void => write!(f, "void"),
             Self::Array(ty, len) => write!(f, "{} [{}]", ty, len),

@@ -226,7 +226,10 @@ impl AstPos {
                 Type::Array(ty, _) => Some(*ty),
                 _ => None
             },
-            _ => return None,
+            _ => {
+                debug!("Error getting type of expression {:?}", self);
+               return  None
+            },
         };
         //Resolve unknown types
         Self::apply_ptr_ty(&ty, |ty| match ty {

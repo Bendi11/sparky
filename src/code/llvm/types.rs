@@ -219,6 +219,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Ast::StructDec(Container {
                     name,
                     fields: Some(fields),
+                    typeid
                 }) => {
                     let (ty, _) = self.get_struct(name).unwrap();
                     ty.set_body(
@@ -240,7 +241,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             ty => (name.clone(), ty.clone()),
                         })
                         .collect();
-                    trace!("Generating struct {} body with fields {:?}", name, fields);
+                    trace!("Generating struct {}-{} body with fields {:?}", name, typeid, fields);
 
                     let mut types = self.current_ns.get().struct_types.borrow_mut();
                     types
@@ -251,6 +252,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Ast::UnionDec(Container {
                     name,
                     fields: Some(fields),
+                    typeid
                 }) => {
                     let ty = self
                         .module
@@ -268,8 +270,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         })
                         .collect();
                     trace!(
-                        "Generating code for union {} body with fields {:?}",
+                        "Generating code for union {}-{} body with fields {:?}",
                         name,
+                        typeid,
                         fields
                     );
 
@@ -309,7 +312,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         self.current_ns.get().qualify(&proto.name)
                     );
                 }
-                Ast::FunDef(proto, _) => {
+                Ast::FunDef(proto, body) => {
                     let mut proto = proto.clone();
                     proto.ret = self.resolve_unknown(proto.ret, &node.1);
                     for (arg, _) in proto.args.iter_mut() {
@@ -321,9 +324,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         "Generating function prototype for function definition {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
-                    ret.push(node);
+                    ret.push(AstPos(Ast::FunDef(proto, body.clone()), node.1));
                 }
-                Ast::AsmFunDef(proto, _, _) => {
+                Ast::AsmFunDef(proto, asm, cons) => {
                     let mut proto = proto.clone();
                     proto.ret = self.resolve_unknown(proto.ret, &node.1);
                     for (arg, _) in proto.args.iter_mut() {
@@ -335,7 +338,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         "Generating function prototype for assembly function definition {}",
                         self.current_ns.get().qualify(&proto.name)
                     );
-                    ret.push(node);
+                    ret.push(AstPos(Ast::AsmFunDef(proto, asm.clone(), cons.clone()), node.1));
                 }
 
                 Ast::Ns(ns, stmts) => {
