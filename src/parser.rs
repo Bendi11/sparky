@@ -16,7 +16,7 @@ pub type ParseRes<T> = Result<T, ParseErr>;
 
 lazy_static::lazy_static! {
     /// The typeid counter assigned when parsing struct definitions
-    static ref TYPEID: Mutex<usize> = Mutex::new(0);
+    pub static ref TYPEID: Mutex<usize> = Mutex::new(0);
 }
 
 /// The `Parser` struct takes lexed tokens from a [Lexer](crate::lex::Lexer) and parses it into a completed [Ast](crate::ast::Ast)

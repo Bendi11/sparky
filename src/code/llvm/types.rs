@@ -13,7 +13,7 @@ use super::*;
 
 impl<'a, 'c> Compiler<'a, 'c> {
     /// Get a struct type from the given path
-    pub fn get_struct(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
+    pub fn get_struct(&self, name: impl AsRef<str>) -> Option<Container> {
         let path: Path = name.as_ref().parse().unwrap();
         match self.current_ns.get().get_struct(path.clone()) {
             Some(s) => Some(s),
@@ -22,7 +22,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
     }
 
     /// Get a union type from the given path
-    pub fn get_union(&self, name: impl AsRef<str>) -> Option<(StructType<'c>, Container)> {
+    pub fn get_union(&self, name: impl AsRef<str>) -> Option<Container> {
         let path: Path = name.as_ref().parse().unwrap();
         match self.current_ns.get().get_union(path.clone()) {
             Some(s) => Some(s),
@@ -96,11 +96,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     );
                     let name = self.current_ns.get().qualify(&container.name).to_string();
                     let ty = self.ctx.opaque_struct_type(&name);
+                    self.struct_types.borrow_mut()[container.typeid] =  ty;
                     self.current_ns
                         .get()
                         .struct_types
                         .borrow_mut()
-                        .insert(container.name.clone(), (ty, container.clone()));
+                        .insert(container.name.clone(), container.clone());
                 }
                 Ast::UnionDec(container) => {
                     trace!(
@@ -109,11 +110,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     );
                     let name = self.current_ns.get().qualify(&container.name).to_string();
                     let ty = self.ctx.opaque_struct_type(&name);
+                    self.struct_types.borrow_mut()[container.typeid] = ty;
                     self.current_ns
                         .get()
                         .union_types
                         .borrow_mut()
-                        .insert(container.name.clone(), (ty, container.clone()));
+                        .insert(container.name.clone(), container.clone());
                 }
                 Ast::Ns(ns, stmts) => {
                     trace!("Entering namespace {}", ns);
@@ -197,8 +199,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
         match ty {
             Type::Unknown(ref name)=> match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
                 (Some(_), Some(_), _) => panic!("Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", name),
-                (Some(u), _, _) => Type::Union(u.1),
-                (_, Some(s), _) => Type::Struct(s.1),
+                (Some(u), _, _) => Type::Union(u),
+                (_, Some(s), _) => Type::Struct(s),
                 (_, _, Some(ty)) => ty,
                 (None, None, None) => {
                     error!("{}: Unknown union or struct type {}", pos, name);
@@ -221,7 +223,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     fields: Some(fields),
                     typeid,
                 }) => {
-                    let (ty, _) = self.get_struct(name).unwrap();
+                    let ty = self.struct_types.borrow()[*typeid];
                     ty.set_body(
                         fields
                             .iter()
@@ -251,7 +253,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     let mut types = self.current_ns.get().struct_types.borrow_mut();
                     types
                         .entry(name.to_string())
-                        .and_modify(|(_, c)| c.fields = Some(fields.clone()));
+                        .and_modify(|c| c.fields = Some(fields.clone()));
                 }
                 Ast::StructDec(_) => (),
                 Ast::UnionDec(Container {
@@ -259,10 +261,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     fields: Some(fields),
                     typeid,
                 }) => {
-                    let ty = self
-                        .module
-                        .get_struct_type(self.current_ns.get().qualify(&name).to_string().as_str())
-                        .unwrap();
+                    let ty = self.struct_types.borrow()[*typeid];
 
                     //Make sure no unknown types exist in struct body
                     let fields: Vec<(String, Type)> = fields
@@ -492,12 +491,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 signed: _
             } => self.ctx.custom_width_int_type(*width as u32).as_basic_type_enum(),
             Type::Ptr(internal) => self.llvm_type(internal, pos).ptr_type(inkwell::AddressSpace::Generic).as_basic_type_enum(),
-            Type::Union(u) => self.get_union(&u.name).unwrap_or_else(|| panic!("{}: Failed to get unknown union type {}", pos, u.name)).0.as_basic_type_enum(),
-            Type::Struct(u) => self.get_struct(&u.name).unwrap_or_else(|| panic!("{}: Failed to get unknown struct type {}", pos, u.name)).0.as_basic_type_enum(),
+            Type::Union(u) => self.struct_types.borrow()[u.typeid].as_basic_type_enum(),
+            Type::Struct(u) => self.struct_types.borrow()[u.typeid].as_basic_type_enum(),
             Type::Unknown(name) => match (self.get_union(name), self.get_struct(name), self.get_typedef(name)) {
                 (Some(_), Some(_), _) => panic!("{}: Type {} can be both a union and a struct, prefix with struct or union keywords to remove abiguity", pos, name),
-                (Some(u), _, _) => u.0.as_basic_type_enum(),
-                (_, Some(s), _) => s.0.as_basic_type_enum(),
+                (Some(u), _, _) => self.struct_types.borrow()[u.typeid].as_basic_type_enum(),
+                (_, Some(s), _) => self.struct_types.borrow()[s.typeid].as_basic_type_enum(),
                 (_, _, Some(ty)) => self.llvm_type(&ty, pos),
                 (None, None, None) => {
                     error!("{}: Unknown union or struct type {}", pos, name);

@@ -20,6 +20,7 @@ use inkwell::{
     values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, IntPredicate,
 };
+use std::cell::RefCell;
 
 use super::ns::Ns;
 
@@ -32,7 +33,7 @@ pub struct Compiler<'a, 'c> {
     arena: &'a Bump,
 
     /// A map of type ID's to struct types in LLVM
-    struct_types: HashMap<usize, StructType<'c>>,
+    struct_types: RefCell<Vec<StructType<'c>>>,
 
     /// The root namespace
     root: &'a Ns<'a, 'c>,
@@ -78,7 +79,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
             just_ret: false,
             current_ns: Cell::new(root),
             break_lbl: None,
-            struct_types: HashMap::new(),
+            //Hack to get a dynamic array with uninitialized values
+            struct_types: RefCell::new(vec![unsafe {
+                std::mem::transmute([0u8 ; std::mem::size_of::<StructType>()])
+            } ; *crate::parser::TYPEID.lock().unwrap().deref() + 1
+            ]),
         }
     }
 
@@ -579,8 +584,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 },
             },
             Ast::StructLiteral { name, fields } => {
-                let (ty, def) = match self.get_struct(name) {
-                    Some((ty, def)) => (ty, def),
+                let def = match self.get_struct(name) {
+                    Some(def) => def,
                     None => {
                         error!(
                             "{}: Using unknown struct type {} when defining struct literal",
@@ -589,6 +594,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         return None;
                     }
                 };
+                let ty = *self.struct_types.borrow().get(def.typeid).unwrap();
 
                 if def.fields.is_none() {
                     error!(

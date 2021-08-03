@@ -1,10 +1,7 @@
 //! Structs and functions for handling namespaces and getting contents from them
 
 use hashbrown::HashMap;
-use inkwell::{
-    types::StructType,
-    values::{FunctionValue, GlobalValue},
-};
+use inkwell::values::{FunctionValue, GlobalValue};
 use log::debug;
 use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, str::FromStr};
 
@@ -146,7 +143,7 @@ impl<'a, 'c> Ns<'a, 'c> {
     }
 
     /// Get a struct type from this namespace using the given path
-    pub fn get_struct(&'a self, path: Path) -> Option<(StructType<'c>, Container)> {
+    pub fn get_struct(&'a self, path: Path) -> Option<Container> {
         let ns = match path.parent() {
             Some(parents) => self.get_child(parents.iter())?,
             None => self,
@@ -155,7 +152,7 @@ impl<'a, 'c> Ns<'a, 'c> {
     }
 
     /// Get a union type from this namespace using the given path
-    pub fn get_union(&'a self, path: Path) -> Option<(StructType<'c>, Container)> {
+    pub fn get_union(&'a self, path: Path) -> Option<Container> {
         let ns = match path.parent() {
             Some(parents) => self.get_child(parents.iter())?,
             None => self,

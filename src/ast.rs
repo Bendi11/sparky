@@ -186,7 +186,7 @@ impl AstPos {
                 None => compiler.get_const(name)?.1
             },
             Ast::StructLiteral { name, fields: _ } => {
-                Type::Struct(compiler.get_struct(name)?.1)
+                Type::Struct(compiler.get_struct(name)?)
             },
             Ast::MemberAccess(first, item, deref) => match match deref {
                 true => first.get_type(compiler).map(|ty| ty.deref_type().unwrap()),
@@ -242,8 +242,8 @@ impl AstPos {
                     compiler.get_union(&name),
                     compiler.get_typedef(&name),
                 ) {
-                    (Some((_, c)), None, None) => Type::Struct(c),
-                    (None, Some((_, c)), None) => Type::Union(c),
+                    (Some(c), None, None) => Type::Struct(c),
+                    (None, Some(c), None) => Type::Union(c),
                     (None, None, Some(ty)) => ty,
                     (_, _, _) => {
                         debug!("Failed to get type of prefix expression in member access because the struct, union or typedef'd type {} does not exist", name);
