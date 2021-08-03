@@ -1,6 +1,13 @@
-
+use std::io::fs
+use std::string::null
 
 fun main() i32 {
-    let i32 a = 10;
-    ret a;
+    let fs::File file = fs::open("./test.txt", fs::opts_default());
+    if file == {fs::File ptr}0 {
+        ret -1;
+    };
+
+    let i32 written = {i32}fs::write(&file, "Testing\n", null::strlen("Testing\n"));
+    fs::close(&file);
+    ret written;
 }

@@ -1,1 +1,3 @@
+ns std::win::_internal {
 fun CloseHandle(std::win::types::Handle) std::win::types::Bool
+}

@@ -88,10 +88,10 @@ pub struct Ns<'a, 'c> {
     pub parent: RefCell<Option<&'a Self>>,
 
     /// A hash map of identifiers to defined struct types
-    pub struct_types: RefCell<HashMap<String, (StructType<'c>, Container)>>,
+    pub struct_types: RefCell<HashMap<String, Container>>,
 
     /// A hash map of identifiers to defined union types
-    pub union_types: RefCell<HashMap<String, (StructType<'c>, Container)>>,
+    pub union_types: RefCell<HashMap<String, Container>>,
 
     /// A map of function names to function prototypes
     pub funs: RefCell<HashMap<String, (FunctionValue<'c>, FunProto)>>,

@@ -31,6 +31,9 @@ pub struct Compiler<'a, 'c> {
     /// The arena allocator for namespaces
     arena: &'a Bump,
 
+    /// A map of type ID's to struct types in LLVM
+    struct_types: HashMap<usize, StructType<'c>>,
+
     /// The root namespace
     root: &'a Ns<'a, 'c>,
 
@@ -75,6 +78,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
             just_ret: false,
             current_ns: Cell::new(root),
             break_lbl: None,
+            struct_types: HashMap::new(),
         }
     }
 
