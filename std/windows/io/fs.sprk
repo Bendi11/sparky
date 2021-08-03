@@ -37,6 +37,19 @@ fun open(u8 ptr filename, Opts openopts) File ptr {
     ret file;
 }
 
+//Read the specified amount of bytes from the file into a memory buffer, returning the 
+//amount of bytes read or a negative error code
+fun read(File ptr file, u8 ptr buf, usize len) isize {
+    let types::Dword read_bytes;
+    let types::Bool success = _internal::ReadFile(file->handle, buf, {types::Dword}len, (&read_bytes), {_internal::OverLapped ptr}0u64);
+    if success > 0u8 {
+        ret {isize}read_bytes;
+    } else {
+        ret -1isize;
+    };
+    ret 0isize;
+}
+
 //Return the default options for file creation / opening
 fun opts_default() Opts {
     ret struct Opts {
@@ -103,6 +116,7 @@ ns _internal {
         types::Dword dwFlagsAndAttributes, 
         types::Handle hTemplateFile
     ) types::Handle
+    fun ext ReadFile(types::Handle hFile, u8 ptr lpBuffer, types::Dword nNumberOfBytesToRead, types::Dword ptr lpNumberOfBytesRead, OverLapped ptr lpOverlapped) types::Bool
 
 }
 

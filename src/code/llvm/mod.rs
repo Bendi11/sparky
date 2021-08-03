@@ -793,6 +793,11 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Ast::Unary(op, val) => match op {
                 Op::And => self.gen(val, true),
                 Op::Star => {
+                    let ty = val.get_type(self)?;
+                    if !matches!(ty, crate::types::Type::Ptr(_)) {
+                        error!("{}: Cannot dereference non-pointer type {}", node.1, ty);
+                        return None
+                    }
                     let ptr = self.gen(val, false)?.into_pointer_value();
                     Some(match lval {
                         false => self
