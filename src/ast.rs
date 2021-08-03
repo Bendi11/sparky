@@ -181,7 +181,10 @@ impl AstPos {
                 attrs: _,
             } => ty.clone(),
             Ast::Cast(_, ty) => ty.clone(),
-            Ast::VarAccess(ref name) => compiler.vars.get(name)?.1.clone(),
+            Ast::VarAccess(ref name) => match compiler.vars.get(name) {
+                Some(var) => var.1.clone(),
+                None => compiler.get_const(name)?.1
+            },
             Ast::StructLiteral { name, fields: _ } => {
                 Type::Struct(compiler.get_struct(name)?.1)
             },
