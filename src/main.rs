@@ -168,8 +168,6 @@ fn main() {
                 p if p.exists() => Ok(()),
                 p => Err(format!("Input file {} does not exist!", p.display()))
             })
-            .required_unless_present("input-dir")
-            .conflicts_with("input-dir")
         )
         .arg(Arg::new("input-dir")
             .short('d')
@@ -282,36 +280,32 @@ fn main() {
     };
 
     //Get a list of files to parse into an AST
-    let input_files: Vec<String> = match args.values_of("input-files") {
+    let mut input_files: Vec<String> = match args.values_of("input-files") {
         Some(v) => v.map(|s| s.to_owned()).collect(),
-        None => {
-            let dirs = args.values_of("input-dir").unwrap();
-            let mut list = Vec::new();
-
-            /// Recursively search a directory for .sprk files
-            fn read_dir(path: &str, list: &mut Vec<String>) {
-                std::fs::read_dir(path)
-                    .unwrap()
-                    .fold(list, |list, s| match s {
-                        Ok(entry) if entry.path().extension().unwrap_or_default() == "sprk" => {
-                            list.push(entry.path().to_str().unwrap().to_owned());
-                            list
-                        }
-                        Ok(entry) if entry.file_type().unwrap().is_dir() => {
-                            read_dir(entry.path().to_str().unwrap(), list);
-                            list
-                        }
-                        _ => list,
-                    });
-            }
-
-            for dir in dirs {
-                read_dir(dir, &mut list);
-            }
-
-            list
-        }
+        None => vec![]
     };
+    if let Some(dirs) = args.values_of("input-dir") {
+        /// Recursively search a directory for .sprk files
+        fn read_dir(path: &str, list: &mut Vec<String>) {
+            std::fs::read_dir(path)
+                .unwrap()
+                .fold(list, |list, s| match s {
+                    Ok(entry) if entry.path().extension().unwrap_or_default() == "sprk" => {
+                        list.push(entry.path().to_str().unwrap().to_owned());
+                        list
+                    }
+                    Ok(entry) if entry.file_type().unwrap().is_dir() => {
+                        read_dir(entry.path().to_str().unwrap(), list);
+                        list
+                    }
+                    _ => list,
+                });
+        }
+
+        for dir in dirs {
+            read_dir(dir, &mut input_files);
+        }
+    }
 
     let mut ast = vec![];
 
