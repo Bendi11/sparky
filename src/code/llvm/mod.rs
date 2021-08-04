@@ -83,11 +83,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
             current_ns: Cell::new(root),
             break_lbl: None,
             //Hack to get a dynamic array with uninitialized values
-            struct_types: RefCell::new(vec![unsafe {
-                std::mem::transmute([0u8 ; std::mem::size_of::<StructType>()])
-            } ; *crate::parser::TYPEID.lock().unwrap().deref() + 1
+            struct_types: RefCell::new(vec![
+                unsafe {
+                    std::mem::transmute([0u8; std::mem::size_of::<StructType>()])
+                };
+                *crate::parser::TYPEID.lock().unwrap().deref() + 1
             ]),
-            rhs_ty: None
+            rhs_ty: None,
         }
     }
 
@@ -111,7 +113,6 @@ impl<'a, 'c> Compiler<'a, 'c> {
         rhs_node: &AstPos,
         op: &Op,
     ) -> Option<AnyValueEnum<'c>> {
-        
         match op {
             //Handle assignment separately
             Op::Assign => {
@@ -568,9 +569,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         Some(ref ty) => ty.clone(),
                         None => {
                             error!("{}: In variable declaration {}; Type not given and cannot be inferred from the context", node.1, name);
-                            return None
+                            return None;
                         }
-                    }
+                    },
                 };
                 let ty = self.resolve_unknown(ty, &node.1);
                 let var = self.entry_alloca(name.as_str(), self.llvm_type(&ty, &node.1));
@@ -824,7 +825,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     let ty = val.get_type(self)?;
                     if !matches!(ty, crate::types::Type::Ptr(_)) {
                         error!("{}: Cannot dereference non-pointer type {}", node.1, ty);
-                        return None
+                        return None;
                     }
                     let ptr = self.gen(val, false)?.into_pointer_value();
                     Some(match lval {

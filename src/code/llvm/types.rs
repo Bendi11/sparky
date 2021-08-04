@@ -96,7 +96,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     );
                     let name = self.current_ns.get().qualify(&container.name).to_string();
                     let ty = self.ctx.opaque_struct_type(&name);
-                    self.struct_types.borrow_mut()[container.typeid] =  ty;
+                    self.struct_types.borrow_mut()[container.typeid] = ty;
                     self.current_ns
                         .get()
                         .struct_types

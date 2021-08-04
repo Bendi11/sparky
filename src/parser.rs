@@ -126,8 +126,14 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         let ty = self.parse_typename()?;
                         self.expect_next(TokenType::RightBrace(')'))?;
                         ty
-                    },
-                    Token(pos, other) => return Err(ParseErr::UnexpectedToken(pos, other, vec![TokenType::LeftBrace('(')]))
+                    }
+                    Token(pos, other) => {
+                        return Err(ParseErr::UnexpectedToken(
+                            pos,
+                            other,
+                            vec![TokenType::LeftBrace('(')],
+                        ))
+                    }
                 };
 
                 let attrs = self.parse_attrs(); //Get attributes, if any
@@ -264,8 +270,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let ty = self.parse_typename()?;
                 self.expect_next(TokenType::RightBrace(')'))?;
                 Some(ty)
-            },
-            _ => None
+            }
+            _ => None,
         };
 
         let attrs = self.parse_attrs(); //Get attributes, if any

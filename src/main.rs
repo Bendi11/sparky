@@ -282,7 +282,7 @@ fn main() {
     //Get a list of files to parse into an AST
     let mut input_files: Vec<String> = match args.values_of("input-files") {
         Some(v) => v.map(|s| s.to_owned()).collect(),
-        None => vec![]
+        None => vec![],
     };
     if let Some(dirs) = args.values_of("input-dir") {
         /// Recursively search a directory for .sprk files
