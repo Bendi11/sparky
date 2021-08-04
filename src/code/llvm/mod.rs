@@ -87,7 +87,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 unsafe {
                     std::mem::transmute([0u8; std::mem::size_of::<StructType>()])
                 };
-                *crate::parser::TYPEID.lock().unwrap().deref() + 1
+                crate::parser::TYPEID.load(std::sync::atomic::Ordering::Relaxed) + 1
             ]),
             rhs_ty: None,
         }

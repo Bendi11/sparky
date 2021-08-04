@@ -17,7 +17,7 @@ impl fmt::Display for Container {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{} ({})", self.name, self.typeid)?;
         if let Some(ref fields) = self.fields {
-            write!(f, "{{\n")?;
+            writeln!(f, "{{")?;
             for (name, ty) in fields {
                 writeln!(f, "    {} {},\n", ty, name)?;
             }
