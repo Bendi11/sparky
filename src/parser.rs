@@ -1,5 +1,5 @@
-use std::iter::Peekable;
-use std::sync::Mutex;
+use std::{iter::Peekable, sync::atomic::Ordering};
+use std::sync::atomic::AtomicUsize;
 
 use crate::{
     ast::{Ast, AstPos, Attributes, FunProto, NumLiteral},
@@ -14,10 +14,8 @@ use thiserror::Error;
 /// error variant type
 pub type ParseRes<T> = Result<T, ParseErr>;
 
-lazy_static::lazy_static! {
-    /// The typeid counter assigned when parsing struct definitions
-    pub static ref TYPEID: Mutex<usize> = Mutex::new(0);
-}
+/// The typeid counter assigned when parsing struct definitions
+pub static TYPEID: AtomicUsize = AtomicUsize::new(0);
 
 /// The `Parser` struct takes lexed tokens from a [Lexer](crate::lex::Lexer) and parses it into a completed [Ast](crate::ast::Ast)
 pub struct Parser<L: Iterator<Item = Token>> {
@@ -79,23 +77,25 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 match self.toks.peek() {
                     Some(Token(_, TokenType::LeftBrace('{'))) => {
                         let body = self.parse_struct_def_body()?;
-                        *TYPEID.try_lock().unwrap() += 1;
+                        let typeid = TYPEID.load(Ordering::Relaxed);
+                        TYPEID.store(typeid,Ordering::Relaxed);
                         Ok(AstPos(
                             Ast::StructDec(Container {
                                 name,
                                 fields: Some(body),
-                                typeid: *TYPEID.lock().unwrap(),
+                                typeid,
                             }),
                             pos,
                         ))
                     }
                     _ => {
-                        *TYPEID.try_lock().unwrap() += 1;
+                        let typeid = TYPEID.load(Ordering::Relaxed);
+                        TYPEID.store(typeid,Ordering::Relaxed);
                         Ok(AstPos(
                             Ast::StructDec(Container {
                                 name,
                                 fields: None,
-                                typeid: *TYPEID.lock().unwrap(),
+                                typeid,
                             }),
                             pos,
                         ))
@@ -107,22 +107,40 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let Token(pos, _) = self.toks.next().eof()?;
                 let name = self.expect_next_ident()?;
                 let body = self.parse_struct_def_body()?;
-                *TYPEID.try_lock().unwrap() += 1;
+                let typeid = TYPEID.load(Ordering::Relaxed);
+                TYPEID.store(typeid,Ordering::Relaxed);
                 Ok(AstPos(
                     Ast::UnionDec(Container {
                         name,
                         fields: Some(body),
-                        typeid: *TYPEID.lock().unwrap(),
+                        typeid,
                     }),
                     pos,
                 ))
             }
 
             Token(_, TokenType::Key(Key::Let)) => {
-                let Token(pos, _) = self.toks.next().eof()?;
-                let attrs = self.parse_attrs();
-                let ty = self.parse_typename()?;
+                let Token(pos, _) = self.toks.next().eof()?; //Expect the next token to be the let keyword
+                let ty = match self.toks.next().eof()? {
+                    //Type is explicitly stated
+                    Token(_, TokenType::LeftBrace('(')) => {
+                        let ty = self.parse_typename()?;
+                        self.expect_next(TokenType::RightBrace(')'))?;
+                        ty
+                    }
+                    Token(pos, other) => {
+                        return Err(ParseErr::UnexpectedToken(
+                            pos,
+                            other,
+                            vec![TokenType::LeftBrace('(')],
+                        ))
+                    }
+                };
+
+                let attrs = self.parse_attrs(); //Get attributes, if any
                 let name = self.expect_next_ident()?;
+
+                //Check if initializer is there
                 match self.toks.next().eof()? {
                     Token(_, TokenType::Semicolon) => {
                         Ok(AstPos(Ast::GlobalDef(ty, name, None, attrs), pos))
@@ -246,8 +264,18 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             ));
         }
 
+        let ty = match self.toks.peek().eof()? {
+            //Type is explicitly stated
+            Token(_, TokenType::LeftBrace('(')) => {
+                self.toks.next();
+                let ty = self.parse_typename()?;
+                self.expect_next(TokenType::RightBrace(')'))?;
+                Some(ty)
+            }
+            _ => None,
+        };
+
         let attrs = self.parse_attrs(); //Get attributes, if any
-        let ty = self.parse_typename()?; //Get the type of this variable
         let name = self.expect_next_ident()?;
 
         let decl = AstPos(Ast::VarDecl { name, ty, attrs }, pos);

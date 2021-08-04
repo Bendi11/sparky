@@ -20,7 +20,7 @@ struct Opts {
 //returns NULL on failure, and an allocated File struct on success.
 //Currently corresponds to the CreateFileA function on windows
 fun open(u8 ptr filename, Opts openopts) File ptr {
-    let types::Handle handle = _internal::CreateFileA(
+    let handle = _internal::CreateFileA(
         filename,
         openopts.dwDesiredAccess,
         0u32,
@@ -32,7 +32,7 @@ fun open(u8 ptr filename, Opts openopts) File ptr {
     if handle == types::INVALID_HANDLE_VALUE {
         ret {File ptr}consts::NULL;
     };
-    let File ptr file = {File ptr}std::alloc::malloc(64usize);
+    let file = {File ptr}std::alloc::malloc(64usize);
     file->handle = handle;
     ret file;
 }
@@ -40,8 +40,8 @@ fun open(u8 ptr filename, Opts openopts) File ptr {
 //Read the specified amount of bytes from the file into a memory buffer, returning the 
 //amount of bytes read or a negative error code
 fun read(File ptr file, u8 ptr buf, usize len) isize {
-    let types::Dword read_bytes;
-    let types::Bool success = _internal::ReadFile(file->handle, buf, {types::Dword}len, (&read_bytes), {_internal::OverLapped ptr}0u64);
+    let(types::Dword) read_bytes;
+    let success = _internal::ReadFile(file->handle, buf, {types::Dword}len, (&read_bytes), {_internal::OverLapped ptr}0u64);
     if success > 0u8 {
         ret {isize}read_bytes;
     } else {
@@ -53,8 +53,8 @@ fun read(File ptr file, u8 ptr buf, usize len) isize {
 //Write the specified amount of bytes from a memory buffer, returning the amount of bytes written or
 //a negative error 
 fun write(File ptr file, u8 ptr buf, usize len) isize {
-    let types::Dword written;
-    let types::Bool success = _internal::WriteFile(file->handle, buf, {types::Dword}len, &written, {_internal::OverLapped ptr}0);
+    let(types::Dword) written;
+    let success = _internal::WriteFile(file->handle, buf, {types::Dword}len, &written, {_internal::OverLapped ptr}0);
     if success > 0 {
         ret {isize}written;
     } else {

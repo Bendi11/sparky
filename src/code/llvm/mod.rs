@@ -29,6 +29,9 @@ pub struct Compiler<'a, 'c> {
     /// The LLVM context
     pub ctx: &'c Context,
 
+    /// The right hand side expression type, if any (used for variable declaration type inference)
+    pub rhs_ty: Option<Type>,
+
     /// The arena allocator for namespaces
     arena: &'a Bump,
 
@@ -80,10 +83,13 @@ impl<'a, 'c> Compiler<'a, 'c> {
             current_ns: Cell::new(root),
             break_lbl: None,
             //Hack to get a dynamic array with uninitialized values
-            struct_types: RefCell::new(vec![unsafe {
-                std::mem::transmute([0u8 ; std::mem::size_of::<StructType>()])
-            } ; *crate::parser::TYPEID.lock().unwrap().deref() + 1
+            struct_types: RefCell::new(vec![
+                unsafe {
+                    std::mem::transmute([0u8; std::mem::size_of::<StructType>()])
+                };
+                crate::parser::TYPEID.load(std::sync::atomic::Ordering::Relaxed) + 1
             ]),
+            rhs_ty: None,
         }
     }
 
@@ -110,6 +116,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         match op {
             //Handle assignment separately
             Op::Assign => {
+                self.rhs_ty = rhs_node.get_type(self);
                 let lhs = self.gen(lhs_node, true)?.into_pointer_value();
                 let rhs = match BasicValueEnum::try_from(self.gen(rhs_node, false)?) {
                     Ok(val) => val,
@@ -121,6 +128,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                 let lhs_ty = lhs_node.get_type(self);
                 let rhs_ty = rhs_node.get_type(self);
+
+                self.rhs_ty = None;
 
                 let rhs = match (&lhs_ty, &rhs_ty) {
                     (
@@ -554,7 +563,17 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Some(cond.as_any_value_enum())
             }
             Ast::VarDecl { ty, name, attrs: _ } => {
-                let ty = self.resolve_unknown(ty.clone(), &node.1);
+                let ty = match ty {
+                    Some(ty) => ty.clone(),
+                    None => match self.rhs_ty {
+                        Some(ref ty) => ty.clone(),
+                        None => {
+                            error!("{}: In variable declaration {}; Type not given and cannot be inferred from the context", node.1, name);
+                            return None;
+                        }
+                    },
+                };
+                let ty = self.resolve_unknown(ty, &node.1);
                 let var = self.entry_alloca(name.as_str(), self.llvm_type(&ty, &node.1));
                 self.vars.insert(name.clone(), (var, ty));
                 Some(var.as_any_value_enum())
@@ -806,7 +825,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     let ty = val.get_type(self)?;
                     if !matches!(ty, crate::types::Type::Ptr(_)) {
                         error!("{}: Cannot dereference non-pointer type {}", node.1, ty);
-                        return None
+                        return None;
                     }
                     let ptr = self.gen(val, false)?.into_pointer_value();
                     Some(match lval {

@@ -3,7 +3,7 @@ ns std::string::null {
 //Take the length of a NULL-terminated string using a C-style 
 //char pointer
 fun strlen(u8 ptr buf) usize {
-    let u8 ptr pos = buf;
+    let pos = buf;
     while (*buf) != 0u8 {
         buf = buf + 1u64;
     };

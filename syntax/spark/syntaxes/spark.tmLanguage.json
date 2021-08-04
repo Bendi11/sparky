@@ -28,7 +28,7 @@
 		},
 		{
 			"name": "storage.type",
-			"match": "\\b((u|i)(8|16|32|64|size)|bool|void|ptr)\\b"
+			"match": "\\b(((u|i)(8|16|32|64|size)|bool|void|ptr))|(?<=\\b(let)\\().*(?=\\))\\b"
 		},
 		{
 			"name": "constant.numeric",
