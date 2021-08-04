@@ -3,7 +3,7 @@ ns std::alloc {
 //Allocate a specified amount of bytes on the heap, returning a pointer to the
 //allocated memory
 fun malloc(usize nbytes) u8 ptr {
-    let std::win::types::Handle heap = _internal::GetProcessHeap();
+    let heap = _internal::GetProcessHeap();
     if heap == std::win::types::INVALID_HANDLE_VALUE {
         ret {u8 ptr}0;
     };
@@ -12,7 +12,7 @@ fun malloc(usize nbytes) u8 ptr {
 
 //Free memory previously allocated with malloc
 fun free(u8 ptr mem) void {
-    let std::win::types::Handle heap = _internal::GetProcessHeap();
+    let heap = _internal::GetProcessHeap();
     _internal::HeapFree(heap, 0u32, mem);
     ret;
 }

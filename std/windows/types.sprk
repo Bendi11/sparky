@@ -4,6 +4,6 @@ type u8 ptr Handle
 type u8 Bool
 type u32 Dword 
 
-let const Handle INVALID_HANDLE_VALUE = {Handle}-1i64;
+let(Handle) const INVALID_HANDLE_VALUE = {Handle}-1i64;
 
 }

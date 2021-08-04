@@ -96,8 +96,8 @@ pub enum Ast {
 
     /// A variable declaration with type, name, and attributes of the variable
     VarDecl {
-        /// The type of variable being declared
-        ty: Type,
+        /// The type of variable being declared, if explicitly stated
+        ty: Option<Type>,
 
         /// The name of the variable
         name: String,
@@ -175,16 +175,25 @@ impl AstPos {
     pub fn get_type(&self, compiler: &'_ Compiler<'_, '_>) -> Option<Type> {
         let ty = match self.ast() {
             Ast::FunCall(name, _) => compiler.get_fun(name)?.1.ret,
-            Ast::VarDecl {
-                name: _,
-                ty,
-                attrs: _,
-            } => ty.clone(),
             Ast::Cast(_, ty) => ty.clone(),
             Ast::VarAccess(ref name) => match compiler.vars.get(name) {
                 Some(var) => var.1.clone(),
                 None => compiler.get_const(name)?.1
             },
+            Ast::VarDecl{
+                name,
+                ty,
+                attrs: _
+            } => match ty {
+                Some(ref ty) => ty.clone(),
+                None => match compiler.rhs_ty {
+                    Some(ref ty) => ty.clone(),
+                    None => {
+                        log::error!("{}: In variable declaration {}; Type not given and cannot be inferred from the context", self.1, name);
+                        return None
+                    }
+                }
+            }
             Ast::StructLiteral { name, fields: _ } => {
                 Type::Struct(compiler.get_struct(name)?)
             },

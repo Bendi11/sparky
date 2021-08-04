@@ -71,7 +71,7 @@ The operators and their purposes:
         | "type" <typename> <ident>
         | <nsdecl>
         | <usingdecl>
-        | "let" <attr>* <typename> <ident> ("=" <expr>)? ";"
+        | "let" ( "(" <typename> ")" )? <attr>* <ident> ("=" <expr>)? ";"
 
 <fundecl> ::= "fun" <attr>* <funproto> <body>?
            |  "fun" "asm" <funproto> "{" <strliteral> "," <strliteral> "}"
@@ -90,7 +90,7 @@ The operators and their purposes:
         | "static"
         
 (*Top level expressions are the ones that must be parsed in functions first, expressions are parsed in them*)
-<topexpr> ::= "let" <attr>* <typename> <ident> ("=" <expr>)?
+<topexpr> ::= "let" ( "(" <typename> ")" )? <attr>* <ident> ("=" <expr>)?
 	| <funcall>
     | "if" <expr> <body> ("else" <body>)?
     | "while" <expr> <body>

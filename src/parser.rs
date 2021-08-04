@@ -119,10 +119,21 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             }
 
             Token(_, TokenType::Key(Key::Let)) => {
-                let Token(pos, _) = self.toks.next().eof()?;
-                let attrs = self.parse_attrs();
-                let ty = self.parse_typename()?;
+                let Token(pos, tok) = self.toks.next().eof()?; //Expect the next token to be the let keyword
+                let ty = match self.toks.next().eof()? {
+                    //Type is explicitly stated
+                    Token(_, TokenType::LeftBrace('(')) => {
+                        let ty = self.parse_typename()?;
+                        self.expect_next(TokenType::RightBrace(')'))?;
+                        ty
+                    },
+                    Token(pos, other) => return Err(ParseErr::UnexpectedToken(pos, other, vec![TokenType::LeftBrace('(')]))
+                };
+
+                let attrs = self.parse_attrs(); //Get attributes, if any
                 let name = self.expect_next_ident()?;
+
+                //Check if initializer is there
                 match self.toks.next().eof()? {
                     Token(_, TokenType::Semicolon) => {
                         Ok(AstPos(Ast::GlobalDef(ty, name, None, attrs), pos))
@@ -246,8 +257,18 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             ));
         }
 
+        let ty = match self.toks.peek().eof()? {
+            //Type is explicitly stated
+            Token(_, TokenType::LeftBrace('(')) => {
+                self.toks.next();
+                let ty = self.parse_typename()?;
+                self.expect_next(TokenType::RightBrace(')'))?;
+                Some(ty)
+            },
+            _ => None
+        };
+
         let attrs = self.parse_attrs(); //Get attributes, if any
-        let ty = self.parse_typename()?; //Get the type of this variable
         let name = self.expect_next_ident()?;
 
         let decl = AstPos(Ast::VarDecl { name, ty, attrs }, pos);
