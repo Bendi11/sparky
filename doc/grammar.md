@@ -117,7 +117,8 @@ The operators and their purposes:
 <structliteral> ::= "struct" <ident> "{" (<ident> "=" <expr> ",")* (<ident> "=" <expr>)? } 
 <numberliteral> ::= <digit>+ <inttype>? | "true" | "false"
 
-<typename> ::= <basetype> | <typename> "[" <digit>+ "]"
+<typename> ::= <basetype> | <typename> "[" <digit>+ "]" | <funtype>
+<funtype> ::= "fun" "(" ( <typename> <ident>? "," ) ( <typename> <ident>? ) ")" <typename>
 <basetype> ::= <inttype> | <ident>
 <inttype> ::= ("i" | "u") ("8" | "16" | "32" | "64" | "size" ) | "bool"
 <var> ::= <ident> | <prefix> ( "." | "->" ) <ident> | <prefix> "[" <digit>+ "]"
@@ -147,7 +148,7 @@ The operators and their purposes:
     | ">>"
     | "<<"
     
-<ident> ::= <letter>+ (<letter> | <digit> | "_")* 
+<ident> ::= <letter>+ ( <letter> | <digit> | "_" | ":" )* 
     
 <letter> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G"
        | "H" | "I" | "J" | "K" | "L" | "M" | "N"

@@ -1,6 +1,7 @@
 use std::{iter::Peekable, sync::atomic::Ordering};
 use std::sync::atomic::AtomicUsize;
 
+use crate::types::FunType;
 use crate::{
     ast::{Ast, AstPos, Attributes, FunProto, NumLiteral},
     lex::{Key, Op, Pos, Token, TokenType},
@@ -214,6 +215,28 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             Token(_, TokenType::Ident(ident)) => Type::Unknown(ident),
             Token(_, TokenType::IntType(ty)) => ty,
             Token(_, TokenType::Key(Key::Void)) => Type::Void,
+            Token(_, TokenType::Key(Key::Fun)) => {
+                self.expect_next(TokenType::LeftBrace('('))?;
+                let mut args = vec![];
+                loop {
+                    let ty = self.parse_typename()?;
+                    args.push(ty);
+                    match self.toks.next().eof()? {
+                        Token(_, TokenType::Comma) => continue,
+                        Token(_, TokenType::RightBrace(')')) => break,
+                        Token(pos, other) => return Err(ParseErr::UnexpectedToken(pos, other, vec![
+                            TokenType::Comma,
+                            TokenType::RightBrace(')'),
+                        ]))
+                    }
+                }
+                let ret = self.parse_typename()?;
+
+                Type::FunPtr(Box::new(FunType {
+                    ret,
+                    args
+                }))
+            },
             Token(line, tok) => {
                 return Err(ParseErr::UnexpectedToken(
                     line,
@@ -222,6 +245,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         TokenType::Ident(String::new()),
                         TokenType::Key(Key::Void),
                         TokenType::IntType(Type::Void),
+                        TokenType::Key(Key::Fun)
                     ],
                 ))
             }

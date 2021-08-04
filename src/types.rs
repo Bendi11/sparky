@@ -13,6 +13,16 @@ pub struct Container {
     pub typeid: usize,
 }
 
+/// The `FunType` struct contains all information about a function type like return type,
+/// and argument types (if any)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunType {
+    /// Return type of the function
+    pub ret: Type,
+    /// Argument types of the function
+    pub args: Vec<Type>,
+}
+
 impl fmt::Display for Container {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{} ({})", self.name, self.typeid)?;
@@ -50,6 +60,9 @@ pub enum Type {
 
     /// An array type
     Array(Box<Type>, usize),
+
+    /// A function pointer type
+    FunPtr(Box<FunType>),
 }
 
 impl Type {
@@ -104,6 +117,7 @@ impl Type {
             Self::Unknown(name) => panic!("Unknown type {}", name),
             Self::Void => panic!("Void type"),
             Self::Array(ty, len) => ty.size() * len,
+            Self::FunPtr(_) => 8,
         }
     }
 }
@@ -132,6 +146,7 @@ impl fmt::Display for Type {
             Self::Unknown(name) => write!(f, "Unknown type {}", name),
             Self::Void => write!(f, "void"),
             Self::Array(ty, len) => write!(f, "{} [{}]", ty, len),
+            Self::FunPtr(fun) => write!(f, "fun({}) {}", fun.args.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "), fun.ret)
         }
     }
 }
