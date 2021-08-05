@@ -1,26 +1,13 @@
 use std::io::fs
 use std::string::null
 
-struct test {
-    i32 a,
-    i32 b
-}
-
 fun main() i32 {
-    let a = struct test {
-        a = 100,
-        b = 231
+    let file = fs::open("./test.txt", fs::opts_default());
+    if file == {fs::File ptr}0 {
+        ret -1;
     };
 
-    let testing = std::io::fs::close;
-    testing({fs::File ptr}0);
-    //let file = fs::open("./test.txt", fs::opts_default());
-    //if file == {fs::File ptr}0 {
-    //    ret -1;
-    //};
-
-//    let written = {i32}fs::write(file, "Testing\n", null::strlen("Testing\n"));
-//    fs::close(file);
-//    ret written;
-    ret a.b;
+    let written = {i32}fs::write(file, "Testing\n", null::strlen("Testing\n"));
+    fs::close(file);
+    ret written;
 }
