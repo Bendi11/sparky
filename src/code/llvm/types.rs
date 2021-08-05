@@ -1,12 +1,18 @@
 //! The `types` module provides implementations for the [Compiler] struct for finding types, functions, and converting AST types to
 //! LLVM types
 
-use inkwell::{module::Linkage, values::GlobalValue, AddressSpace};
+use inkwell::{
+    module::Linkage,
+    values::GlobalValue,
+    AddressSpace,
+};
+use either::Either;
 
 use crate::{
     ast::{AstPos, Attributes},
     code::ns::Path,
     lex::Pos,
+    types::FunType,
 };
 
 use super::*;
@@ -39,12 +45,29 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
     }
 
-    /// Get a struct type from the given path
-    pub fn get_fun(&self, name: impl AsRef<str>) -> Option<(FunctionValue<'c>, FunProto)> {
+    /// Get a function from the given path
+    pub fn get_fun(&self, name: impl AsRef<str>) -> Option<(Either<FunctionValue<'c>, PointerValue<'c>>, FunType)> {
         let path: Path = name.as_ref().parse().unwrap();
         match self.current_ns.get().get_fun(path.clone()) {
-            Some(s) => Some(s),
-            None => self.root.get_fun(path),
+            Some(s) => Some((Either::Left(s.0), s.1)),
+            None => match self.root.get_fun(path) {
+                Some(fun) => Some((Either::Left(fun.0), fun.1)),
+                None => match self.vars.get(name.as_ref()) {
+                    Some((ptr, Type::FunPtr(ty))) => {
+                        Some((Either::Right(*ptr), ty.deref().clone()))
+                    }
+                    _ => {
+                        let const_val = self.get_const(name)?;
+                        let ty = if let Type::FunPtr(f) = const_val.1 {
+                            f.deref().clone()
+                        } else {
+                            return None;
+                        };
+
+                        Some((Either::Right(const_val.0.as_pointer_value()), ty))
+                    }
+                },
+            },
         }
     }
 
@@ -145,14 +168,15 @@ impl<'a, 'c> Compiler<'a, 'c> {
         }
 
         let proto_clone = proto.clone();
-        if proto.ret == Type::Void {
+        if proto.ty.ret == Type::Void {
             let fun = self.module.add_function(
                 &qualified,
                 self.ctx.void_type().fn_type(
                     proto
+                        .ty
                         .args
                         .iter()
-                        .map(|(ty, _)| self.llvm_type(ty, pos))
+                        .map(|ty| self.llvm_type(ty, pos))
                         .collect::<Vec<_>>()
                         .as_slice(),
                     false,
@@ -171,11 +195,12 @@ impl<'a, 'c> Compiler<'a, 'c> {
         } else {
             let fun = self.module.add_function(
                 &qualified,
-                self.llvm_type(&proto.ret, pos).fn_type(
+                self.llvm_type(&proto.ty.ret, pos).fn_type(
                     proto
+                        .ty
                         .args
                         .iter()
-                        .map(|(ty, _)| self.llvm_type(ty, pos))
+                        .map(|ty| self.llvm_type(ty, pos))
                         .collect::<Vec<_>>()
                         .as_slice(),
                     false,
@@ -305,8 +330,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
             match node.ast() {
                 Ast::FunProto(proto) => {
                     let mut proto = proto.clone();
-                    proto.ret = self.resolve_unknown(proto.ret, &node.1);
-                    for (arg, _) in proto.args.iter_mut() {
+                    proto.ty.ret = self.resolve_unknown(proto.ty.ret, &node.1);
+                    for arg in proto.ty.args.iter_mut() {
                         *arg = self.resolve_unknown(arg.clone(), &node.1);
                     }
 
@@ -318,8 +343,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 }
                 Ast::FunDef(proto, body) => {
                     let mut proto = proto.clone();
-                    proto.ret = self.resolve_unknown(proto.ret, &node.1);
-                    for (arg, _) in proto.args.iter_mut() {
+                    proto.ty.ret = self.resolve_unknown(proto.ty.ret, &node.1);
+                    for arg in proto.ty.args.iter_mut() {
                         *arg = self.resolve_unknown(arg.clone(), &node.1);
                     }
 
@@ -332,8 +357,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 }
                 Ast::AsmFunDef(proto, asm, cons) => {
                     let mut proto = proto.clone();
-                    proto.ret = self.resolve_unknown(proto.ret, &node.1);
-                    for (arg, _) in proto.args.iter_mut() {
+                    proto.ty.ret = self.resolve_unknown(proto.ty.ret, &node.1);
+                    for arg in proto.ty.args.iter_mut() {
                         *arg = self.resolve_unknown(arg.clone(), &node.1);
                     }
 

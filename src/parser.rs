@@ -1,5 +1,5 @@
-use std::{iter::Peekable, sync::atomic::Ordering};
 use std::sync::atomic::AtomicUsize;
+use std::{iter::Peekable, sync::atomic::Ordering};
 
 use crate::types::FunType;
 use crate::{
@@ -79,7 +79,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     Some(Token(_, TokenType::LeftBrace('{'))) => {
                         let body = self.parse_struct_def_body()?;
                         let typeid = TYPEID.load(Ordering::Relaxed);
-                        TYPEID.store(typeid,Ordering::Relaxed);
+                        TYPEID.store(typeid, Ordering::Relaxed);
                         Ok(AstPos(
                             Ast::StructDec(Container {
                                 name,
@@ -91,7 +91,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     }
                     _ => {
                         let typeid = TYPEID.load(Ordering::Relaxed);
-                        TYPEID.store(typeid,Ordering::Relaxed);
+                        TYPEID.store(typeid, Ordering::Relaxed);
                         Ok(AstPos(
                             Ast::StructDec(Container {
                                 name,
@@ -109,7 +109,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let name = self.expect_next_ident()?;
                 let body = self.parse_struct_def_body()?;
                 let typeid = TYPEID.load(Ordering::Relaxed);
-                TYPEID.store(typeid,Ordering::Relaxed);
+                TYPEID.store(typeid, Ordering::Relaxed);
                 Ok(AstPos(
                     Ast::UnionDec(Container {
                         name,
@@ -224,19 +224,19 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     match self.toks.next().eof()? {
                         Token(_, TokenType::Comma) => continue,
                         Token(_, TokenType::RightBrace(')')) => break,
-                        Token(pos, other) => return Err(ParseErr::UnexpectedToken(pos, other, vec![
-                            TokenType::Comma,
-                            TokenType::RightBrace(')'),
-                        ]))
+                        Token(pos, other) => {
+                            return Err(ParseErr::UnexpectedToken(
+                                pos,
+                                other,
+                                vec![TokenType::Comma, TokenType::RightBrace(')')],
+                            ))
+                        }
                     }
                 }
                 let ret = self.parse_typename()?;
 
-                Type::FunPtr(Box::new(FunType {
-                    ret,
-                    args
-                }))
-            },
+                Type::FunPtr(Box::new(FunType { ret, args }))
+            }
             Token(line, tok) => {
                 return Err(ParseErr::UnexpectedToken(
                     line,
@@ -245,7 +245,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                         TokenType::Ident(String::new()),
                         TokenType::Key(Key::Void),
                         TokenType::IntType(Type::Void),
-                        TokenType::Key(Key::Fun)
+                        TokenType::Key(Key::Fun),
                     ],
                 ))
             }
@@ -772,7 +772,8 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         };
         self.expect_next(TokenType::LeftBrace('('))?; //Expect an opening brace
 
-        let mut args = Vec::new(); //Create a new vec to hold argument names and types
+        let mut arg_names = vec![]; //Create a new vec to hold argument names and types
+        let mut arg_tys = vec![];
         loop {
             //If this is the closing brace
             if self.toks.peek().eof()?.is(TokenType::RightBrace(')')) {
@@ -781,9 +782,10 @@ impl<L: Iterator<Item = Token>> Parser<L> {
             }
 
             let ty = self.parse_typename()?; //Parse a typename of an argument
+            arg_tys.push(ty);
             match self.toks.next().eof()? {
                 Token(_, TokenType::Ident(ident)) => {
-                    args.push((ty, Some(ident))); //Add the argument
+                    arg_names.push(Some(ident)); //Add the argument
                     match self.toks.next().eof()? {
                         Token(_, TokenType::Comma) => continue,
                         Token(_, TokenType::RightBrace(')')) => break,
@@ -797,11 +799,11 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     }
                 }
                 Token(_, TokenType::Comma) => {
-                    args.push((ty, None));
+                    arg_names.push(None);
                     continue;
                 }
                 Token(_, TokenType::RightBrace(')')) => {
-                    args.push((ty, None));
+                    arg_names.push(None);
                     break;
                 }
                 _ => continue,
@@ -812,9 +814,9 @@ impl<L: Iterator<Item = Token>> Parser<L> {
         let ret = self.parse_typename()?; //Parse the return type of the function
         Ok(FunProto {
             name,
-            ret,
             attrs,
-            args,
+            ty: FunType { ret, args: arg_tys },
+            arg_names,
         })
     }
 

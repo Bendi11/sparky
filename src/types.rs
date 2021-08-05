@@ -146,7 +146,16 @@ impl fmt::Display for Type {
             Self::Unknown(name) => write!(f, "Unknown type {}", name),
             Self::Void => write!(f, "void"),
             Self::Array(ty, len) => write!(f, "{} [{}]", ty, len),
-            Self::FunPtr(fun) => write!(f, "fun({}) {}", fun.args.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "), fun.ret)
+            Self::FunPtr(fun) => write!(
+                f,
+                "fun({}) {}",
+                fun.args
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                fun.ret
+            ),
         }
     }
 }

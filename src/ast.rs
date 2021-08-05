@@ -3,7 +3,7 @@ use std::ops::Deref;
 use crate::{
     code::{ns::Path, Compiler},
     lex::{Op, Pos},
-    types,
+    types::{self, FunType},
 };
 
 use super::Type;
@@ -41,12 +41,14 @@ pub struct NumLiteral {
 pub struct FunProto {
     /// The name of the function
     pub name: String,
-    /// The return type of the function
-    pub ret: Type,
     /// The bitflag attributes of this function
     pub attrs: Attributes,
-    /// The argument types and optional names that this function takes
-    pub args: Vec<(Type, Option<String>)>,
+
+    /// The argument and return type of the function
+    pub ty: FunType,
+
+    /// Optional names of arguments
+    pub arg_names: Vec<Option<String>>,
 }
 
 /// The `Ast` enum is what is parsed from the lexer's token stream and consumed by the code generator to produce an executable
@@ -178,7 +180,16 @@ impl AstPos {
             Ast::Cast(_, ty) => ty.clone(),
             Ast::VarAccess(ref name) => match compiler.vars.get(name) {
                 Some(var) => var.1.clone(),
-                None => compiler.get_const(name)?.1
+                None => match compiler.get_const(name) {
+                    Some(c) => c.1,
+                    None => match compiler.get_fun(name) {
+                        Some((_, fun)) => Type::FunPtr(Box::new(fun)),
+                        None => {
+                            log::error!("{}: Cannot find variable, function, or global named {}", self.1, name);
+                            return None
+                        }
+                    }
+                }
             },
             Ast::VarDecl{
                 name,

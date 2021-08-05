@@ -780,6 +780,7 @@ dependencies = [
  "bumpalo",
  "clap 3.0.0-beta.2",
  "criterion",
+ "either",
  "hashbrown",
  "inkwell",
  "lazy_static",

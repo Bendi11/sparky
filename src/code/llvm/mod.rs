@@ -3,6 +3,7 @@ pub mod types;
 use bumpalo::Bump;
 use log::{debug, error, trace, warn};
 use std::{cell::Cell, convert::TryFrom, ops::Deref};
+use either::Either;
 
 use crate::{
     ast::{Ast, AstPos, FunProto},
@@ -11,15 +12,7 @@ use crate::{
     Type,
 };
 use hashbrown::HashMap;
-use inkwell::{
-    basic_block::BasicBlock,
-    builder::Builder,
-    context::Context,
-    module::Module,
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
-    values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
-    AddressSpace, IntPredicate,
-};
+use inkwell::{AddressSpace, IntPredicate, basic_block::BasicBlock, builder::Builder, context::Context, module::Module, types::{AnyTypeEnum, BasicType, BasicTypeEnum, StructType}, values::{AnyValue, AnyValueEnum, BasicValue, BasicValueEnum, CallableValue, FunctionValue, PointerValue}};
 use std::cell::RefCell;
 
 use super::ns::Ns;
@@ -87,7 +80,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 unsafe {
                     std::mem::transmute([0u8; std::mem::size_of::<StructType>()])
                 };
-                crate::parser::TYPEID.load(std::sync::atomic::Ordering::Relaxed) + 1
+                crate::parser::TYPEID
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    + 1
             ]),
             rhs_ty: None,
         }
@@ -378,6 +373,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     .current_proto
                     .as_ref()
                     .expect("Must be in a function to return from one!")
+                    .ty
                     .ret
                 {
                     Type::Void => {
@@ -424,6 +420,16 @@ impl<'a, 'c> Compiler<'a, 'c> {
             }
             Ast::FunCall(name, args) => match self.get_fun(&name) {
                 Some((f, p)) => {
+                    let f = match f {
+                        Either::Left(fun) => fun.into(),
+                        Either::Right(ptr) => match CallableValue::try_from(ptr) {
+                            Ok(callable) => callable,
+                            Err(_) => {
+                                error!("{}: Cannot call pointer {}", node.1, name);
+                                return None
+                            }
+                        }
+                    };
                     //Do initial argument count length
                     if p.args.len() != args.len() {
                         error!("{}: Incorrect number of arguments passed to function {}; {} expected, {} passed", node.1, name, p.args.len(), args.len());
@@ -431,10 +437,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     }
 
                     //Do type checking of function arguments
-                    for (i, (arg, (parg, _))) in args.iter().zip(p.args.iter()).enumerate() {
+                    for (i, (arg, parg)) in args.iter().zip(p.args.iter()).enumerate() {
                         if let Some(ref ty) = arg.get_type(self) {
                             if ty != parg {
-                                error!("{}: Incorrect type of argument {} in function call {}; {} expected, {} passed", arg.1, i + 1, p.name, parg, ty);
+                                error!("{}: Incorrect type of argument {} in function call {}; {} expected, {} passed", arg.1, i + 1, name, parg, ty);
                                 return None;
                             }
                         } else {
@@ -442,7 +448,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                                 "{}: Failed to get type of argument {} in function call {}",
                                 arg.1,
                                 i + 1,
-                                p.name
+                                name
                             );
                             return None;
                         }
@@ -596,10 +602,16 @@ impl<'a, 'c> Compiler<'a, 'c> {
                         ),
                         true => Some(val.as_any_value_enum()),
                     },
-                    None => {
-                        error!("{}: Accessing unknown variable {}", node.1, name,);
-                        None
-                    }
+                    None => match self.get_fun(name) {
+                        Some((f, _)) => Some(match f {
+                            Either::Left(fun) => fun.as_any_value_enum(),
+                            Either::Right(ptr) => ptr.as_any_value_enum()
+                        }),
+                        None => {
+                            error!("{}: No variable, global, or function named {} found in the current namespace", node.1, name);
+                            None
+                        }
+                    },
                 },
             },
             Ast::StructLiteral { name, fields } => {
@@ -704,15 +716,21 @@ impl<'a, 'c> Compiler<'a, 'c> {
                                 .build_load(s.into_pointer_value(), "deref_lhs_member_access")
                                 .as_any_value_enum()
                         }
+                        trace!("{}: For member access {}; Index is {}, field count is {}", node.1, field, field_idx, s_ty.fields.unwrap_or(vec![]).len());
 
-                        let field = self
+                        let field = match self
                             .build
                             .build_struct_gep(
                                 s.into_pointer_value(),
                                 field_idx as u32,
                                 "struct_member_access_gep",
-                            )
-                            .unwrap();
+                            ) {
+                                Ok(field) => field,
+                                Err(()) => {
+                                    log::error!("{}: Internal error: failed to issue LLVM GEP instruction because the pointer is either not a struct or the index is OOB", node.1);
+                                    return None
+                                }
+                            };
 
                         //Return the pointer value if we are generating an assignment
                         Some(match lval {

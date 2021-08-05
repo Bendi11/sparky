@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 clap = {version = "3.0.0-beta", features = ["color", "wrap_help"] } # For command line arguments
+either = "1.5" # For either enum, combined with inkwell's dependency so this adds no size
 
 termcolor = "1.1" # For command line styling (combined with clap's dependency)
 atty = "0.2" # No color codes if output is being piped (combined with clap's dependency)
