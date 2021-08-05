@@ -423,7 +423,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 Some((f, p)) => {  
                     let f = match f {
                         Either::Left(fun) => fun.into(),
-                        Either::Right(ptr) => match CallableValue::try_from(ptr) {
+                        Either::Right(ptr) => match CallableValue::try_from(self.build.build_load(ptr, "fun_ptr_load").into_pointer_value()) {
                             Ok(callable) => {
                                 trace!("{}: Generating code for function pointer call {}", node.1, name);
                                 callable
