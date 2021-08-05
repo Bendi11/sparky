@@ -533,10 +533,17 @@ impl<'a, 'c> Compiler<'a, 'c> {
             Type::Void => panic!("{}: Cannot create void type in LLVM!", pos),
             Type::Array(ty, len) => self.llvm_type(ty, pos).array_type(*len as u32).as_basic_type_enum(),
             Type::FunPtr(fun) => {
-                self.llvm_type(&fun.ret, pos)
-                    .fn_type(fun.args.iter().map(|ty| self.llvm_type(ty, pos)).collect::<Vec<_>>().as_slice(), false)
-                    .ptr_type(inkwell::AddressSpace::Generic)
-                    .as_basic_type_enum()
+                let args = fun.args.iter().map(|ty| self.llvm_type(ty, pos)).collect::<Vec<_>>();
+                 match &fun.ret {
+                    Type::Void => self.ctx.void_type()
+                        .fn_type(args.as_slice(), false)
+                        .ptr_type(inkwell::AddressSpace::Generic)
+                        .as_basic_type_enum(),
+                    other => self.llvm_type(&other, pos)
+                        .fn_type(args.as_slice(), false)
+                        .ptr_type(inkwell::AddressSpace::Generic)
+                        .as_basic_type_enum()
+                }
             }
         }
     }

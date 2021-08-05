@@ -610,7 +610,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
                     },
                     None => match self.get_fun(name) {
                         Some((f, _)) => Some(match f {
-                            Either::Left(fun) => fun.as_any_value_enum(),
+                            Either::Left(fun) => {
+                                trace!("{}: Generating function access {} as a function pointer", node.1, name);
+                                fun.as_global_value().as_pointer_value().as_any_value_enum()
+                            },
                             Either::Right(ptr) => ptr.as_any_value_enum()
                         }),
                         None => {

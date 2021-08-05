@@ -6,26 +6,14 @@ struct test {
     i32 b
 }
 
-//The File struct holds a HANDLE on windows that is used to access the file in the windows
-//API
-struct File {
-    u8 ptr handle
-}
-
-fun ext CloseHandle(u8 ptr) u8
-
-//Close the specified file
-fun close(File ptr file) u8 ptr {
-    //file->handle = {u8 ptr}0;
-    //CloseHandle((file->handle));
-    ret file->handle;
-}
-
 fun main() i32 {
     let a = struct test {
         a = 100,
         b = 231
     };
+
+    let testing = std::io::fs::close;
+    testing({fs::File ptr}0);
     //let file = fs::open("./test.txt", fs::opts_default());
     //if file == {fs::File ptr}0 {
     //    ret -1;
