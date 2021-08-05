@@ -5,7 +5,11 @@ use inkwell::values::{FunctionValue, GlobalValue};
 use log::debug;
 use std::{cell::RefCell, convert::Infallible, fmt, iter::FromIterator, str::FromStr};
 
-use crate::{ast::FunProto, types::Container, Type};
+use crate::{
+    ast::FunProto,
+    types::{Container, FunType},
+    Type,
+};
 
 /// The `Path` struct functions nearly the same as a the [Path](std::path::Path) struct from the standard library,
 /// but uses the "::" characters as separators instead of forward/back slashes
@@ -161,12 +165,16 @@ impl<'a, 'c> Ns<'a, 'c> {
     }
 
     /// Get a function from this namespace using the given path
-    pub fn get_fun(&'a self, path: Path) -> Option<(FunctionValue<'c>, FunProto)> {
+    pub fn get_fun(&'a self, path: Path) -> Option<(FunctionValue<'c>, FunType)> {
         let ns = match path.parent() {
             Some(parents) => self.get_child(parents.iter())?,
             None => self,
         };
-        ns.funs.borrow().get(path.last()?).cloned()
+        ns.funs
+            .borrow()
+            .get(path.last()?)
+            .cloned()
+            .map(|(ty, proto)| (ty, proto.ty))
     }
 
     /// Get a constant value from this namespace using the given path

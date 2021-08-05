@@ -43,7 +43,10 @@ impl<'a, 'c> Compiler<'a, 'c> {
         self.build.position_at_end(bb); //Start inserting into the function
 
         //Add argument names to the list of variables we can use
-        for (arg, (ty, proto_arg)) in f.get_param_iter().zip(proto.args.iter()) {
+        for (arg, (ty, proto_arg)) in f
+            .get_param_iter()
+            .zip(proto.ty.args.iter().zip(proto.arg_names.iter()))
+        {
             let alloca = self.entry_alloca(
                 proto_arg.clone().unwrap_or_else(String::new).as_str(),
                 self.llvm_type(ty, pos),
