@@ -111,6 +111,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
         match op {
             //Handle assignment separately
             Op::Assign => {
+                let old_rhs_ty = self.rhs_ty.clone();
                 self.rhs_ty = rhs_node.get_type(self);
                 let lhs = self.gen(lhs_node, true)?.into_pointer_value();
                 let rhs = match BasicValueEnum::try_from(self.gen(rhs_node, false)?) {
@@ -124,7 +125,7 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 let lhs_ty = lhs_node.get_type(self);
                 let rhs_ty = rhs_node.get_type(self);
 
-                self.rhs_ty = None;
+                self.rhs_ty = old_rhs_ty;
 
                 let rhs = match (&lhs_ty, &rhs_ty) {
                     (
@@ -419,11 +420,14 @@ impl<'a, 'c> Compiler<'a, 'c> {
                 }
             }
             Ast::FunCall(name, args) => match self.get_fun(&name) {
-                Some((f, p)) => {
+                Some((f, p)) => {  
                     let f = match f {
                         Either::Left(fun) => fun.into(),
                         Either::Right(ptr) => match CallableValue::try_from(ptr) {
-                            Ok(callable) => callable,
+                            Ok(callable) => {
+                                trace!("{}: Generating code for function pointer call {}", node.1, name);
+                                callable
+                            },
                             Err(_) => {
                                 error!("{}: Cannot call pointer {}", node.1, name);
                                 return None
@@ -453,6 +457,8 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             return None;
                         }
                     }
+
+                    trace!("{}: Generating code for function call {}, type is {}, and {} arguments were passed", node.1, name, Type::FunPtr(Box::new(p.clone())), args.len());
                     let args = args
                         .iter()
                         .enumerate()
@@ -709,19 +715,31 @@ impl<'a, 'c> Compiler<'a, 'c> {
                             .unwrap_or_else(|| {
                                 panic!("Struct type {} has no field named {}", s_ty.name, field)
                             });
-                        let mut s = self.gen(val, true)?;
-                        if *deref {
-                            s = self
-                                .build
-                                .build_load(s.into_pointer_value(), "deref_lhs_member_access")
-                                .as_any_value_enum()
-                        }
-                        trace!("{}: For member access {}; Index is {}, field count is {}", node.1, field, field_idx, s_ty.fields.unwrap_or(vec![]).len());
+                            
+                        let lhs = match PointerValue::try_from(self.gen(val, true)?) {
+                            Ok(val) => match *deref {
+                                true => match PointerValue::try_from(self
+                                    .build
+                                    .build_load(val, "deref_lhs_member_access")) {
+                                        Ok(ptr) => ptr,
+                                        Err(()) => {
+                                            error!("{}: In member access expression: Cannot dereference LHS of expression because it is not a pointer", node.1);
+                                            return None
+                                        }
+                                    },
+                                false => val
+                            },
+                            Err(()) => {
+                                error!("{}: In member access expression: LHS is not a valid lvalue", node.1);
+                                return None
+                            }
+                        };
+                        trace!("{}: For member access {}; Index is {}, field count is {}, lhs is {:?}", node.1, field, field_idx, s_ty.fields.unwrap_or(vec![]).len(), lhs);
 
                         let field = match self
                             .build
                             .build_struct_gep(
-                                s.into_pointer_value(),
+                                lhs,
                                 field_idx as u32,
                                 "struct_member_access_gep",
                             ) {

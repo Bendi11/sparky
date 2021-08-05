@@ -337,8 +337,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                     self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
-                        "Generated function prototype {}",
-                        self.current_ns.get().qualify(&proto.name)
+                        "Generated function prototype {} with type {}",
+                        self.current_ns.get().qualify(&proto.name),
+                        Type::FunPtr(Box::new(proto.ty))
                     );
                 }
                 Ast::FunDef(proto, body) => {
@@ -350,8 +351,9 @@ impl<'a, 'c> Compiler<'a, 'c> {
 
                     self.gen_fun_proto(&proto, &node.1).unwrap();
                     trace!(
-                        "Generating function prototype for function definition {}",
-                        self.current_ns.get().qualify(&proto.name)
+                        "Generating function prototype for function definition {} with type {}",
+                        self.current_ns.get().qualify(&proto.name),
+                        Type::FunPtr(Box::new(proto.ty.clone()))
                     );
                     ret.push(AstPos(Ast::FunDef(proto, body.clone()), node.1));
                 }

@@ -209,7 +209,12 @@ impl AstPos {
                 Type::Struct(compiler.get_struct(name)?)
             },
             Ast::MemberAccess(first, item, deref) => match match deref {
-                true => first.get_type(compiler).map(|ty| ty.deref_type().unwrap()),
+                true => first.get_type(compiler).map(|ty| match ty.deref_type() {
+                    Some(deref) => deref,
+                    None => {
+                        panic!("{}: Cannot dereference non-pointer type {} in lhs of member access expression", self.1, ty)
+                    }
+                }),
                 false => first.get_type(compiler)
             }  {
                 Some(Type::Struct(col)) | Some(Type::Union(col)) => match col

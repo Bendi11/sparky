@@ -79,7 +79,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     Some(Token(_, TokenType::LeftBrace('{'))) => {
                         let body = self.parse_struct_def_body()?;
                         let typeid = TYPEID.load(Ordering::Relaxed);
-                        TYPEID.store(typeid, Ordering::Relaxed);
+                        TYPEID.store(typeid + 1, Ordering::Relaxed);
                         Ok(AstPos(
                             Ast::StructDec(Container {
                                 name,
@@ -91,7 +91,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                     }
                     _ => {
                         let typeid = TYPEID.load(Ordering::Relaxed);
-                        TYPEID.store(typeid, Ordering::Relaxed);
+                        TYPEID.store(typeid + 1, Ordering::Relaxed);
                         Ok(AstPos(
                             Ast::StructDec(Container {
                                 name,
@@ -109,7 +109,7 @@ impl<L: Iterator<Item = Token>> Parser<L> {
                 let name = self.expect_next_ident()?;
                 let body = self.parse_struct_def_body()?;
                 let typeid = TYPEID.load(Ordering::Relaxed);
-                TYPEID.store(typeid, Ordering::Relaxed);
+                TYPEID.store(typeid + 1, Ordering::Relaxed);
                 Ok(AstPos(
                     Ast::UnionDec(Container {
                         name,
