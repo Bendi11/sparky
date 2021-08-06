@@ -4,6 +4,7 @@ use std::io::term
 
 fun main() i32 {
     term::puts("Hello World!!!");
+
     let file = fs::open("./test.txt", fs::opts_default());
     if file == {fs::File ptr}0 {
         ret -1;
