@@ -1,0 +1,60 @@
+ns std::io::term {
+use std::win
+
+
+
+//The Stream struct holds a HANDLE to either stdin, stderr, or stdout
+struct Stream {
+    win::types::Handle handle
+}
+
+//Get a handle to stdout
+fun stdout() Stream {
+    ret struct Stream {
+        handle = _internal::GetStdHandle({win::types::Dword}-11)
+    };
+}
+//Get a handle to stderr
+fun stderr() Stream {
+    ret struct Stream {
+        handle = _internal::GetStdHandle({win::types::Dword}-12)
+    };
+}
+//Get a handle to stdin
+fun stdin() Stream {
+    ret struct Stream {
+        handle = _internal::GetStdHandle({win::types::Dword}-10)
+    };
+}
+
+//Write a certain amount of bytes to the specified stream, returning a negative error code or 
+//the amount of bytes written
+fun write(Stream ostream, u8 ptr buf, usize len) isize {
+    let(win::types::Dword) written;
+    _internal::WriteConsoleA(ostream.handle, buf, {win::types::Dword}len, &written, {u8 ptr}0);
+    ret {isize}written;
+}
+
+//Read a certain amount of bytes from the specified stream, returning a negative error code or 
+//the amount of bytes read
+fun read(Stream ostream, u8 ptr buf, usize len) isize {
+    let(win::types::Dword) read;
+    _internal::ReadConsoleA(ostream.handle, buf, {win::types::Dword}len, &read, {u8 ptr}0);
+    ret {isize}read;
+}
+
+//Write a NULL-terminated string to stdout, returning a negative error code or 
+//the amount of bytes written
+fun puts(u8 ptr buf) isize {
+    ret write(stdout(), buf, std::string::null::strlen(buf));
+}
+
+ns _internal {
+use std::win::types
+
+fun ext GetStdHandle(types::Dword fd) types::Handle
+fun ext WriteConsoleA(types::Handle hConsoleOutput, u8 ptr lpBuffer, types::Dword nNumberOfCharsToWrite, types::Dword ptr lpNumberOfCharsWritten, u8 ptr lpReserved) types::Bool
+fun ext ReadConsoleA(types::Handle hConsoleOutput, u8 ptr lpBuffer, types::Dword nNumberOfCharsToRead, types::Dword ptr lpNumberOfCharsRead, u8 ptr lpReserved) types::Bool
+}
+
+}

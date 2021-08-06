@@ -58,8 +58,3 @@ fun opts_default() Opts
 fun add_opt_flag(Opts ptr opts, opt_flag flag) void
 ```
 > Add a given flag to the `Opts` struct
-----
-```rust
-fun rem_opt_flag(Opts ptr opts, opt_flag flag) void
-```
-> Remove the given flag from the `Opts` struct
