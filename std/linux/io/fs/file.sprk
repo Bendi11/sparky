@@ -1,0 +1,28 @@
+ns std::io::fs {
+
+ns _internal {
+
+let const i32 O_READWRITE = 2;
+
+}
+
+struct File {
+    i32 _fd
+}
+
+//Open a file using a file name only, opens in read/write mode 
+//for more flexibility use the std::io::fs::Opener struct
+fun open(u8 ptr fname) File {
+    let i32 fd = std::linux::_sys::open(fname, 2, 0);
+    ret struct File {
+        _fd = fd
+    };
+}
+
+//Structure managing the opening of files, handling platform-specific
+//details internally
+struct Opener {
+   i32 flags  
+}
+
+}
