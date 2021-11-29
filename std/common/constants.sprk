@@ -1,5 +1,0 @@
-ns std::consts {
-
-let(u8 ptr) const NULL = {u8 ptr}0;
-
-}

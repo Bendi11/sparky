@@ -1,9 +1,0 @@
-ns std::win::_internal {
-fun ext CloseHandle(std::win::types::Handle) std::win::types::Bool
-
-}
-
-//Hack for stack checking
-fun __chkstk() void {
-    ret;
-}
