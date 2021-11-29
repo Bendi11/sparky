@@ -7,6 +7,8 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompiledFile {
     pub path: PathBuf,
+    /// Vector mapping line numbers - 1 to offsets in source text
+    pub lines: Vec<usize>,
 }
 
 /// Container holding the data of all files being compiled by sparkc
@@ -30,6 +32,11 @@ impl Files {
     pub fn add(&mut self, data: CompiledFile) -> FileId {
         self.files.push(data);
         FileId((self.files.len() - 1) as u16)
+    }
+
+    /// Get a reference to the file information for the given ID, panics if the ID is invalid
+    pub fn get(&self, id: FileId) -> &CompiledFile {
+        self.files.get(id.0 as usize).expect("Attempting to get file from Files using invalid ID")
     }
 }
 
