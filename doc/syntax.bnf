@@ -1,0 +1,26 @@
+
+
+
+<typename> ::= "bool" | "char" | "nil"
+             | ( "i" | "u" ) ( "8" | "16" | "32" | "64" )
+             | "f" ( "32" | "64" )
+             | <ident> ( "<" ( ""))
+             | <user-typename>
+             | <typename> "*"
+             | <array-typename>
+
+<array-typename> ::= <typename> "[" <digit>+? "]"
+
+<user-typename> ::= <ident> ( "<" ( <typename> "," )* <typename>? ) )
+
+<string-literal> ::= "\"" ( . | ( "\\" . ) )* "\""
+<bool-literal> ::= "true" | "false"
+<char-literal> ::= "'" ( . | "\\" . ) "'"
+
+<number-literal> ::= <digit>+ "."? <digit>* ( "e" ( "+" | "-" ) <digit>+)?
+                   | "0b" ( "0" | "1" )+
+                   | "0x" ( <digit> | "a" | "b" | "c" | "d" | "e" | "f" )+
+                   | "0o" ( "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" )+
+
+<ident> ::= .+
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
