@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use spark::parse::lex::Lexer;
 
-const BENCH_SOURCE: [&str; 17] = [r#"
+const BENCH_SOURCE: [&str; 500] = [r#"
 fun main i32 argc, []*char argv -> i32 {
     let string := "testing\"\n\r "
     mut num := 2412414141414 + 0xFFFABC13
@@ -9,11 +9,11 @@ fun main i32 argc, []*char argv -> i32 {
     let result := string[31].field.memberfun 100, 31
     (num)
 }
-"#; 17];
+"#; 500];
 
 fn benchmark(c: &mut Criterion) {
     let src = BENCH_SOURCE.join("");
-    c.bench_function("Lex 100 LOC", move |b| {
+    c.bench_function("Lex 3000 LOC", move |b| {
         b.iter(|| black_box(Lexer::new(src.as_str()).for_each(|_| ())))
     });
 }

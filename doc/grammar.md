@@ -10,8 +10,8 @@
 
 ### Function Declaration / Definition
 * Declaration
- > fun declared ( i32, bool )
+ > fun declared i32, bool
 * Definition
- > fun defined ( arg: i32, otherarg: bool ) { ... }
+ > fun defined arg: i32, otherarg: bool { ... }
 
  > fun defined -> bool { true }
