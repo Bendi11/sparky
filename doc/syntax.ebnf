@@ -36,7 +36,7 @@
                   | <prefix> "[" <expr> "]"
                   | <prefix> "." <ident>
 
-<typename> ::= "bool" | "char" | "nil"
+<typename> ::= "bool" | "char" | "()"
              | ( "i" | "u" ) ( "8" | "16" | "32" | "64" )
              | "f" ( "32" | "64" )
              | <ident> ( "<" ( ""))

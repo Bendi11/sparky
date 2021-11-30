@@ -20,5 +20,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    
+    /// Parse a top-level declaration from the token stream
+    fn parse_decl(&mut self)
+
 }

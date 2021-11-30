@@ -1,11 +1,34 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
+use bitflags::bitflags;
 
+bitflags! {
+    /// Structure holding flags of a function's prototype
+    pub struct FunFlags: u8 {
+        const EXTERN = 0b00000001;
+    }
+}
+
+/// Data structure storing a function prototype
+#[derive(Clone, Debug)]
+pub struct FunProto {
+    /// User-defined name of the function
+    pub name: String,
+    /// Any flags that the function has
+    pub flags: FunFlags,
+    /// Argument name and types
+    pub args: Vec<(String, UnresolvedType)>,
+    /// Return type of the function
+    pub return_ty: UnresolvedType,
+}
 
 /// A node in an Abstract Syntax Tree
 #[derive(Clone, Debug)]
 pub enum AstNode {
-    FunDecl
+    /// A function declaration with no definition
+    FunDecl(FunProto),
+    /// A function definition with both a prototype and body
+    FunDef(FunProto, Vec<Self>),
 }
 
 /// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as 
@@ -27,6 +50,8 @@ pub enum UnresolvedType {
         elements: Box<UnresolvedType>, 
         len: u64
     },
+    /// Unit type with only one value, like void in C or () in rust
+    Unit,
     /// User-defined identifier
     UserDefined {
         /// The name of the user-defined type
