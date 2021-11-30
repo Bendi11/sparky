@@ -1,8 +1,17 @@
 [package]
-name = "sparkc"
+name = "spark"
 version = "0.12.0"
 authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"
+
+[lib]
+name = "spark"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sparkc"
+path = "src/bin/sparkc.rs" # replace bin.rs with name of your file
+
 
 [dependencies]
 
