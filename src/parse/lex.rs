@@ -199,9 +199,9 @@ fun main i32 argc, []*char argv -> i32 {
         let file = CompiledFile::in_memory(TEST_SRC.to_owned());
         let toks = Lexer::new(TEST_SRC);
         for tok in toks {
-            std::io::stdout().write_fmt(format_args!("TOKEN: {:?}\n", tok));
+            std::io::stdout().write_fmt(format_args!("TOKEN: {:?}\n", tok)).unwrap();
             tok.display(&file).unwrap();
-            std::io::stdout().write_fmt(format_args!("\n----------\n"));
+            std::io::stdout().write_fmt(format_args!("\n----------\n")).unwrap();
         }
     }
 }
