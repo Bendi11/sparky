@@ -6,10 +6,10 @@
              | "f" ( "32" | "64" )
              | <ident> ( "<" ( ""))
              | <user-typename>
-             | <typename> "*"
+             | "*" <typename>
              | <array-typename>
 
-<array-typename> ::= <typename> "[" <digit>+? "]"
+<array-typename> ::= "[" <digit>+? "]" <typename> 
 
 <user-typename> ::= <ident> ( "<" ( <typename> "," )* <typename>? ) )
 
