@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{io::Write, fmt};
 
 use crate::util::{files::CompiledFile, loc::Span};
 
@@ -109,6 +109,36 @@ pub enum Op {
 
     ShLeft,
     ShRight,
+}
+
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Star => write!(f, "*"),
+            Self::Div => write!(f, "/"),
+            Self::Add => write!(f, "+"),
+            Self::Sub => write!(f, "-"),
+            Self::Mod => write!(f, "%"),
+
+            Self::AND => write!(f, "&"),
+            Self::OR  => write!(f, "|"),
+            Self::XOR => write!(f, "^"),
+            Self::NOT => write!(f, "~"),
+
+            Self::LogicalAnd => write!(f, "&&"),
+            Self::LogicalOr  => write!(f, "||"),
+            Self::LogicalNot => write!(f, "!"),
+
+            Self::Greater   => write!(f, ">"),
+            Self::GreaterEq => write!(f, ">="),
+            Self::Less      => write!(f, "<"),
+            Self::LessEq    => write!(f, "<="),
+            Self::Eq        => write!(f, "="),
+
+            Self::ShLeft  => write!(f, "<<"),
+            Self::ShRight => write!(f, ">>"),
+        }
+    }
 }
 
 /// Enumeration representing all accepted bracket characters

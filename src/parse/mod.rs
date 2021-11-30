@@ -1,10 +1,11 @@
-use std::iter::Peekable;
+use std::{iter::Peekable, fmt};
 
+use arrayvec::ArrayVec;
 use thiserror::Error;
 
 use crate::util::loc::Span;
 
-use self::lex::Lexer;
+use self::{lex::Lexer, token::{TokenData, BracketType}};
 
 pub mod lex;
 pub mod token;
@@ -51,10 +52,44 @@ pub struct ParseError {
 /// Enumeration containing all possible parser errors 
 #[derive(Clone, Debug, Error)]
 pub enum ParseErrorKind {
-    #[error("Unexpected Token {}")]
+    #[error("Unexpected Token {}", .expecting)]
     UnexpectedToken {
-
-    }
+        expecting: ExpectingOneOf,
+    }   
 }
 
-pub struct 
+/// Wrapper over an [ArrayVec] that holds expected token data for the [UnexpectedToken](ParseErrorKind::UnexpectedToken) error
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExpectingOneOf(ArrayVec<TokenData<'static>, 24>);
+
+impl fmt::Display for ExpectingOneOf {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for expecting in self.0.iter() {
+            match expecting {
+                TokenData::Arrow => write!(f, "'->'"),
+                TokenData::Assign => write!(f, "':='"),
+                TokenData::Char(_) => write!(f, "character literal"),
+                TokenData::Colon => write!(f, "':'"),
+                TokenData::Comma => write!(f, "','"),
+                TokenData::Period => write!(f, "'.'"),
+                TokenData::Op(op) => op.fmt(f),
+                TokenData::Ident(_) => write!(f, "identifier"),
+                TokenData::Number(_) => write!(f, "number literal"),
+                TokenData::String(_) => write!(f, "string literal"),
+                TokenData::OpenBracket(ty) => match ty {
+                    BracketType::Brace => write!(f, "'{{'"),
+                    BracketType::Parenthese => write!(f, "'('"),
+                    BracketType::Bracket => write!(f, "'['"),
+                },
+                TokenData::CloseBracket(ty) => match ty {
+                    BracketType::Brace => write!(f, "'}}'"),
+                    BracketType::Parenthese => write!(f, "')'"),
+                    BracketType::Bracket => write!(f, "']'"),
+                },
+                TokenData::Period => write!(f, "'.'"),
+            }?;
+        }
+
+        Ok(())
+    }
+}
