@@ -1,7 +1,6 @@
 use std::{iter::Peekable, fmt};
 
 use arrayvec::ArrayVec;
-use thiserror::Error;
 
 use crate::{util::loc::Span, ast::Ast};
 
