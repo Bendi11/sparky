@@ -19,13 +19,27 @@ impl CompiledFile {
         let mut file = File::open(&path)?;
         let mut source = String::with_capacity(10_000);
         file.read_to_string(&mut source)?;
-        let lines = source.char_indices().filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }).collect();
+        let mut lines = vec![0];
+        lines.extend(source.char_indices().filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }));
 
         Ok(Self {
             path: path.as_ref().to_path_buf(),
             lines,
             text: source
         })
+    }
+
+    /// Create a new CompiledFile from an in-memory string, used for debugging and testing mostly
+    pub fn in_memory(text: String) -> Self {
+        Self {
+            path: PathBuf::new(),
+            lines: {
+                let mut lines = vec![0];
+                lines.extend(text.char_indices().filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }));
+                lines
+            },
+            text
+        }
     }
 }
 

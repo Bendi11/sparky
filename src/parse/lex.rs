@@ -124,9 +124,9 @@ impl<'src> Lexer<'src> {
                 let digit = n.to_digit(10).unwrap();
                 let radix = if digit == 0 {
                     match self.chars.peek() {
-                        Some((_, 'x')) => 16,
-                        Some((_, 'o')) => 8,
-                        Some((_, 'b')) => 2,
+                        Some((_, 'x')) => { self.next_char(); 16},
+                        Some((_, 'o')) => { self.next_char(); 8},
+                        Some((_, 'b')) => { self.next_char(); 2},
                         Some((_, n)) if n.is_digit(10) => 10,
                         _ => return Some(Token::new(start_loc, TokenData::Number(&self.src[startpos..startpos+1])))
                     }
@@ -140,7 +140,7 @@ impl<'src> Lexer<'src> {
                     match self.chars.peek() {
                         Some((_, digit)) if digit.is_digit(radix) => { self.next_char(); },
                         Some((endnum, _)) => {
-                            endpos = endnum - 1;
+                            endpos = *endnum;
                             break
                         }
                         None => break
@@ -163,7 +163,7 @@ impl<'src> Lexer<'src> {
                     break
                 }
 
-                Token::new((start_loc, (self.line, self.col).into()), TokenData::Ident(&self.src[startpos..endpos]))
+                Token::new((start_loc, (self.line, self.col).into()), TokenData::Ident(&self.src[startpos..=endpos]))
             },
 
             _ => self.token()?
@@ -180,19 +180,28 @@ impl<'src> Iterator for Lexer<'src> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
+    use crate::util::files::CompiledFile;
+
     use super::*;
 
     const TEST_SRC: &str = r#"
 
 fun main i32 argc, []*char argv -> i32 {
-    let name := argv[0]
+    let name := argv[0b0011010102]
 }
     
 "#;
 
     #[test]
     pub fn test_lex() {
+        let file = CompiledFile::in_memory(TEST_SRC.to_owned());
         let toks = Lexer::new(TEST_SRC);
-        panic!("{:#?}", toks.collect::<Vec<_>>())
+        for tok in toks {
+            std::io::stdout().write_fmt(format_args!("TOKEN: {:?}\n", tok));
+            tok.display(&file).unwrap();
+            std::io::stdout().write_fmt(format_args!("\n----------\n"));
+        }
     }
 }
