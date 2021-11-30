@@ -14,8 +14,7 @@ fun main i32 argc, []*char argv -> i32 {
 fn benchmark(c: &mut Criterion) {
     let src = BENCH_SOURCE.join("");
     c.bench_function("Lex 100 LOC", move |b| {
-        let mut lexer = Lexer::new(src.as_str());
-        b.iter(|| black_box(lexer.all(|_| true)))
+        b.iter(|| black_box(Lexer::new(src.as_str()).for_each(|_| ())))
     });
 }
 
