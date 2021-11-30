@@ -5,9 +5,13 @@ use super::token::{BracketType, Op, Token, TokenData};
 /// Lexer responsible for tokenizing an input string to be parsed
 #[derive(Debug, Clone)]
 pub struct Lexer<'src> {
+    /// A reference to the original source string
     src: &'src str,
+    /// An iterator over the UTF-8 codepoints and their indices in the source string
     chars: Peekable<CharIndices<'src>>,
+    /// The current line of the lexer
     line: u16,
+    /// Current column number of the lexer's cursor
     col: u16,
 }
 
@@ -21,6 +25,8 @@ impl<'src> Lexer<'src> {
         }
     }
 
+    /// Consume one character from the character iterator if one exists,
+    /// incrementing line numbers if the character is a newline
     fn next_char(&mut self) -> Option<(usize, char)> {
         let next = self.chars.next();
         self.col += 1;
@@ -31,6 +37,7 @@ impl<'src> Lexer<'src> {
         next
     }
 
+    /// Lex a new token if present from the source text
     fn token(&mut self) -> Option<Token<'src>> {
         //Skip whitespace
         while self

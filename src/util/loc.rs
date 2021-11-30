@@ -3,6 +3,7 @@ use std::{cmp::Ordering, num::NonZeroU16};
 /// A type holding one location in source text
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord)]
 pub struct Loc {
+    /// The line of code of this location, cannot be 0 because line numbers start at 1
     pub line: NonZeroU16,
     pub col: u16,
 }
@@ -41,7 +42,9 @@ impl PartialOrd for Loc {
 /// A span representing a section of the input text over two locations
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
+    /// The location that the span goes from
     pub from: Loc,
+    /// The location that the span goes to
     pub to: Loc,
 }
 
