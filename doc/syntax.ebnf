@@ -9,22 +9,29 @@
 
 <typedecl> ::= "type" <user-typename> ":=" 
 
-<stmt> ::= <callexpr> | <assignstmt> | <varstmt> | <retstmt> | "break" | "cont"
+<stmt> ::= <callexpr> | <assignstmt> | <varstmt> | <retstmt> | <matchexpr> | <ifexpr> | "break" | "cont"
+
+<matchcase> ::= <user-typename> "{" ( <ident> ":" <matchcase> "," )* ( <ident> ":" <matchcase> )? "}"
+              | <literal>
+              | <ident>
+
+<matcharm> ::= ( <matchcase> | "default" ) "->" ( <body> | <expr> | <phistmt> )
+<matchexpr> ::= "match" <expr> "{" ( <matcharm> "," )* <matcharm>? "}"
 
 <retstmt> ::= "return" <expr>?
-
+<phistmt> ::= "phi" <expr>
 <assignstmt> ::= ( <varaccessexpr> | <varstmt> ) ":=" <expr>
 <varstmt> ::= ( "let" | "mut" ) <ident>
 <loopstmt> ::= "loop" <body>
-<ifstmt> ::= "if" <expr> <body> ( ( "else" <body> ) | ( "else" <ifstmt> ) )
+<ifexpr> ::= "if" <expr> <body> ( ( "else" <body> ) | ( "else" <ifstmt> ) )
 
 <body> ::= "{" <stmt>* "}"
 
-<expr> ::= <literal> | <prefix> | <op> <expr> | <expr> <op> <expr>
+<expr> ::= <literal> | <prefix> | <op> <expr> | <expr> <op> <expr> | <ifexpr> | <matchexpr>
 
 <prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")"
 
-<callexpr> ::= <ident> ( <expr> "," )* <expr>?
+<callexpr> ::= <ident> "(" ( <expr> "," )* <expr>? ")"
 <varaccessexpr> ::= <ident>
                   | <prefix> "[" <expr> "]"
                   | <prefix> "." <ident>
