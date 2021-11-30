@@ -2,6 +2,8 @@
 
 use bitflags::bitflags;
 
+use crate::util::loc::Span;
+
 bitflags! {
     /// Structure holding flags of a function's prototype
     pub struct FunFlags: u8 {
@@ -29,6 +31,16 @@ pub enum AstNode {
     FunDecl(FunProto),
     /// A function definition with both a prototype and body
     FunDef(FunProto, Vec<Self>),
+}
+
+/// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for 
+/// error messages later in the compiler
+#[derive(Clone, Debug)]
+pub struct Ast {
+    /// The AST node's data
+    pub node: AstNode,
+    /// The span of the source string that this AST node occupies
+    pub span: Span,
 }
 
 /// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as 

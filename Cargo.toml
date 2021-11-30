@@ -15,6 +15,8 @@ path = "src/bin/sparkc.rs"
 
 [dependencies]
 bitflags = "1.3" # Used to store attributes of AST nodes 
+thiserror = "1.0" # Easier creation of custom error types
+arrayvec = "0.7" # Stack allocated vector types to improve performance
 
 
 [dev-dependencies]
