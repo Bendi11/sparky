@@ -447,6 +447,7 @@ dependencies = [
 name = "spark"
 version = "0.12.0"
 dependencies = [
+ "bitflags",
  "criterion",
 ]
 

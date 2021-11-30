@@ -1,6 +1,6 @@
 
 <fundef> ::= <fundecl> <body>
-<fundecl> ::= "fun" <ident> ( <typename> <ident> "," )* ( <typename> <ident> )? ( "->" <typename> )?
+<fundecl> ::= "fun" <ident> ( <typename> <ident> "," )* ( <typename> <ident> )? ( "->" <typename> )? "extern"?
 
 <typedef> ::= <typedecl> <structfields> 
             | <typedecl> <typename>
