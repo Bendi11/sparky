@@ -1,6 +1,6 @@
 //! Module containing the [Files] structure that holds an arena of [CompiledFile] structures
 
-use std::path::PathBuf;
+use std::{fs::File, io::{self, Read}, path::{Path, PathBuf}};
 
 /// A structure containing all data from a compiled spark source file needed by the compiler
 /// for location information
@@ -9,6 +9,24 @@ pub struct CompiledFile {
     pub path: PathBuf,
     /// Vector mapping line numbers - 1 to offsets in source text
     pub lines: Vec<usize>,
+    /// The text read from the file
+    pub text: String,
+}
+
+impl CompiledFile {
+    /// Open a file from the path and create a new `CompiledFile` holding its data
+    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let mut file = File::open(&path)?;
+        let mut source = String::with_capacity(10_000);
+        file.read_to_string(&mut source)?;
+        let lines = source.char_indices().filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }).collect();
+
+        Ok(Self {
+            path: path.as_ref().to_path_buf(),
+            lines,
+            text: source
+        })
+    }
 }
 
 /// Container holding the data of all files being compiled by sparkc

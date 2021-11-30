@@ -1,25 +1,104 @@
-use crate::util::loc::Span;
+use std::io::Write;
+
+use crate::util::{files::CompiledFile, loc::Span};
 
 
 /// The main type used for a token lexed from a source file containing location information
 /// and token data
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Token {
+pub struct Token<'src> {
+    /// Segment of source code this token is from
     pub span: Span,
+    /// Specific token information
+    pub data: TokenData<'src>,
+}
 
+impl<'src> Token<'src> {
+    /// Create a new token from a span and token data
+    pub fn new(span: impl Into<Span>, data: TokenData<'src>) -> Self {
+        Self {
+            span: span.into(),
+            data
+        }
+    }
+
+    /// Display this token data using a source file
+    pub fn display(&self, file: &CompiledFile) -> std::io::Result<()> {
+        let start_line = *file.lines.get(self.span.from.line.get() as usize).expect("Invalid span line when displaying token");
+        let startpos = start_line + self.span.from.col as usize;
+
+        let end_line = *file.lines.get(self.span.to.line.get() as usize).expect("Invalid span line when displaying token");
+        let endpos = end_line + self.span.to.col as usize;
+
+        let mut stdout = std::io::stdout();
+        let mut line = start_line;
+        let mut buf = [0u8 ; 4];
+
+        stdout.write_fmt(format_args!("{}: ", line))?;
+        for character in file.text.chars()
+            .skip(startpos)
+            .take(endpos - startpos) {
+            
+
+            character.encode_utf8(&mut buf);
+            stdout.write(&buf[..character.len_utf8()])?;
+
+            if character == '\n' {
+                line += 1;
+                stdout.write_fmt(format_args!("{}: ", line))?;
+            }
+        }
+
+        stdout.flush()
+    }
 }
 
 /// All possible tokens lexed from a source string
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenData<'src> {
     Ident(&'src str),
     Number(&'src str),
     String(&'src str),
+    Char(&'src str),
     OpenBracket(BracketType),
     CloseBracket(BracketType),
     Comma,
     Period,
+    /// ->
+    Arrow,
+    Op(Op),
 
+    Colon,
+    /// := 
+    Assign,
+}
+
+/// A binary or unary operator
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub enum Op {
+    Star,
+    Div,
+    Add,
+    Sub,
+    Mod,
+
+    AND,
+    OR,
+    XOR,
+    NOT,
+
+    LogicalAnd,
+    LogicalOr,
+    LogicalNot,
+
+    Greater,
+    GreaterEq,
+    Less,
+    LessEq,
+    Eq,
+
+    ShLeft,
+    ShRight,
 }
 
 
