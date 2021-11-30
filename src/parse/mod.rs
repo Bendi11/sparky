@@ -3,9 +3,9 @@ use std::{iter::Peekable, fmt};
 use arrayvec::ArrayVec;
 use thiserror::Error;
 
-use crate::util::loc::Span;
+use crate::{util::loc::Span, ast::Ast};
 
-use self::{lex::Lexer, token::{TokenData, BracketType}};
+use self::{lex::Lexer, token::{TokenData, BracketType, Token}};
 
 pub mod lex;
 pub mod token;
@@ -19,7 +19,7 @@ pub struct Parser<'src> {
     trace: Vec<&'static str>,
 }
 
-pub type ParseResult<T> = Result<T, ParseError>;
+pub type ParseResult<'src, T> = Result<T, ParseError<'src>>;
 
 impl<'src> Parser<'src> {
     /// Create a new `Parser` from the given source string
@@ -31,7 +31,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a top-level declaration from the token stream
-    fn parse_decl(&mut self) -> ParseResult<Ast> {
+    fn parse_decl(&mut self) -> ParseResult<'src, Ast> {
 
     }
 
@@ -40,22 +40,25 @@ impl<'src> Parser<'src> {
 /// Structure containing parse error backtrace information and a [ParseErrorKind] with more specific error
 /// data
 #[derive(Clone, Debug)]
-pub struct ParseError {
+pub struct ParseError<'src> {
     /// The code span to highlight as the error location
     pub highlighted_span: Option<Span>,
     /// A backtrace of what the parser believes it was parsing
     pub backtrace: Vec<&'static str>,
     /// More specific error data
-    pub error: ParseErrorKind,
+    pub error: ParseErrorKind<'src>,
 }
 
 /// Enumeration containing all possible parser errors 
-#[derive(Clone, Debug, Error)]
-pub enum ParseErrorKind {
-    #[error("Unexpected Token {}", .expecting)]
+#[derive(Clone, Debug)]
+pub enum ParseErrorKind<'src> {
+    /// An unexpected token was found in the input file
     UnexpectedToken {
+        /// The token that was consumed
+        found: Token<'src>,
+        /// A list of tokens that were expected to come
         expecting: ExpectingOneOf,
-    }   
+    }
 }
 
 /// Wrapper over an [ArrayVec] that holds expected token data for the [UnexpectedToken](ParseErrorKind::UnexpectedToken) error

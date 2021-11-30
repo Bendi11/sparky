@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, num::NonZeroU16};
+use std::{cmp::Ordering, num::NonZeroU16, fmt};
 
 /// A type holding one location in source text
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord)]
@@ -6,6 +6,12 @@ pub struct Loc {
     /// The line of code of this location, cannot be 0 because line numbers start at 1
     pub line: NonZeroU16,
     pub col: u16,
+}
+
+impl fmt::Display for Loc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.col)
+    }
 }
 
 impl Loc {
@@ -62,6 +68,12 @@ impl Span {
     /// Create a new span from a single location in a source file
     pub fn single(loc: Loc) -> Self {
         Self { from: loc, to: loc }
+    }
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.from, self.to)
     }
 }
 
