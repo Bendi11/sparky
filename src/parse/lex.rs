@@ -2,7 +2,6 @@ use std::{iter::Peekable, str::CharIndices};
 
 use super::token::{BracketType, Op, Token, TokenData};
 
-
 /// Lexer responsible for tokenizing an input string to be parsed
 #[derive(Debug, Clone)]
 pub struct Lexer<'src> {
@@ -34,7 +33,12 @@ impl<'src> Lexer<'src> {
 
     fn token(&mut self) -> Option<Token<'src>> {
         //Skip whitespace
-        while self.chars.peek().map(|(_, w)| w.is_whitespace()).unwrap_or(false) {
+        while self
+            .chars
+            .peek()
+            .map(|(_, w)| w.is_whitespace())
+            .unwrap_or(false)
+        {
             self.next_char()?;
         }
 
@@ -42,7 +46,7 @@ impl<'src> Lexer<'src> {
         let start_loc = (self.line, self.col).into();
         Some(match next {
             '+' => Token::new(start_loc, TokenData::Op(Op::Add)),
-            
+
             '*' => Token::new(start_loc, TokenData::Op(Op::Star)),
             '/' => Token::new(start_loc, TokenData::Op(Op::Div)),
             '%' => Token::new(start_loc, TokenData::Op(Op::Mod)),
@@ -58,14 +62,44 @@ impl<'src> Lexer<'src> {
             '&' | '|' | '>' | '<' | ':' | '-' => {
                 let peek = self.chars.peek().map(|(_, peek)| *peek);
                 match (next, peek) {
-                    ('>', Some('=')) => { self.next_char(); Token::new((start_loc, (self.line, self.col).into()), TokenData::Op(Op::GreaterEq)) },
-                    ('<', Some('=')) => { self.next_char(); Token::new((start_loc, (self.line, self.col).into()), TokenData::Op(Op::LessEq)) },
-                    ('&', Some('&')) => { self.next_char(); Token::new((start_loc, (self.line, self.col).into()), TokenData::Op(Op::LogicalAnd)) },
-                    ('|', Some('|')) => { self.next_char(); Token::new((start_loc, (self.line, self.col).into()), TokenData::Op(Op::LogicalOr)) },
+                    ('>', Some('=')) => {
+                        self.next_char();
+                        Token::new(
+                            (start_loc, (self.line, self.col).into()),
+                            TokenData::Op(Op::GreaterEq),
+                        )
+                    }
+                    ('<', Some('=')) => {
+                        self.next_char();
+                        Token::new(
+                            (start_loc, (self.line, self.col).into()),
+                            TokenData::Op(Op::LessEq),
+                        )
+                    }
+                    ('&', Some('&')) => {
+                        self.next_char();
+                        Token::new(
+                            (start_loc, (self.line, self.col).into()),
+                            TokenData::Op(Op::LogicalAnd),
+                        )
+                    }
+                    ('|', Some('|')) => {
+                        self.next_char();
+                        Token::new(
+                            (start_loc, (self.line, self.col).into()),
+                            TokenData::Op(Op::LogicalOr),
+                        )
+                    }
 
-                    ('-', Some('>')) => { self.next_char(); Token::new((start_loc, (self.line, self.col).into()), TokenData::Arrow) },
+                    ('-', Some('>')) => {
+                        self.next_char();
+                        Token::new((start_loc, (self.line, self.col).into()), TokenData::Arrow)
+                    }
 
-                    (':', Some('=')) => { self.next_char(); Token::new((start_loc, (self.line, self.col).into()), TokenData::Assign) },
+                    (':', Some('=')) => {
+                        self.next_char();
+                        Token::new((start_loc, (self.line, self.col).into()), TokenData::Assign)
+                    }
                     (':', _) => Token::new(start_loc, TokenData::Colon),
 
                     ('<', Some('<')) => Token::new(start_loc, TokenData::Op(Op::ShLeft)),
@@ -77,22 +111,31 @@ impl<'src> Lexer<'src> {
                     ('>', _) => Token::new(start_loc, TokenData::Op(Op::Greater)),
                     ('-', _) => Token::new(start_loc, TokenData::Op(Op::Sub)),
 
-                    (next, peek) => unreachable!("Not possible, checked all options of next, next is {}, peek is {:?}", next, peek)
+                    (next, peek) => unreachable!(
+                        "Not possible, checked all options of next, next is {}, peek is {:?}",
+                        next, peek
+                    ),
                 }
-            },
+            }
 
-            '{' | '(' | '[' => Token::new(start_loc, TokenData::OpenBracket(match next {
-                '{' => BracketType::Bracket,
-                '(' => BracketType::Parenthese,
-                '[' => BracketType::Brace,
-                _ => unreachable!()
-            })),
-            '}' | ')' | ']' => Token::new(start_loc, TokenData::CloseBracket(match next {
-                '}' => BracketType::Bracket,
-                ')' => BracketType::Parenthese,
-                ']' => BracketType::Brace,
-                _ => unreachable!()
-            })),
+            '{' | '(' | '[' => Token::new(
+                start_loc,
+                TokenData::OpenBracket(match next {
+                    '{' => BracketType::Bracket,
+                    '(' => BracketType::Parenthese,
+                    '[' => BracketType::Brace,
+                    _ => unreachable!(),
+                }),
+            ),
+            '}' | ')' | ']' => Token::new(
+                start_loc,
+                TokenData::CloseBracket(match next {
+                    '}' => BracketType::Bracket,
+                    ')' => BracketType::Parenthese,
+                    ']' => BracketType::Brace,
+                    _ => unreachable!(),
+                }),
+            ),
 
             //Character literal
             '\'' => {
@@ -102,33 +145,55 @@ impl<'src> Lexer<'src> {
                 }
 
                 if let (end, '\'') = self.next_char()? {
-                    Token::new((start_loc, (self.line, self.col).into()), TokenData::Char(&self.src[firstpos..end-1]))
+                    Token::new(
+                        (start_loc, (self.line, self.col).into()),
+                        TokenData::Char(&self.src[firstpos..end - 1]),
+                    )
                 } else {
                     panic!("")
                 }
-            },
+            }
 
             //String literal
             '"' => {
                 let endpos = loop {
                     match self.next_char()? {
-                        (_, '\\') => { self.next_char()?; },
+                        (_, '\\') => {
+                            self.next_char()?;
+                        }
                         (endpos, '"') => break endpos,
-                        _ => ()
+                        _ => (),
                     }
                 };
-                Token::new((start_loc, (self.line, self.col).into()), TokenData::String(&self.src[startpos+1..endpos-1]))
-            },
+                Token::new(
+                    (start_loc, (self.line, self.col).into()),
+                    TokenData::String(&self.src[startpos + 1..endpos - 1]),
+                )
+            }
 
             n if n.is_digit(10) => {
                 let digit = n.to_digit(10).unwrap();
                 let radix = if digit == 0 {
                     match self.chars.peek() {
-                        Some((_, 'x')) => { self.next_char(); 16},
-                        Some((_, 'o')) => { self.next_char(); 8},
-                        Some((_, 'b')) => { self.next_char(); 2},
+                        Some((_, 'x')) => {
+                            self.next_char();
+                            16
+                        }
+                        Some((_, 'o')) => {
+                            self.next_char();
+                            8
+                        }
+                        Some((_, 'b')) => {
+                            self.next_char();
+                            2
+                        }
                         Some((_, n)) if n.is_digit(10) => 10,
-                        _ => return Some(Token::new(start_loc, TokenData::Number(&self.src[startpos..startpos+1])))
+                        _ => {
+                            return Some(Token::new(
+                                start_loc,
+                                TokenData::Number(&self.src[startpos..startpos + 1]),
+                            ))
+                        }
                     }
                 } else {
                     10
@@ -138,17 +203,22 @@ impl<'src> Lexer<'src> {
 
                 loop {
                     match self.chars.peek() {
-                        Some((_, digit)) if digit.is_digit(radix) => { self.next_char(); },
+                        Some((_, digit)) if digit.is_digit(radix) => {
+                            self.next_char();
+                        }
                         Some((endnum, _)) => {
                             endpos = *endnum;
-                            break
+                            break;
                         }
-                        None => break
+                        None => break,
                     }
                 }
 
-                Token::new((start_loc, (self.line, self.col).into()), TokenData::Number(&self.src[startpos..endpos]))
-            },
+                Token::new(
+                    (start_loc, (self.line, self.col).into()),
+                    TokenData::Number(&self.src[startpos..endpos]),
+                )
+            }
 
             other if other.is_ascii_alphabetic() || other == '_' => {
                 let mut endpos = startpos;
@@ -157,16 +227,19 @@ impl<'src> Lexer<'src> {
                         if peeked.is_ascii_alphanumeric() || *peeked == '_' {
                             endpos = *peeked_pos;
                             self.next_char();
-                            continue
+                            continue;
                         }
                     }
-                    break
+                    break;
                 }
 
-                Token::new((start_loc, (self.line, self.col).into()), TokenData::Ident(&self.src[startpos..=endpos]))
-            },
+                Token::new(
+                    (start_loc, (self.line, self.col).into()),
+                    TokenData::Ident(&self.src[startpos..=endpos]),
+                )
+            }
 
-            _ => self.token()?
+            _ => self.token()?,
         })
     }
 }
@@ -199,9 +272,13 @@ fun main i32 argc, []*char argv -> i32 {
         let file = CompiledFile::in_memory(TEST_SRC.to_owned());
         let toks = Lexer::new(TEST_SRC);
         for tok in toks {
-            std::io::stdout().write_fmt(format_args!("TOKEN: {:?}\n", tok)).unwrap();
+            std::io::stdout()
+                .write_fmt(format_args!("TOKEN: {:?}\n", tok))
+                .unwrap();
             tok.display(&file).unwrap();
-            std::io::stdout().write_fmt(format_args!("\n----------\n")).unwrap();
+            std::io::stdout()
+                .write_fmt(format_args!("\n----------\n"))
+                .unwrap();
         }
     }
 }

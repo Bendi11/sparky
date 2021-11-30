@@ -1,6 +1,10 @@
 //! Module containing the [Files] structure that holds an arena of [CompiledFile] structures
 
-use std::{fs::File, io::{self, Read}, path::{Path, PathBuf}};
+use std::{
+    fs::File,
+    io::{self, Read},
+    path::{Path, PathBuf},
+};
 
 /// A structure containing all data from a compiled spark source file needed by the compiler
 /// for location information
@@ -20,12 +24,16 @@ impl CompiledFile {
         let mut source = String::with_capacity(10_000);
         file.read_to_string(&mut source)?;
         let mut lines = vec![0];
-        lines.extend(source.char_indices().filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }));
+        lines.extend(
+            source
+                .char_indices()
+                .filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }),
+        );
 
         Ok(Self {
             path: path.as_ref().to_path_buf(),
             lines,
-            text: source
+            text: source,
         })
     }
 
@@ -35,10 +43,16 @@ impl CompiledFile {
             path: PathBuf::new(),
             lines: {
                 let mut lines = vec![0];
-                lines.extend(text.char_indices().filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }));
+                lines.extend(text.char_indices().filter_map(|(idx, c)| {
+                    if c == '\n' {
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                }));
                 lines
             },
-            text
+            text,
         }
     }
 }
@@ -68,7 +82,8 @@ impl Files {
 
     /// Get a reference to the file information for the given ID, panics if the ID is invalid
     pub fn get(&self, id: FileId) -> &CompiledFile {
-        self.files.get(id.0 as usize).expect("Attempting to get file from Files using invalid ID")
+        self.files
+            .get(id.0 as usize)
+            .expect("Attempting to get file from Files using invalid ID")
     }
 }
-

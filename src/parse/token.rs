@@ -2,7 +2,6 @@ use std::io::Write;
 
 use crate::util::{files::CompiledFile, loc::Span};
 
-
 /// The main type used for a token lexed from a source file containing location information
 /// and token data
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,21 +17,27 @@ impl<'src> Token<'src> {
     pub fn new(span: impl Into<Span>, data: TokenData<'src>) -> Self {
         Self {
             span: span.into(),
-            data
+            data,
         }
     }
 
     /// Display this token data using a source file
     pub fn display(&self, file: &CompiledFile) -> std::io::Result<()> {
-        let start_line = *file.lines.get(self.span.from.line.get() as usize - 1).expect("Invalid span line when displaying token");
+        let start_line = *file
+            .lines
+            .get(self.span.from.line.get() as usize - 1)
+            .expect("Invalid span line when displaying token");
         let startpos = start_line + self.span.from.col as usize;
 
-        let end_line = *file.lines.get(self.span.to.line.get() as usize - 1).expect("Invalid span line when displaying token");
+        let end_line = *file
+            .lines
+            .get(self.span.to.line.get() as usize - 1)
+            .expect("Invalid span line when displaying token");
         let endpos = end_line + self.span.to.col as usize;
 
         let mut stdout = std::io::stdout();
         let mut line = self.span.from.line.get();
-        let mut buf = [0u8 ; 4];
+        let mut buf = [0u8; 4];
 
         stdout.write_fmt(format_args!("{}: ", line))?;
         for character in file.text[startpos..=endpos].chars() {
@@ -52,20 +57,29 @@ impl<'src> Token<'src> {
 /// All possible tokens lexed from a source string
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenData<'src> {
+    /// An identifier or keyword string
     Ident(&'src str),
+    /// A decimal, octal, hexadecimal, or binary number
     Number(&'src str),
+    /// A user-defined string literal not including start and end quotes
     String(&'src str),
+    /// A user-defined character literal not including start or end quotes
     Char(&'src str),
+    /// Any opening brace character
     OpenBracket(BracketType),
+    /// Any closing brace character
     CloseBracket(BracketType),
+    /// The , character
     Comma,
+    /// The . character
     Period,
     /// ->
     Arrow,
+    /// A unary or binary operator token
     Op(Op),
-
+    // :
     Colon,
-    /// := 
+    /// :=
     Assign,
 }
 
@@ -97,11 +111,10 @@ pub enum Op {
     ShRight,
 }
 
-
 /// Enumeration representing all accepted bracket characters
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BracketType {
     Brace,
     Parenthese,
-    Bracket
+    Bracket,
 }
