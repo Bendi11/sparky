@@ -1,6 +1,7 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
 use bitflags::bitflags;
+use string_interner::symbol::SymbolU32 as Symbol;
 
 use crate::util::loc::Span;
 
@@ -15,11 +16,11 @@ bitflags! {
 #[derive(Clone, Debug)]
 pub struct FunProto {
     /// User-defined name of the function
-    pub name: String,
+    pub name: Symbol,
     /// Any flags that the function has
     pub flags: FunFlags,
     /// Argument name and types
-    pub args: Vec<(String, UnresolvedType)>,
+    pub args: Vec<(Symbol, UnresolvedType)>,
     /// Return type of the function
     pub return_ty: UnresolvedType,
 }
@@ -67,9 +68,9 @@ pub enum UnresolvedType {
     /// User-defined identifier
     UserDefined {
         /// The name of the user-defined type
-        name: String,
+        name: Symbol,
         /// Names of any generic type arguments for the type
-        generic_args: Vec<String>,
+        generic_args: Vec<Symbol>,
     },
 }
 

@@ -210,8 +210,18 @@ impl<'src> Lexer<'src> {
 
                 loop {
                     match self.chars.peek() {
-                        Some((_, digit)) if digit.is_digit(radix) => {
+                        Some((_, digit)) if digit.is_digit(radix) || *digit == '.' => {
                             self.next_char();
+                        },
+                        Some((_, 'e')) => {
+                            self.next_char();
+                            self.next_char(); //Skip + / -
+                            while match self.chars.peek() {
+                                Some((_, exp)) if exp.is_digit(10) => true,
+                                _ => false
+                            } {
+                                self.next_char();
+                            }
                         }
                         Some((endnum, _)) => {
                             endpos = *endnum;
@@ -227,11 +237,11 @@ impl<'src> Lexer<'src> {
                 )
             }
 
-            other if other.is_ascii_alphabetic() || other == '_' => {
+            other if other.is_ascii_alphabetic() || other == '_' || other == ':' => {
                 let mut endpos = startpos;
                 loop {
                     if let Some((peeked_pos, peeked)) = self.chars.peek() {
-                        if peeked.is_ascii_alphanumeric() || *peeked == '_' {
+                        if peeked.is_ascii_alphanumeric() || *peeked == '_' || *peeked == ':' {
                             endpos = *peeked_pos;
                             self.next_char();
                             continue;

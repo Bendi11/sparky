@@ -1,4 +1,7 @@
 
+<path> ::= <ident> ( ":" <ident> )*
+<importdecl> ::= "imp" <path>
+
 <fundef> ::= <fundecl> <body>
 <fundecl> ::= "fun" <ident> ( <typename> <ident> "," )* ( <typename> <ident> )? ( "->" <typename> )? "extern"?
 
@@ -7,20 +10,18 @@
             | <typedecl> <typename> ( "|" <typename> )+
 <structfields> ::= "{" ( <typename> <ident> "," )* ( <typename> <ident>? ) "}"
 
-<typedecl> ::= "type" <user-typename> ":=" 
+<typedecl> ::= "type" <user-typename> "=" 
 
 <stmt> ::= <callexpr> | <assignstmt> | <varstmt> | <retstmt> | <matchexpr> | <ifexpr> | "break" | "cont"
 
-<matchcase> ::= <user-typename> "{" ( <ident> ":" <matchcase> "," )* ( <ident> ":" <matchcase> )? "}"
-              | <literal>
-              | <ident>
+<matchcase> ::= <user-typename> <ident>?
 
 <matcharm> ::= ( <matchcase> | "default" ) "->" ( <body> | <expr> | <phistmt> )
 <matchexpr> ::= "match" <expr> "{" ( <matcharm> "," )* <matcharm>? "}"
 
 <retstmt> ::= "return" <expr>?
 <phistmt> ::= "phi" <expr>
-<assignstmt> ::= ( <varaccessexpr> | <varstmt> ) ":=" <expr>
+<assignstmt> ::= ( <varaccessexpr> | <varstmt> ) "=" <expr>
 <varstmt> ::= ( "let" | "mut" ) <ident>
 <loopstmt> ::= "loop" <body>
 <ifexpr> ::= "if" <expr> <body> ( ( "else" <body> ) | ( "else" <ifstmt> ) )
@@ -46,7 +47,7 @@
 
 <array-typename> ::= "[" <digit>+? "]" <typename> 
 
-<user-typename> ::= <ident> ( "(" ( (<typename> "," )* <typename>? ) ")" )?
+<user-typename> ::= <path> ( "|" ( (<typename> "," )* <typename>? ) "|" )?
 
 <literal> ::= <string-literal> | <bool-literal> | <char-literal> | <number-literal>
 
@@ -54,7 +55,7 @@
 <bool-literal> ::= "true" | "false"
 <char-literal> ::= "'" ( . | "\\" . ) "'"
 
-<op> ::= "+" | "-" | "*" | "/" | "%" | "&" | "|" | "~" | "^" | "<" | ">" | "="
+<op> ::= "+" | "-" | "*" | "/" | "%" | "&" | "|" | "~" | "^" | "<" | ">" | "=="
        | "<=" | ">=" | "<<" | ">>" | "&&" | "||" | "!" | "!="
 
 <number-literal> ::= <digit>+ "."? <digit>* ( "e" ( "+" | "-" ) <digit>+)?
