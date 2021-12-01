@@ -3,7 +3,7 @@ use std::{iter::Peekable, fmt};
 use smallvec::SmallVec;
 use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
-use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth}};
+use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth}, parse::token::Op};
 
 use self::{lex::Lexer, token::{TokenData, BracketType, Token}};
 
@@ -244,7 +244,6 @@ impl<'int, 'src> Parser<'int, 'src> {
                 _ => Ok(UnresolvedType::UserDefined { name: self.symbol(name), generic_args: SmallVec::new() })
             },
             TokenData::OpenBracket(BracketType::Square) => {
-                let size_tok = self.next_tok(&[TokenData::Number("array type size")])?;
                 self.trace.push("array type length");
                 let len = self.parse_fixed_number()?;
                 self.trace.pop();
@@ -269,7 +268,21 @@ impl<'int, 'src> Parser<'int, 'src> {
                         }
                     })
                 }
-            }
+            },
+            TokenData::OpenBracket(BracketType::Smooth) => {
+                self.trace.push("unit type");
+                self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                self.trace.pop();
+
+                Ok(UnresolvedType::Unit)
+            },
+            TokenData::Op(Op::Star) => {
+                self.trace.push("pointer type");
+                let pointed_to = self.parse_typename()?;
+                self.trace.pop();
+
+                Ok(UnresolvedType::Pointer(Box::new(pointed_to)))
+            },
             _ => Err(ParseError {
                 highlighted_span: Some(next.span),
                 backtrace: self.trace.clone(),
