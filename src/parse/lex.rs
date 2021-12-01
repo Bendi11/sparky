@@ -128,18 +128,18 @@ impl<'src> Lexer<'src> {
             '{' | '(' | '[' => Token::new(
                 start_loc,
                 TokenData::OpenBracket(match next {
-                    '{' => BracketType::Square,
+                    '{' => BracketType::Curly,
                     '(' => BracketType::Smooth,
-                    '[' => BracketType::Curly,
+                    '[' => BracketType::Square,
                     _ => unreachable!(),
                 }),
             ),
             '}' | ')' | ']' => Token::new(
                 start_loc,
                 TokenData::CloseBracket(match next {
-                    '}' => BracketType::Square,
+                    '}' => BracketType::Curly,
                     ')' => BracketType::Smooth,
-                    ']' => BracketType::Curly,
+                    ']' => BracketType::Square,
                     _ => unreachable!(),
                 }),
             ),

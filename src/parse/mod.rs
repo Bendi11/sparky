@@ -128,7 +128,6 @@ impl<'int, 'src> Parser<'int, 'src> {
                 let mut args = Vec::new();
 
                 loop {
-                    
                     let peeked = self.peek_tok(ARGS_EXPECTING)?;
                     match peeked.data {
                         TokenData::Ident(_) => {
@@ -148,10 +147,33 @@ impl<'int, 'src> Parser<'int, 'src> {
                                 TokenData::Arrow
                             ];
 
-                            let next = self.next_tok(&[TokenData::OpenBracket(BracketType::Curly), TokenData::Comma, TokenData::Arrow])?;
+                            let after_arg = self.peek_tok(EXPECTING_AFTER_ARG)?;
+                            if let TokenData::Comma = after_arg.data {
+                                self.next_tok(EXPECTING_AFTER_ARG)?;
+                            }
                         },
+                        _ => break
                     }
                 }
+
+                const EXPECTING_AFTER_ARGS: &[TokenData<'static>] = &[
+                    TokenData::OpenBracket(BracketType::Curly), 
+                    TokenData::Arrow
+                ];
+
+                let after_args = self.peek_tok(EXPECTING_AFTER_ARGS)?;
+                let return_type = if let TokenData::Arrow = after_args.data {
+                    self.next_tok(EXPECTING_AFTER_ARGS)?;
+                    self.trace.push("function return typename");
+                    let return_ty = self.parse_typename()?;
+                    self.trace.pop();
+                    return_ty
+                } else {
+                    UnresolvedType::Unit
+                };
+
+                
+
 
                 Err(ParseError {
                     highlighted_span: Some(next.span),
@@ -177,6 +199,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
             TokenData::Ident("type name"), 
+            TokenData::OpenBracket(BracketType::Smooth),
         ];
 
         const EXPECTING_INTEGER: &[TokenData<'static>] = &[
@@ -220,7 +243,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 },
                 _ => Ok(UnresolvedType::UserDefined { name: self.symbol(name), generic_args: SmallVec::new() })
             },
-            TokenData::OpenBracket(BracketType::Curly) => {
+            TokenData::OpenBracket(BracketType::Square) => {
                 let size_tok = self.next_tok(&[TokenData::Number("array type size")])?;
                 self.trace.push("array type length");
                 let len = self.parse_fixed_number()?;
