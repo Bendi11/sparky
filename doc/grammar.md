@@ -2,16 +2,16 @@
 
 ### Type Definitions
 * Enum
- > type enumerated = i32 | bool
+ > type enumerated := i32 | bool
 * Structure
- > type structure = { a: i32, b: bool }
+ > type structure := { a: i32, b: bool }
 * Tuple
- > type tuple_structure = ( i32, bool )
+ > type tuple_structure := ( i32, bool )
 
 ### Function Declaration / Definition
 * Declaration
  > fun declared i32, bool
 * Definition
- > fun defined arg: i32, otherarg: bool { ... }
+ > fun defined i32 arg, bool otherarg { ... }
 
- > fun defined -> bool { true }
+ > fun defined -> bool { return true }
