@@ -35,6 +35,13 @@ pub enum AstNode {
     FunDef(FunProto, Vec<Ast>),
     /// A variable access by name
     VarAccess(Symbol),
+    /// Member item access with the '.' operator
+    MemberAccess(Box<Ast>, Symbol),
+    /// An array-like index expression using '[' ']'
+    Index {
+        object: Box<Ast>,
+        index: Box<Ast>,
+    },
     /// Function call with argument expressions
     FunCall(Symbol, Vec<Ast>),
 }

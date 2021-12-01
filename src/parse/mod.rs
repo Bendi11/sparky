@@ -287,6 +287,49 @@ impl<'int, 'src> Parser<'int, 'src> {
         }
     }
 
+    /// Recursive function to parse member accesses with the '.' token,
+    /// and indexing with the [] array indexing method
+    fn parse_var_access(&mut self, accessing: Ast) -> ParseResult<'src, Ast> {
+        const ACCESS_EXPECTING: &[TokenData<'static>] = &[
+            TokenData::Period,
+            TokenData::OpenBracket(BracketType::Square)
+        ];
+
+        let peeked = self.peek_tok(ACCESS_EXPECTING)?;
+        match peeked.data {
+            TokenData::Period => {
+                self.toks.next(); //Eat the period character
+                self.trace.push("member access expression");
+                let item = self.expect_next_ident(&[TokenData::Ident("member name")])?;
+                self.trace.pop();
+
+                self.parse_var_access(Ast {
+                    span: (accessing.span.from, peeked.span.to).into(),
+                    node: AstNode::MemberAccess(Box::new(accessing), self.symbol(item))
+                })
+            },
+            TokenData::OpenBracket(BracketType::Square) => {
+                self.toks.next();
+                self.trace.push("index expression");
+                let index = self.parse_expr()?;
+                
+
+                self.expect_next(&[TokenData::CloseBracket(BracketType::Square)])?;
+                self.trace.pop();
+
+                self.parse_var_access(Ast {
+                    span: (accessing.span.from, peeked.span.to).into(),
+                    node: AstNode::Index {
+                        object: Box::new(accessing),
+                        index: Box::new(index)
+                    }
+                })
+            }
+
+            _ => Ok(accessing)
+        }
+    }
+
     /// Attempt to parse a typename from the token stream
     fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
