@@ -35,6 +35,8 @@ pub enum AstNode {
     FunDef(FunProto, Vec<Ast>),
     /// A variable access by name
     VarAccess(Symbol),
+    /// Function call with argument expressions
+    FunCall(Symbol, Vec<Ast>),
 }
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for 

@@ -24,6 +24,11 @@ pub struct Parser<'int, 'src> {
 pub type ParseResult<'src, T> = Result<T, ParseError<'src>>;
 
 impl<'int, 'src> Parser<'int, 'src> {
+    /// All tokens expected to begin when parsing an expression
+    const EXPECTED_FOR_EXPRESSION: &'static [TokenData<'static>] = &[
+        
+    ];
+
     /// Create a new `Parser` from the given source string
     pub fn new(src: &'src str, interner: &'int mut StringInterner) -> Self {
         Self {
@@ -213,6 +218,11 @@ impl<'int, 'src> Parser<'int, 'src> {
         Ok(vec![])
     }
 
+    /// Parse a full expression from the token stream
+    fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
+
+    }
+
     /// Parse a prefix expression from the token stream
     fn parse_prefix_expr(&mut self) -> ParseResult<'src, Ast> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
@@ -225,6 +235,32 @@ impl<'int, 'src> Parser<'int, 'src> {
             TokenData::Ident(name) => {
                 let peeked = self.toks.peek();
                 if let Some(TokenData::OpenBracket(BracketType::Smooth)) = peeked.map(|tok| &tok.data) {
+                    self.next_tok(EXPECTING_NEXT)?; //Consume the opening bracket
+
+                    let mut args = vec![];
+
+                    loop {
+                        let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+                        match next_in_args.data {
+                            TokenData::Comma => {
+                                self.next_tok(&[TokenData::Comma])?;
+                            },
+                            TokenData::CloseBracket(BracketType::Smooth) => {
+                                self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                                break
+                            },
+                            _ => {
+                                self.trace.push("function call argument");
+                                args.push(self.parse_expr()?);
+                                self.trace.pop();
+                            }
+                        }
+                    }
+
+                    Ok(Ast {
+                        span: next.span,
+                        node: AstNode::FunCall(self.symbol(name), args)
+                    })
 
                 } else {
                     Ok(Ast {
@@ -234,7 +270,11 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             },
             TokenData::OpenBracket(BracketType::Smooth) => {
-                
+                self.trace.push("expression in parentheses");
+                let expr = self.parse_expr()?;
+                self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                self.trace.pop();
+                Ok(expr)
             },
             _ => Err(ParseError {
                 highlighted_span: Some(next.span),
