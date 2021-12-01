@@ -33,6 +33,8 @@ pub enum AstNode {
     FunDecl(FunProto),
     /// A function definition with both a prototype and body
     FunDef(FunProto, Vec<Ast>),
+    /// A variable access by name
+    VarAccess(Symbol),
 }
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for 

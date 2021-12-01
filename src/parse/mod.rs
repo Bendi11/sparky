@@ -1,9 +1,9 @@
-use std::{iter::Peekable, fmt, borrow::Borrow};
+use std::{iter::Peekable, fmt};
 
 use smallvec::SmallVec;
 use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
-use crate::{util::loc::{Span, Loc}, ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags}, parse::token::Op};
+use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags}, parse::token::Op};
 
 use self::{lex::Lexer, token::{TokenData, BracketType, Token}};
 
@@ -213,9 +213,38 @@ impl<'int, 'src> Parser<'int, 'src> {
         Ok(vec![])
     }
 
-    /// Parse an expression from the token stream
-    fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
+    /// Parse a prefix expression from the token stream
+    fn parse_prefix_expr(&mut self) -> ParseResult<'src, Ast> {
+        const EXPECTING_NEXT: &[TokenData<'static>] = &[
+            TokenData::Ident("variable or function name"),
+            TokenData::OpenBracket(BracketType::Smooth)
+        ];
         
+        let next = self.next_tok(EXPECTING_NEXT)?;
+        match next.data {
+            TokenData::Ident(name) => {
+                let peeked = self.toks.peek();
+                if let Some(TokenData::OpenBracket(BracketType::Smooth)) = peeked.map(|tok| &tok.data) {
+
+                } else {
+                    Ok(Ast {
+                        span: next.span,
+                        node: AstNode::VarAccess(self.symbol(name))
+                    })
+                }
+            },
+            TokenData::OpenBracket(BracketType::Smooth) => {
+                
+            },
+            _ => Err(ParseError {
+                highlighted_span: Some(next.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next,
+                    expecting: ExpectingOneOf(EXPECTING_NEXT)
+                }
+            })
+        }
     }
 
     /// Attempt to parse a typename from the token stream
