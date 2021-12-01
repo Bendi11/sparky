@@ -144,7 +144,7 @@ impl fmt::Display for Op {
 /// Enumeration representing all accepted bracket characters
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BracketType {
-    Brace,
-    Parenthese,
-    Bracket,
+    Curly,
+    Smooth,
+    Square,
 }

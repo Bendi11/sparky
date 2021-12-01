@@ -1,6 +1,7 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
 use bitflags::bitflags;
+use smallvec::SmallVec;
 use string_interner::symbol::SymbolU32 as Symbol;
 
 use crate::util::loc::Span;
@@ -70,7 +71,7 @@ pub enum UnresolvedType {
         /// The name of the user-defined type
         name: Symbol,
         /// Names of any generic type arguments for the type
-        generic_args: Vec<Symbol>,
+        generic_args: SmallVec<[Symbol ; 3]>,
     },
 }
 

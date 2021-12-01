@@ -1,15 +1,14 @@
 use std::{iter::Peekable, fmt};
 
 use smallvec::SmallVec;
-use string_interner::StringInterner;
+use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
-use crate::{util::loc::Span, ast::Ast};
+use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth}};
 
 use self::{lex::Lexer, token::{TokenData, BracketType, Token}};
 
 pub mod lex;
 pub mod token;
-mod eof;
 
 /// A structure consuming a token stream from a lexer and transforming it to an Abstract Syntax Tree
 #[derive(Debug)]
@@ -46,9 +45,27 @@ impl<'int, 'src> Parser<'int, 'src> {
             })
     }
 
+    /// Peek the next token from the token stream or an [error](ParseErrorKind::UnexpectedEOF) if there are no more tokens to be lexed
+    fn peek_tok(&mut self, expecting: &'static [TokenData<'static>]) -> ParseResult<'src, &Token<'src>> {
+        let Self {
+            toks,
+            trace,
+            ..
+        } = self;
+
+        toks.peek()
+            .ok_or_else(|| ParseError {
+                highlighted_span: None,
+                backtrace: trace.clone(),
+                error: ParseErrorKind::UnexpectedEOF {
+                    expecting: ExpectingOneOf(expecting)
+                }
+            })
+    }
+
     /// Consume the next token and expect it to be an identifier
-    fn expect_next_ident(&mut self, expected: &'static str) -> ParseResult<'src, &'src str> {
-        let next = self.next_tok(&[TokenData::Ident(expected)])?;
+    fn expect_next_ident(&mut self, expected: &'static [TokenData<'static>]) -> ParseResult<'src, &'src str> {
+        let next = self.next_tok(expected)?;
         if let TokenData::Ident(name) = next.data {
             Ok(name)
         } else {
@@ -57,11 +74,35 @@ impl<'int, 'src> Parser<'int, 'src> {
                 backtrace: self.trace.clone(),
                 error: ParseErrorKind::UnexpectedToken {
                     found: next,
-                    expecting: ExpectingOneOf(&[TokenData::Ident(expected)])
+                    expecting: ExpectingOneOf(expected)
                 }
             })
         }
+    }
 
+    /// Consume the next token and expect it to be the given type of token
+    fn expect_next(&mut self, expecting: &'static [TokenData<'static>]) -> ParseResult<'src, ()> {
+        let next = self.next_tok(expecting)?;
+        if !expecting.contains(&next.data) {
+            Ok(())
+        } else {
+            Err(ParseError {
+                highlighted_span: Some(next.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next,
+                    expecting: ExpectingOneOf(expecting)
+                }
+            })
+        }
+    }
+
+    /// Generate a [Symbol] for the given string using the string interner contained in `self`
+    /// 
+    /// Encapsulated as a function to allow for easier refactoring later
+    #[inline]
+    fn symbol(&mut self, for_str: &'src str) -> Symbol {
+        self.interner.get_or_intern(for_str)
     }
 
     /// Parse a top-level declaration from the token stream
@@ -76,8 +117,168 @@ impl<'int, 'src> Parser<'int, 'src> {
         match next.data {
             TokenData::Ident("fun") => {
                 self.trace.push("function declaration");
-                let name = self.expect_next_ident("function name")?;
+                let name = self.expect_next_ident(&[TokenData::Ident("function name")])?;
+
+                const ARGS_EXPECTING: &[TokenData<'static>] = &[
+                    TokenData::Ident("argument typename"),
+                    TokenData::Arrow,
+                    TokenData::OpenBracket(BracketType::Curly)
+                ];
+
+                let mut args = Vec::new();
+
+                loop {
+                    
+                    let peeked = self.peek_tok(ARGS_EXPECTING)?;
+                    match peeked.data {
+                        TokenData::Ident(_) => {
+                            self.trace.push("function argument typename");
+                            let arg_type = self.parse_typename()?;
+                            self.trace.pop();
+
+                            self.trace.push("function argument name");
+                            let arg_name = self.expect_next_ident(&[TokenData::Ident("function argument name")])?;
+                            self.trace.pop();
+
+                            args.push((arg_type, self.symbol(arg_name)));
+
+                            const EXPECTING_AFTER_ARG: &[TokenData<'static>] = &[
+                                TokenData::OpenBracket(BracketType::Curly), 
+                                TokenData::Comma, 
+                                TokenData::Arrow
+                            ];
+
+                            let next = self.next_tok(&[TokenData::OpenBracket(BracketType::Curly), TokenData::Comma, TokenData::Arrow])?;
+                        },
+                    }
+                }
+
+                Err(ParseError {
+                    highlighted_span: Some(next.span),
+                    backtrace: self.trace.clone(),
+                    error: ParseErrorKind::UnexpectedToken {
+                        found: next,
+                        expecting: ExpectingOneOf(&[TokenData::Number("fixed-point number")])
+                    }
+                })
+            },
+            _ => Err(ParseError {
+                highlighted_span: Some(next.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next,
+                    expecting: ExpectingOneOf(&[TokenData::Number("fixed-point number")])
+                }
+            })
+        }
+    }
+
+    /// Attempt to parse a typename from the token stream
+    fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
+        const EXPECTING_NEXT: &[TokenData<'static>] = &[
+            TokenData::Ident("type name"), 
+        ];
+
+        const EXPECTING_INTEGER: &[TokenData<'static>] = &[
+            TokenData::Ident("i8"), TokenData::Ident("i16"), TokenData::Ident("i32"), TokenData::Ident("i64"),
+            TokenData::Ident("u8"), TokenData::Ident("u16"), TokenData::Ident("u32"), TokenData::Ident("u64"),
+        ];
+
+        let next = self.next_tok(EXPECTING_NEXT)?;
+
+        match next.data {
+            TokenData::Ident(name) => match &name[0..1] {
+                "i" | "u" => {
+                    let signed = &name[0..1] == "i";
+
+                    match &name[1..] {
+                        "8" => Ok(UnresolvedType::Integer { signed, width: IntegerWidth::Eight }),
+                        "16" => Ok(UnresolvedType::Integer { signed, width: IntegerWidth::Sixteen }),
+                        "32" => Ok(UnresolvedType::Integer { signed, width: IntegerWidth::ThirtyTwo }),
+                        "64" => Ok(UnresolvedType::Integer { signed, width: IntegerWidth::SixtyFour }),
+                        _ => Err(ParseError {
+                            highlighted_span: Some(next.span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::UnexpectedToken {
+                                found: next,
+                                expecting: ExpectingOneOf(EXPECTING_INTEGER)
+                            }
+                        })
+                    }
+                },
+                "f" => match &name[1..] {
+                    "32" => Ok(UnresolvedType::Float { doublewide: false }),
+                    "64" => Ok(UnresolvedType::Float { doublewide: true }),
+                    _ => Err(ParseError {
+                        highlighted_span: Some(next.span),
+                        backtrace: self.trace.clone(),
+                        error: ParseErrorKind::UnexpectedToken {
+                            found: next,
+                            expecting: ExpectingOneOf(&[TokenData::Ident("f32"), TokenData::Ident("f64")])
+                        }
+                    })
+                },
+                _ => Ok(UnresolvedType::UserDefined { name: self.symbol(name), generic_args: SmallVec::new() })
+            },
+            TokenData::OpenBracket(BracketType::Curly) => {
+                let size_tok = self.next_tok(&[TokenData::Number("array type size")])?;
+                self.trace.push("array type length");
+                let len = self.parse_fixed_number()?;
+                self.trace.pop();
+
+                let closing = self.next_tok(&[TokenData::CloseBracket(BracketType::Square)])?;
+                if let TokenData::CloseBracket(BracketType::Square) = closing.data {
+                    self.trace.push("array item typename");
+                    let item_type = self.parse_typename()?;
+                    self.trace.pop();
+
+                    Ok(UnresolvedType::Array {
+                        elements: Box::new(item_type),
+                        len
+                    })
+                } else {
+                    Err(ParseError {
+                        highlighted_span: Some(closing.span),
+                        backtrace: self.trace.clone(),
+                        error: ParseErrorKind::UnexpectedToken {
+                            found: closing,
+                            expecting: ExpectingOneOf(&[TokenData::CloseBracket(BracketType::Square)])
+                        }
+                    })
+                }
             }
+            _ => Err(ParseError {
+                highlighted_span: Some(next.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next,
+                    expecting: ExpectingOneOf(EXPECTING_NEXT)
+                }
+            })
+        }
+    }
+
+    /// Parse a fixed-point number literal from the token stream
+    fn parse_fixed_number(&mut self) -> ParseResult<'src, u64> {
+        let next = self.next_tok(&[TokenData::Number("fixed-point number")])?;
+        if let TokenData::Number(num) = next.data {
+            Err(ParseError {
+                highlighted_span: Some(next.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next,
+                    expecting: ExpectingOneOf(&[TokenData::Number("fixed-point number")])
+                }
+            })
+        } else {
+            Err(ParseError {
+                highlighted_span: Some(next.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next,
+                    expecting: ExpectingOneOf(&[TokenData::Number("fixed-point number")])
+                }
+            })
         }
     }
 
@@ -127,17 +328,17 @@ impl fmt::Display for ExpectingOneOf {
                 TokenData::Period => write!(f, "'.'"),
                 TokenData::Op(op) => op.fmt(f),
                 TokenData::Ident(ident) => write!(f, "identifier: {}", ident),
-                TokenData::Number(_) => write!(f, "number literal"),
-                TokenData::String(_) => write!(f, "string literal"),
+                TokenData::Number(num) => write!(f, "number literal: {}", num),
+                TokenData::String(string) => write!(f, "string literal: {}", string),
                 TokenData::OpenBracket(ty) => match ty {
-                    BracketType::Brace => write!(f, "'{{'"),
-                    BracketType::Parenthese => write!(f, "'('"),
-                    BracketType::Bracket => write!(f, "'['"),
+                    BracketType::Curly => write!(f, "'{{'"),
+                    BracketType::Smooth => write!(f, "'('"),
+                    BracketType::Square => write!(f, "'['"),
                 },
                 TokenData::CloseBracket(ty) => match ty {
-                    BracketType::Brace => write!(f, "'}}'"),
-                    BracketType::Parenthese => write!(f, "')'"),
-                    BracketType::Bracket => write!(f, "']'"),
+                    BracketType::Curly => write!(f, "'}}'"),
+                    BracketType::Smooth => write!(f, "')'"),
+                    BracketType::Square => write!(f, "']'"),
                 },
             }?;
         }
