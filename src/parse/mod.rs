@@ -220,7 +220,7 @@ impl<'int, 'src> Parser<'int, 'src> {
 
     /// Parse a full expression from the token stream
     fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
-
+        unimplemented!()
     }
 
     /// Parse a prefix expression from the token stream
@@ -231,7 +231,7 @@ impl<'int, 'src> Parser<'int, 'src> {
         ];
         
         let next = self.next_tok(EXPECTING_NEXT)?;
-        match next.data {
+        let member_of = match next.data {
             TokenData::Ident(name) => {
                 let peeked = self.toks.peek();
                 if let Some(TokenData::OpenBracket(BracketType::Smooth)) = peeked.map(|tok| &tok.data) {
@@ -257,16 +257,16 @@ impl<'int, 'src> Parser<'int, 'src> {
                         }
                     }
 
-                    Ok(Ast {
+                    Ast {
                         span: next.span,
                         node: AstNode::FunCall(self.symbol(name), args)
-                    })
+                    }
 
                 } else {
-                    Ok(Ast {
+                    Ast {
                         span: next.span,
                         node: AstNode::VarAccess(self.symbol(name))
-                    })
+                    }
                 }
             },
             TokenData::OpenBracket(BracketType::Smooth) => {
@@ -274,9 +274,9 @@ impl<'int, 'src> Parser<'int, 'src> {
                 let expr = self.parse_expr()?;
                 self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
                 self.trace.pop();
-                Ok(expr)
+                expr
             },
-            _ => Err(ParseError {
+            _ => return Err(ParseError {
                 highlighted_span: Some(next.span),
                 backtrace: self.trace.clone(),
                 error: ParseErrorKind::UnexpectedToken {
@@ -284,18 +284,21 @@ impl<'int, 'src> Parser<'int, 'src> {
                     expecting: ExpectingOneOf(EXPECTING_NEXT)
                 }
             })
-        }
+        };
+        
+        //Parse any indexing or member access expressions
+        self.parse_access(member_of)
     }
 
     /// Recursive function to parse member accesses with the '.' token,
     /// and indexing with the [] array indexing method
-    fn parse_var_access(&mut self, accessing: Ast) -> ParseResult<'src, Ast> {
+    fn parse_access(&mut self, accessing: Ast) -> ParseResult<'src, Ast> {
         const ACCESS_EXPECTING: &[TokenData<'static>] = &[
             TokenData::Period,
             TokenData::OpenBracket(BracketType::Square)
         ];
 
-        let peeked = self.peek_tok(ACCESS_EXPECTING)?;
+        let peeked = self.peek_tok(ACCESS_EXPECTING)?.clone();
         match peeked.data {
             TokenData::Period => {
                 self.toks.next(); //Eat the period character
@@ -303,9 +306,10 @@ impl<'int, 'src> Parser<'int, 'src> {
                 let item = self.expect_next_ident(&[TokenData::Ident("member name")])?;
                 self.trace.pop();
 
-                self.parse_var_access(Ast {
+                let symbol = self.symbol(item);
+                self.parse_access(Ast {
                     span: (accessing.span.from, peeked.span.to).into(),
-                    node: AstNode::MemberAccess(Box::new(accessing), self.symbol(item))
+                    node: AstNode::MemberAccess(Box::new(accessing), symbol)
                 })
             },
             TokenData::OpenBracket(BracketType::Square) => {
@@ -317,7 +321,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 self.expect_next(&[TokenData::CloseBracket(BracketType::Square)])?;
                 self.trace.pop();
 
-                self.parse_var_access(Ast {
+                self.parse_access(Ast {
                     span: (accessing.span.from, peeked.span.to).into(),
                     node: AstNode::Index {
                         object: Box::new(accessing),
