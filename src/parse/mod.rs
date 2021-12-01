@@ -1,9 +1,9 @@
-use std::{iter::Peekable, fmt};
+use std::{iter::Peekable, fmt, borrow::Borrow};
 
 use smallvec::SmallVec;
 use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
-use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth}, parse::token::Op};
+use crate::{util::loc::{Span, Loc}, ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags}, parse::token::Op};
 
 use self::{lex::Lexer, token::{TokenData, BracketType, Token}};
 
@@ -104,7 +104,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     fn symbol(&mut self, for_str: &'src str) -> Symbol {
         self.interner.get_or_intern(for_str)
     }
-
+    
     /// Parse a top-level declaration from the token stream
     fn parse_decl(&mut self) -> ParseResult<'src, Ast> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
@@ -139,7 +139,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                             let arg_name = self.expect_next_ident(&[TokenData::Ident("function argument name")])?;
                             self.trace.pop();
 
-                            args.push((arg_type, self.symbol(arg_name)));
+                            args.push((self.symbol(arg_name), arg_type));
 
                             const EXPECTING_AFTER_ARG: &[TokenData<'static>] = &[
                                 TokenData::OpenBracket(BracketType::Curly), 
@@ -161,8 +161,8 @@ impl<'int, 'src> Parser<'int, 'src> {
                     TokenData::Arrow
                 ];
 
-                let after_args = self.peek_tok(EXPECTING_AFTER_ARGS)?;
-                let return_type = if let TokenData::Arrow = after_args.data {
+                let after_args = self.peek_tok(EXPECTING_AFTER_ARGS).map(|tok| tok.data.clone());
+                let return_ty = if let Ok(TokenData::Arrow) = after_args {
                     self.next_tok(EXPECTING_AFTER_ARGS)?;
                     self.trace.push("function return typename");
                     let return_ty = self.parse_typename()?;
@@ -172,17 +172,28 @@ impl<'int, 'src> Parser<'int, 'src> {
                     UnresolvedType::Unit
                 };
 
-                
+                let proto = FunProto {
+                    name: self.symbol(name),
+                    args,
+                    return_ty,
+                    flags: FunFlags::empty()
+                };
 
+                if let Ok(TokenData::OpenBracket(BracketType::Curly)) = after_args {
+                    self.trace.push("function body");
+                    let body = self.parse_body()?;
+                    self.trace.pop();
 
-                Err(ParseError {
-                    highlighted_span: Some(next.span),
-                    backtrace: self.trace.clone(),
-                    error: ParseErrorKind::UnexpectedToken {
-                        found: next,
-                        expecting: ExpectingOneOf(&[TokenData::Number("fixed-point number")])
-                    }
-                })
+                    Ok(Ast {
+                        span: next.span,
+                        node: AstNode::FunDef(proto, body)
+                    })
+                } else {
+                    Ok(Ast {
+                        span: next.span,
+                        node: AstNode::FunDecl(proto)
+                    })
+                }
             },
             _ => Err(ParseError {
                 highlighted_span: Some(next.span),
@@ -193,6 +204,18 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             })
         }
+    }
+
+    /// Parse a curly brace enclosed AST body
+    fn parse_body(&mut self) -> ParseResult<'src, Vec<Ast>> {
+        self.expect_next(&[TokenData::OpenBracket(BracketType::Curly)])?;
+
+        Ok(vec![])
+    }
+
+    /// Parse an expression from the token stream
+    fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
+        
     }
 
     /// Attempt to parse a typename from the token stream

@@ -32,7 +32,7 @@ pub enum AstNode {
     /// A function declaration with no definition
     FunDecl(FunProto),
     /// A function definition with both a prototype and body
-    FunDef(FunProto, Vec<Self>),
+    FunDef(FunProto, Vec<Ast>),
 }
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for 

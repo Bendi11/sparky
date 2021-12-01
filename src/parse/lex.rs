@@ -1,5 +1,7 @@
 use std::{iter::Peekable, str::CharIndices};
 
+use crate::util::loc::Loc;
+
 use super::token::{BracketType, Op, Token, TokenData};
 
 /// Lexer responsible for tokenizing an input string to be parsed
@@ -258,6 +260,11 @@ impl<'src> Lexer<'src> {
 
             _ => self.token()?,
         })
+    }
+
+    /// Return the current position of the lexer in the source file
+    pub fn pos(&self) -> Loc {
+        (self.line, self.col).into()
     }
 }
 
