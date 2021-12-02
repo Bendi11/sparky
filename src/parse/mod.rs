@@ -218,39 +218,35 @@ impl<'int, 'src> Parser<'int, 'src> {
         Ok(vec![])
     }
 
-    /// Parse a full expression from the token stream
-    fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
-        let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+    fn parse_stmt(&mut self) -> ParseResult<'src, Ast> {
+        const EXPECTING_FOR_STMT: &[TokenData<'static>] = &[
+
+        ];
+
+        let peeked = self.peek_tok(EXPECTING_FOR_STMT)?;
 
         match peeked.data {
-            TokenData::Ident("if") => {
-                let if_expr = self.parse_if()?;
-                Ok(Ast {
-                    span: peeked.span,
-                    node: AstNode::IfExpr(if_expr)
-                })
-            },
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
                     TokenData::Ident("variable name"), 
                     TokenData::OpenBracket(BracketType::Smooth)
                 ];
-
+    
                 self.toks.next();
                 let mutable = peeked.data == TokenData::Ident("mut");
                 self.trace.push("variable declaration");
-
+    
                 let next = self.next_tok(EXPECTING_AFTER_LET)?;
-
+    
                 let mut var_type = None;
                 let name = match next.data {
                     TokenData::Ident(name) => self.symbol(name),
                     TokenData::OpenBracket(BracketType::Smooth) => {
                         let typename = self.parse_typename()?;
                         self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-
+    
                         var_type = Some(typename);
-
+    
                         let name = self.expect_next_ident(&[TokenData::Ident("variable name")])?;
                         self.symbol(name)
                     },
@@ -263,9 +259,9 @@ impl<'int, 'src> Parser<'int, 'src> {
                         }
                     })
                 };
-
+    
                 self.trace.pop();
-
+    
                 Ok(Ast {
                     span: (peeked.span.from, next.span.to).into(),
                     node: AstNode::VarDeclaration {
@@ -274,13 +270,58 @@ impl<'int, 'src> Parser<'int, 'src> {
                         mutable
                     }
                 })
-            }
+            },
+            _ => Err(ParseError {
+                highlighted_span: Some(peeked.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: peeked.clone(),
+                    expecting: ExpectingOneOf(EXPECTING_FOR_STMT)
+                }
+            })
         }
+        
+    }
+
+    /// Parse a full expression from the token stream
+    fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
+        let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+
+        let expr = match peeked.data {
+            TokenData::Ident("if") => {
+                let if_expr = self.parse_if()?;
+                Ast {
+                    span: peeked.span,
+                    node: AstNode::IfExpr(if_expr)
+                }
+            },
+
+            TokenData::
+            
+        };
+
+        self.parse_expr_rhs(expr)
     }
 
     /// Parse the right hand side of an expression if there is one
     fn parse_expr_rhs(&mut self, lhs: Ast) -> ParseResult<'src, Ast> {
-
+        let peeked = self.toks.peek();
+        if let Some(peeked) = peeked {
+            match peeked.data {
+                TokenData::Op(operator) => {
+                    self.toks.next();
+                    
+                    let rhs = self.parse_expr()?;
+                    Ok(Ast {
+                        span: (lhs.span.from, rhs.span.to).into(),
+                        node: AstNode::BinExpr(Box::new(lhs), operator, Box::new(rhs))
+                    })
+                },
+                _ => Ok(lhs)
+            }
+        } else {
+            Ok(lhs)
+        }
     }
 
     /// Parse an if statement
@@ -308,15 +349,21 @@ impl<'int, 'src> Parser<'int, 'src> {
                     Ok(IfExpr {
                         cond: Box::new(cond),
                         body,
-                        else_expr: ElseExpr::Else(else_body)
+                        else_expr: Some(ElseExpr::Else(else_body))
                     })
                 },
                 _ => Ok(IfExpr {
                     cond: Box::new(cond),
                     body,
-                    else_expr: ElseExpr::ElseIf(Box::new(self.parse_if()))
+                    else_expr: Some(ElseExpr::ElseIf(Box::new(self.parse_if())))
                 })
             }
+        } else {
+            Ok(IfExpr {
+                cond: Box::new(cond),
+                body,
+                else_expr: None
+            })
         }
     }
 

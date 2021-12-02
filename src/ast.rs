@@ -4,7 +4,7 @@ use bitflags::bitflags;
 use smallvec::SmallVec;
 use string_interner::symbol::SymbolU32 as Symbol;
 
-use crate::util::loc::Span;
+use crate::{util::loc::Span, parse::token::Op};
 
 bitflags! {
     /// Structure holding flags of a function's prototype
@@ -54,7 +54,11 @@ pub enum AstNode {
         ty: Option<UnresolvedType>,
         /// If the variable is mutable
         mutable: bool,
-    }
+    },
+    /// A binary expression with LHS, operator, and RHS
+    BinExpr(Box<Ast>, Op, Box<Ast>),
+    /// A unary expression with only operator and RHS
+    UnaryExpr(Op, Box<Ast>),
 }
 
 #[derive(Clone, Debug)]
@@ -64,7 +68,7 @@ pub struct IfExpr {
     /// The body of the if statement
     pub body: Vec<Ast>,
     /// Either another if statement or a body
-    pub else_expr: ElseExpr,
+    pub else_expr: Option<ElseExpr>,
 }
 
 /// Enum representing what can come after an if expression's body
