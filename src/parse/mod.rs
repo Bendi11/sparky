@@ -296,7 +296,29 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             },
 
-            TokenData::
+            TokenData::Op(unaryop) => {
+                self.trace.push("unary operation");
+                let rhs = self.parse_expr()?;
+                self.trace.pop();
+
+                Ast {
+                    span: (peeked.span.from, rhs.span.to).into(),
+                    node: AstNode::UnaryExpr(unaryop, Box::new(rhs))
+                }
+            },
+
+            TokenData::Number(num_str) => {
+                let (base, ignore_start) = if num_str.len() > 2 {
+                    match &num_str[0..2] {
+                        "0x" => (16, true),
+                        "0b" => (2, true),
+                        "0o" => (8, true),
+                        _ => (10, false)
+                    }
+                } else { (10, false) };
+
+                
+            }
             
         };
 
@@ -601,6 +623,7 @@ impl<'int, 'src> Parser<'int, 'src> {
         }
     }
 
+    fn parse_number(&mut self)
 }
 
 /// Structure containing parse error backtrace information and a [ParseErrorKind] with more specific error

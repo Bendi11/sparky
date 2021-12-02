@@ -59,6 +59,8 @@ pub enum AstNode {
     BinExpr(Box<Ast>, Op, Box<Ast>),
     /// A unary expression with only operator and RHS
     UnaryExpr(Op, Box<Ast>),
+    /// A floating or fixed point number literal
+    NumberLiteral(NumberLiteral),
 }
 
 #[derive(Clone, Debug)]
@@ -86,6 +88,13 @@ pub struct Ast {
     pub node: AstNode,
     /// The span of the source string that this AST node occupies
     pub span: Span,
+}
+
+/// A type representing floating point or fixed-point literal
+#[derive(Clone, Debug)]
+pub enum NumberLiteral {
+    Unsigned(bool, u64),
+    Signed(f64)
 }
 
 /// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as 

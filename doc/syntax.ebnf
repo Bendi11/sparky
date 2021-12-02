@@ -16,7 +16,7 @@
 
 <matchcase> ::= <user-typename> <ident>?
 
-<matcharm> ::= ( <matchcase> | "default" ) "->" ( <body> | <expr> | <phistmt> )
+<matcharm> ::= <matchcase>? "->" ( <body> | <expr> | <phistmt> )
 <matchexpr> ::= "match" <expr> "{" ( <matcharm> "," )* <matcharm>? "}"
 
 <retstmt> ::= "return" <expr>?
