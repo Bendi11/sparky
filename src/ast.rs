@@ -46,6 +46,15 @@ pub enum AstNode {
     FunCall(Symbol, Vec<Ast>),
     /// If statement / expression
     IfExpr(IfExpr),
+    /// A variable declaration using the `let` or `mut` keywords
+    VarDeclaration {
+        /// The name of the variable being declared
+        name: Symbol,
+        /// Optionally specified type of the variable
+        ty: Option<UnresolvedType>,
+        /// If the variable is mutable
+        mutable: bool,
+    }
 }
 
 #[derive(Clone, Debug)]

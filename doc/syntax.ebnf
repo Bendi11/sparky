@@ -22,7 +22,7 @@
 <retstmt> ::= "return" <expr>?
 <phistmt> ::= "phi" <expr>
 <assignstmt> ::= ( <varaccessexpr> | <varstmt> ) "=" <expr>
-<varstmt> ::= ( "let" | "mut" ) <ident>
+<varstmt> ::= ( "let" | "mut" ) ( "(" <typename> ")" )? <ident>
 <loopstmt> ::= "loop" <body>
 <ifexpr> ::= "if" <expr> <body> ( ( "else" <body> ) | ( "else" <ifstmt> ) )
 
