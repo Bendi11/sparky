@@ -44,6 +44,25 @@ pub enum AstNode {
     },
     /// Function call with argument expressions
     FunCall(Symbol, Vec<Ast>),
+    /// If statement / expression
+    IfExpr(IfExpr),
+}
+
+#[derive(Clone, Debug)]
+pub struct IfExpr {
+    /// Conditional expression
+    pub cond: Box<Ast>,
+    /// The body of the if statement
+    pub body: Vec<Ast>,
+    /// Either another if statement or a body
+    pub else_expr: ElseExpr,
+}
+
+/// Enum representing what can come after an if expression's body
+#[derive(Clone, Debug)]
+pub enum ElseExpr {
+    ElseIf(Box<IfExpr>),
+    Else(Vec<Ast>)
 }
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for 

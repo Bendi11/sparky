@@ -3,7 +3,7 @@ use std::{iter::Peekable, fmt};
 use smallvec::SmallVec;
 use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
-use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags}, parse::token::Op};
+use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr}, parse::token::Op};
 
 use self::{lex::Lexer, token::{TokenData, BracketType, Token}};
 
@@ -220,7 +220,46 @@ impl<'int, 'src> Parser<'int, 'src> {
 
     /// Parse a full expression from the token stream
     fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
-        unimplemented!()
+        let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+
+    }
+
+    /// Parse an if statement
+    fn parse_if(&mut self) -> ParseResult<'src, IfExpr> {
+        self.expect_next(&[TokenData::Ident("if")])?;
+        self.trace.push("if condition");
+        let cond = self.parse_expr()?;
+        self.trace.pop();
+
+        self.trace.push("if body");
+        let body = self.parse_body()?;
+        self.trace.pop();
+
+        let peek = self.toks.peek();
+        if let Some(TokenData::Ident("else")) = peek.map(|tok| &tok.data) {
+            self.toks.next();
+
+            let after_else = self.peek_tok(&[TokenData::OpenBracket(BracketType::Curly)])?;
+            match after_else.data {
+                TokenData::OpenBracket(BracketType::Curly) => {
+                    self.trace.push("else body");
+                    let else_body = self.parse_body()?;
+                    self.trace.pop();
+
+                    IfExpr {
+                        cond: Box::new(cond),
+                        body,
+                        else_expr: ElseExpr::Else(else_body)
+                    }
+                },
+                _ => IfExpr {
+                        cond: Box::new(cond),
+                        body,
+                        else_expr: ElseExpr::ElseIf(Box::new(self.parse_if()))
+                    }
+                }
+            }
+        }
     }
 
     /// Parse a prefix expression from the token stream
