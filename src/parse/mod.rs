@@ -286,9 +286,9 @@ impl<'int, 'src> Parser<'int, 'src> {
 
     /// Parse a full expression from the token stream
     fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
-        let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+        let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?.clone();
 
-        let expr = match peeked.data {
+        let expr = match &peeked.data {
             TokenData::Ident("if") => {
                 let if_expr = self.parse_if()?;
                 Ast {
@@ -298,13 +298,57 @@ impl<'int, 'src> Parser<'int, 'src> {
             },
 
             TokenData::Op(unaryop) => {
+                self.toks.next();
                 self.trace.push("unary operation");
                 let rhs = self.parse_expr()?;
                 self.trace.pop();
 
                 Ast {
                     span: (peeked.span.from, rhs.span.to).into(),
-                    node: AstNode::UnaryExpr(unaryop, Box::new(rhs))
+                    node: AstNode::UnaryExpr(*unaryop, Box::new(rhs))
+                }
+            },
+            TokenData::String(data) => {
+                self.toks.next();
+                let mut unescaped = String::with_capacity(data.len());
+                let mut escaped_chars = data.chars();
+                loop {
+                    let next = match escaped_chars.next() {
+                        Some(c) => c,
+                        None => break,
+                    };
+
+                    match next {
+                        '\\' => {
+                            let after_backslash = match escaped_chars.next() {
+                                Some(c) => c,
+                                None => return Err(ParseError {
+                                    highlighted_span: Some(peeked.span),
+                                    backtrace: self.trace.clone(),
+                                    error: ParseErrorKind::ExpectingEscapeSeq
+                                })
+                            };
+                            
+                            match after_backslash {
+                                '\\' => unescaped.push('\\'),
+                                'n' => unescaped.push('\n'),
+                                't' => unescaped.push('\t'),
+                                'r' => unescaped.push('\r'),
+                                other => return Err(ParseError {
+                                    highlighted_span: Some(peeked.span),
+                                    backtrace: self.trace.clone(),
+                                    error: ParseErrorKind::UnknownEscapeSeq {
+                                       escaped: other 
+                                    }
+                                })
+                            }
+                        },
+                        _ => unescaped.push(next),
+                    }
+                }
+                Ast {
+                    span: peeked.span,
+                    node: AstNode::StringLiteral(unescaped)
                 }
             },
 
@@ -337,7 +381,15 @@ impl<'int, 'src> Parser<'int, 'src> {
                     span: peeked.span,
                     node: AstNode::NumberLiteral(number_val)
                 }
-            }
+            },
+            _ => return Err(ParseError {
+                highlighted_span: Some(peeked.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: peeked,
+                    expecting: ExpectingOneOf(Self::EXPECTED_FOR_EXPRESSION)
+                }
+            })
 
         };
 
@@ -396,7 +448,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 _ => Ok(IfExpr {
                     cond: Box::new(cond),
                     body,
-                    else_expr: Some(ElseExpr::ElseIf(Box::new(self.parse_if())))
+                    else_expr: Some(ElseExpr::ElseIf(Box::new(self.parse_if()?)))
                 })
             }
         } else {
@@ -565,7 +617,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                         }
                     })
                 },
-                _ => Ok(UnresolvedType::UserDefined { name: self.symbol(name), generic_args: SmallVec::new() })
+                _ => Ok(UnresolvedType::UserDefined { name: self.symbol(name) })
             },
             TokenData::OpenBracket(BracketType::Square) => {
                 self.trace.push("array type length");
@@ -641,8 +693,6 @@ impl<'int, 'src> Parser<'int, 'src> {
             })
         }
     }
-
-
 }
 
 /// Structure containing parse error backtrace information and a [ParseErrorKind] with more specific error
@@ -674,7 +724,13 @@ pub enum ParseErrorKind<'src> {
     /// Failed to parse a number literal
     NumberParse {
         number: &'src str,
-    }
+    },
+    /// An unknown escape sequence was encountered in a string literal
+    UnknownEscapeSeq {
+        escaped: char,
+    },
+    /// A backslash character was encountered with no escaped character
+    ExpectingEscapeSeq,
 }
 
 /// Wrapper over an [ArrayVec] that holds expected token data for the [UnexpectedToken](ParseErrorKind::UnexpectedToken) error

@@ -62,6 +62,8 @@ pub enum AstNode {
     UnaryExpr(Op, Box<Ast>),
     /// A floating or fixed point number literal
     NumberLiteral(NumberLiteral),
+    /// A string literal value
+    StringLiteral(String),
     /// Casting an expression to the given type
     Cast(UnresolvedType, Box<Ast>),
 }
