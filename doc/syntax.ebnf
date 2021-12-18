@@ -5,12 +5,12 @@
 <fundef> ::= <fundecl> <body>
 <fundecl> ::= "fun" <ident> ( <typename> <ident> "," )* ( <typename> <ident> )? ( "->" <typename> )? "extern"?
 
-<typedef> ::= <typedecl> <structfields> 
+<typedef> ::= <typedecl> <structfields>
             | <typedecl> <typename>
             | <typedecl> <typename> ( "|" <typename> )+
 <structfields> ::= "{" ( <typename> <ident> "," )* ( <typename> <ident>? ) "}"
 
-<typedecl> ::= "type" <user-typename> "=" 
+<typedecl> ::= "type" <user-typename> "="
 
 <stmt> ::= <callexpr> | <assignstmt> | <varstmt> | <retstmt> | <matchexpr> | <ifexpr> | "break" | "cont"
 
@@ -29,6 +29,7 @@
 <body> ::= "{" <stmt>* "}"
 
 <expr> ::= <literal> | <prefix> | <op> <expr> | <expr> <op> <expr> | <ifexpr> | <matchexpr>
+        | "$" <typename> <expr>
 
 <prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")"
 
@@ -45,7 +46,7 @@
              | "*" <typename>
              | <array-typename>
 
-<array-typename> ::= "[" <digit>+? "]" <typename> 
+<array-typename> ::= "[" <digit>+? "]" <typename>
 
 <user-typename> ::= <path> ( "|" ( (<typename> "," )* <typename>? ) "|" )?
 

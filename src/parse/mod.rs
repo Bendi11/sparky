@@ -1,9 +1,10 @@
 use std::{iter::Peekable, fmt};
 
+use num_bigint::BigInt;
 use smallvec::SmallVec;
 use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
-use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr}, parse::token::Op};
+use crate::{util::loc::Span, ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral}, parse::token::Op};
 
 use self::{lex::Lexer, token::{TokenData, BracketType, Token}};
 
@@ -13,7 +14,7 @@ pub mod token;
 /// A structure consuming a token stream from a lexer and transforming it to an Abstract Syntax Tree
 #[derive(Debug)]
 pub struct Parser<'int, 'src> {
-    /// The token stream to consume tokens from 
+    /// The token stream to consume tokens from
     toks: Peekable<Lexer<'src>>,
     /// The current parse trace used for error and debug backtraces
     trace: SmallVec<[&'static str ; 24]>,
@@ -26,7 +27,7 @@ pub type ParseResult<'src, T> = Result<T, ParseError<'src>>;
 impl<'int, 'src> Parser<'int, 'src> {
     /// All tokens expected to begin when parsing an expression
     const EXPECTED_FOR_EXPRESSION: &'static [TokenData<'static>] = &[
-        
+
     ];
 
     /// Create a new `Parser` from the given source string
@@ -37,7 +38,7 @@ impl<'int, 'src> Parser<'int, 'src> {
             interner
         }
     }
-    
+
     /// Consume the next token from the token stream or an [error](ParseErrorKind::UnexpectedEOF) if there are no more tokens to be lexed
     fn next_tok(&mut self, expecting: &'static [TokenData<'static>]) -> ParseResult<'src, Token<'src>> {
         self.toks.next()
@@ -103,13 +104,13 @@ impl<'int, 'src> Parser<'int, 'src> {
     }
 
     /// Generate a [Symbol] for the given string using the string interner contained in `self`
-    /// 
+    ///
     /// Encapsulated as a function to allow for easier refactoring later
     #[inline]
     fn symbol(&mut self, for_str: &'src str) -> Symbol {
         self.interner.get_or_intern(for_str)
     }
-    
+
     /// Parse a top-level declaration from the token stream
     fn parse_decl(&mut self) -> ParseResult<'src, Ast> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
@@ -147,8 +148,8 @@ impl<'int, 'src> Parser<'int, 'src> {
                             args.push((self.symbol(arg_name), arg_type));
 
                             const EXPECTING_AFTER_ARG: &[TokenData<'static>] = &[
-                                TokenData::OpenBracket(BracketType::Curly), 
-                                TokenData::Comma, 
+                                TokenData::OpenBracket(BracketType::Curly),
+                                TokenData::Comma,
                                 TokenData::Arrow
                             ];
 
@@ -162,7 +163,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
 
                 const EXPECTING_AFTER_ARGS: &[TokenData<'static>] = &[
-                    TokenData::OpenBracket(BracketType::Curly), 
+                    TokenData::OpenBracket(BracketType::Curly),
                     TokenData::Arrow
                 ];
 
@@ -228,25 +229,25 @@ impl<'int, 'src> Parser<'int, 'src> {
         match peeked.data {
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
-                    TokenData::Ident("variable name"), 
+                    TokenData::Ident("variable name"),
                     TokenData::OpenBracket(BracketType::Smooth)
                 ];
-    
+
                 self.toks.next();
                 let mutable = peeked.data == TokenData::Ident("mut");
                 self.trace.push("variable declaration");
-    
+
                 let next = self.next_tok(EXPECTING_AFTER_LET)?;
-    
+
                 let mut var_type = None;
                 let name = match next.data {
                     TokenData::Ident(name) => self.symbol(name),
                     TokenData::OpenBracket(BracketType::Smooth) => {
                         let typename = self.parse_typename()?;
                         self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-    
+
                         var_type = Some(typename);
-    
+
                         let name = self.expect_next_ident(&[TokenData::Ident("variable name")])?;
                         self.symbol(name)
                     },
@@ -259,9 +260,9 @@ impl<'int, 'src> Parser<'int, 'src> {
                         }
                     })
                 };
-    
+
                 self.trace.pop();
-    
+
                 Ok(Ast {
                     span: (peeked.span.from, next.span.to).into(),
                     node: AstNode::VarDeclaration {
@@ -280,7 +281,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             })
         }
-        
+
     }
 
     /// Parse a full expression from the token stream
@@ -317,9 +318,27 @@ impl<'int, 'src> Parser<'int, 'src> {
                     }
                 } else { (10, false) };
 
-                
+                let number = &num_str[if ignore_start { 2 } else { 0 }..];
+                let number_val = match BigInt::parse_bytes(number.as_bytes(), base) {
+                    Some(val) => NumberLiteral::Integer(val),
+                    None => match number.parse::<f64>() {
+                        Ok(val) => NumberLiteral::Float(val),
+                        Err(_) => return Err(ParseError {
+                            highlighted_span: Some(peeked.span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::NumberParse {
+                                number: num_str,
+                            }
+                        })
+                    }
+                };
+
+                Ast {
+                    span: peeked.span,
+                    node: AstNode::NumberLiteral(number_val)
+                }
             }
-            
+
         };
 
         self.parse_expr_rhs(expr)
@@ -332,7 +351,7 @@ impl<'int, 'src> Parser<'int, 'src> {
             match peeked.data {
                 TokenData::Op(operator) => {
                     self.toks.next();
-                    
+
                     let rhs = self.parse_expr()?;
                     Ok(Ast {
                         span: (lhs.span.from, rhs.span.to).into(),
@@ -395,7 +414,7 @@ impl<'int, 'src> Parser<'int, 'src> {
             TokenData::Ident("variable or function name"),
             TokenData::OpenBracket(BracketType::Smooth)
         ];
-        
+
         let next = self.next_tok(EXPECTING_NEXT)?;
         let member_of = match next.data {
             TokenData::Ident(name) => {
@@ -451,7 +470,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             })
         };
-        
+
         //Parse any indexing or member access expressions
         self.parse_access(member_of)
     }
@@ -482,7 +501,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 self.toks.next();
                 self.trace.push("index expression");
                 let index = self.parse_expr()?;
-                
+
 
                 self.expect_next(&[TokenData::CloseBracket(BracketType::Square)])?;
                 self.trace.pop();
@@ -503,7 +522,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     /// Attempt to parse a typename from the token stream
     fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
-            TokenData::Ident("type name"), 
+            TokenData::Ident("type name"),
             TokenData::OpenBracket(BracketType::Smooth),
         ];
 
@@ -623,7 +642,7 @@ impl<'int, 'src> Parser<'int, 'src> {
         }
     }
 
-    fn parse_number(&mut self)
+
 }
 
 /// Structure containing parse error backtrace information and a [ParseErrorKind] with more specific error
@@ -638,7 +657,7 @@ pub struct ParseError<'src> {
     pub error: ParseErrorKind<'src>,
 }
 
-/// Enumeration containing all possible parser errors 
+/// Enumeration containing all possible parser errors
 #[derive(Clone, Debug)]
 pub enum ParseErrorKind<'src> {
     /// An unexpected token was found in the input file
@@ -651,6 +670,10 @@ pub enum ParseErrorKind<'src> {
     /// The source ended unexpectedly
     UnexpectedEOF {
         expecting: ExpectingOneOf,
+    },
+    /// Failed to parse a number literal
+    NumberParse {
+        number: &'src str,
     }
 }
 

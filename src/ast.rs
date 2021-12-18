@@ -1,6 +1,7 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
 use bitflags::bitflags;
+use num_bigint::BigInt;
 use smallvec::SmallVec;
 use string_interner::symbol::SymbolU32 as Symbol;
 
@@ -61,6 +62,8 @@ pub enum AstNode {
     UnaryExpr(Op, Box<Ast>),
     /// A floating or fixed point number literal
     NumberLiteral(NumberLiteral),
+    /// Casting an expression to the given type
+    Cast(UnresolvedType, Box<Ast>),
 }
 
 #[derive(Clone, Debug)]
@@ -80,7 +83,7 @@ pub enum ElseExpr {
     Else(Vec<Ast>)
 }
 
-/// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for 
+/// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
 #[derive(Clone, Debug)]
 pub struct Ast {
@@ -90,14 +93,15 @@ pub struct Ast {
     pub span: Span,
 }
 
-/// A type representing floating point or fixed-point literal
+/// A number literal holding either a big integer or
+/// floating point value
 #[derive(Clone, Debug)]
 pub enum NumberLiteral {
-    Unsigned(bool, u64),
-    Signed(f64)
+    Integer(BigInt),
+    Float(f64),
 }
 
-/// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as 
+/// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as
 /// user-defined types are resolved when lowering the AST to IR
 #[derive(Clone, Debug)]
 pub enum UnresolvedType {
@@ -113,7 +117,7 @@ pub enum UnresolvedType {
     },
     Pointer(Box<UnresolvedType>),
     Array {
-        elements: Box<UnresolvedType>, 
+        elements: Box<UnresolvedType>,
         len: u64
     },
     /// Unit type with only one value, like void in C or () in rust
@@ -122,8 +126,6 @@ pub enum UnresolvedType {
     UserDefined {
         /// The name of the user-defined type
         name: Symbol,
-        /// Names of any generic type arguments for the type
-        generic_args: SmallVec<[Symbol ; 3]>,
     },
 }
 

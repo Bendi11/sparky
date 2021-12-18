@@ -79,6 +79,8 @@ pub enum TokenData<'src> {
     Op(Op),
     // :
     Colon,
+    // $
+    Dollar,
     /// :=
     Assign,
 }

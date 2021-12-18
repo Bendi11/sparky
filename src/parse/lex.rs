@@ -63,6 +63,7 @@ impl<'src> Lexer<'src> {
             '~' => Token::new(start_loc, TokenData::Op(Op::NOT)),
             '^' => Token::new(start_loc, TokenData::Op(Op::XOR)),
             '=' => Token::new(start_loc, TokenData::Op(Op::Eq)),
+            '$' => Token::new(start_loc, TokenData::Dollar),
 
             '.' => Token::new(start_loc, TokenData::Period),
             ',' => Token::new(start_loc, TokenData::Comma),
@@ -288,7 +289,7 @@ mod tests {
 fun main i32 argc, []*char argv -> i32 {
     let name := argv[0b0011010102]
 }
-    
+
 "#;
 
     #[test]
