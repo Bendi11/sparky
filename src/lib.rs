@@ -12,6 +12,11 @@ mod tests {
 
     const SOURCE: &str = 
 r#"
+type test_ty i32 | bool
+type test_struct {
+    i32 field
+}
+
 fun test_fn {
     let a := if true {
         

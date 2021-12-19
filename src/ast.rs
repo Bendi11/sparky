@@ -110,6 +110,13 @@ pub enum DefData {
     FunDef(FunProto, Vec<Ast>),
     /// A function declaration with no body
     FunDec(FunProto),
+    /// A type alias binding a name to a type
+    AliasDef {
+        /// The alias that `aliased` can be accessed by
+        name: Symbol,
+        /// The aliased type
+        aliased: UnresolvedType
+    },
     /// A structure type definition
     StructDef {
         /// The name of the structure type
@@ -117,6 +124,13 @@ pub enum DefData {
         /// A map of all fields in the type
         fields: HashMap<Symbol, UnresolvedType>
     },
+    /// An enumeration definition
+    EnumDef {
+        /// The name of the enum
+        name: Symbol,
+        /// All variants of this enum
+        variants: Vec<UnresolvedType>,
+    }
 }
 impl DefData {
     /// Get the name of this definition
@@ -126,7 +140,9 @@ impl DefData {
             Self::StructDef {
                 name,
                 ..
-            } => *name
+            } => *name,
+            Self::EnumDef{name, ..} => *name,
+            Self::AliasDef{name, ..} => *name,
         }
     }
 }

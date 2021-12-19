@@ -1,4 +1,4 @@
-use std::{iter::Peekable, fmt, convert::TryFrom, borrow::Cow};
+use std::{iter::Peekable, fmt, convert::TryFrom, borrow::Cow, collections::HashMap};
 
 use num_bigint::BigInt;
 use smallvec::SmallVec;
@@ -227,18 +227,57 @@ impl<'int, 'src> Parser<'int, 'src> {
             TokenData::Ident("type") => {
                 const EXPECTING_AFTER_TYPE: &[TokenData<'static>] = &[
                     TokenData::Ident("enum / aliased type variant"), TokenData::OpenBracket(BracketType::Curly)
-                ]
+                ];
+
                 let name = self.expect_next_ident(&[TokenData::Ident("type name")])?;
 
-                self.trace.push(format!("type definition '{}'", name));
+                self.trace.push(format!("type definition '{}'", name).into());
 
-                let after_name = self.peek_tok(EXPECTING_AFTER_TYPE)?;
+                let after_name = self.peek_tok(EXPECTING_AFTER_TYPE)?.clone();
                 let typedef = match after_name.data {
                     TokenData::OpenBracket(BracketType::Curly) => {
+                        const EXPECTING_FOR_STRUCT: &[TokenData<'static>] = &[
+                            TokenData::Ident("field type"), TokenData::CloseBracket(BracketType::Curly)
+                        ];
+
                         self.toks.next();
+                        
+                        let mut fields = HashMap::new();
+                        loop {
+                            let peeked = self.peek_tok(EXPECTING_FOR_STRUCT)?.clone();
+                            match peeked.data {
+                                TokenData::Ident(_) => {
+                                   self.trace.push("struct type field".into());
+                                   let field_typename = self.parse_typename()?;
+
+                                   let field_name = self.expect_next_ident(&[TokenData::Ident("struct field name")])?;
+                                   self.trace.pop();
+                                   fields.insert(self.symbol(field_name), field_typename);
+                                },
+                                TokenData::CloseBracket(BracketType::Curly) => {
+                                    self.toks.next();
+                                    break
+                                },
+                                _ => return Err(ParseError {
+                                    highlighted_span: Some((next.span.from, peeked.span.to).into()),
+                                    backtrace: self.trace.clone(),
+                                    error: ParseErrorKind::UnexpectedToken {
+                                        found: peeked.clone(),
+                                        expecting: ExpectingOneOf(EXPECTING_FOR_STRUCT)
+                                    }
+                                })
+                            }
+                        }
+                        Def {
+                            span: (next.span.from, after_name.span.to).into(),
+                            data: DefData::StructDef {
+                                name: self.symbol(name),
+                                fields
+                            }
+                        }
                     },
-                    TokenData::Ident(typename) => {
-                        self.trace.push("enum / aliased typename");
+                    TokenData::Ident(_) => {
+                        self.trace.push("enum / aliased typename".into());
                         let first_type = self.parse_typename()?;
                         self.trace.pop();
                         
@@ -246,26 +285,45 @@ impl<'int, 'src> Parser<'int, 'src> {
                         if let Some(TokenData::Op(Op::OR)) = self.toks.peek().map(|tok| &tok.data) {
                             let mut variants = vec![first_type];
 
-                            while let Some(after_first) = self.toks.peek() {
-                                match after_first.data {
-                                    TokenData::Op(Op::OR) => {
-                                        self.toks.next();
+                            while let Some(TokenData::Op(Op::OR)) = self.toks.peek().map(|tok| &tok.data) {
+                                self.toks.next();
     
-                                        self.trace.push("enum variant typename");
-                                        let variant_type = self.parse_typename()?;
-                                        self.trace.pop();
+                                self.trace.push("enum variant typename".into());
+                                let variant_type = self.parse_typename()?;
+                                self.trace.pop();
 
-                                        variants.push(variant_type);
-                                    }
+                                variants.push(variant_type);
+                            }
+
+                            Def {
+                                span: next.span,
+                                data: DefData::EnumDef {
+                                    name: self.symbol(name),
+                                    variants
                                 }
                             }
                         } else {
-
+                            Def {
+                               span: next.span,
+                               data: DefData::AliasDef {
+                                   name: self.symbol(name),
+                                   aliased: first_type
+                               }
+                            }
                         }
-                    }
-                }
+                    },
+                    _ => return Err(ParseError {
+                        highlighted_span: Some((next.span.from, after_name.span.to).into()),
+                        backtrace: self.trace.clone(),
+                        error: ParseErrorKind::UnexpectedToken {
+                            found: next,
+                            expecting: ExpectingOneOf(EXPECTING_AFTER_TYPE)
+                        }
+                    })
+                };
 
                 self.trace.pop();
+                Ok(typedef)
             },
             _ => Err(ParseError {
                 highlighted_span: Some(next.span),
