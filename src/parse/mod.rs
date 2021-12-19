@@ -693,9 +693,27 @@ impl<'int, 'src> Parser<'int, 'src> {
             TokenData::OpenBracket(BracketType::Smooth) => {
                 self.trace.push("expression in parentheses".into());
                 let expr = self.parse_expr()?;
-                if let Some(TokenData::Comma) = self.toks.peek().map(|tok| &tok.data) {
+                
+                //Check for a tuple literal
+                let expr = if let Some(TokenData::Comma) = self.toks.peek().map(|tok| &tok.data) {
+                    let old_expr_from = expr.span.from;
 
-                }
+                    let mut tuple_elements = vec![expr];
+                    self.trace.push("tuple literal".into());
+                    while let Some(TokenData::Comma) = self.toks.peek().map(|tok| &tok.data) {
+                        let tuple_element = self.parse_expr()?;
+                        tuple_elements.push(tuple_element);
+                    }
+                    self.trace.pop();
+                    Ast {
+                        span: (old_expr_from, tuple_elements.last().unwrap().span.to).into(),
+                        node: AstNode::TupleLiteral(tuple_elements)
+                    }
+
+                } else {
+                    expr
+                };
+
                 self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
                 self.trace.pop();
                 expr
