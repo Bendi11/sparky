@@ -177,7 +177,7 @@ impl<'src> Lexer<'src> {
                 };
                 Token::new(
                     (start_loc, (self.line, self.col).into()),
-                    TokenData::String(&self.src[startpos + 1..endpos - 1]),
+                    TokenData::String(&self.src[startpos + 1..endpos]),
                 )
             }
 

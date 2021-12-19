@@ -413,6 +413,16 @@ impl<'int, 'src> Parser<'int, 'src> {
                     }
                 })
             },
+            TokenData::Ident("phi") => {
+                self.toks.next();
+                self.trace.push("phi statement".into());
+                let phi_expr = self.parse_expr()?;
+                self.trace.pop();
+                Ok(Ast {
+                    span: (peeked.span.from, phi_expr.span.to).into(),
+                    node: AstNode::PhiExpr(Box::new(phi_expr))
+                })
+            },
             _ => Err(ParseError {
                 highlighted_span: Some(peeked.span),
                 backtrace: self.trace.clone(),
@@ -449,16 +459,6 @@ impl<'int, 'src> Parser<'int, 'src> {
                 Ast {
                     span: peeked.span,
                     node: AstNode::BooleanLiteral(false)
-                }
-            },
-            TokenData::Ident("phi") => {
-                self.toks.next();
-                self.trace.push("phi expression".into());
-                let phi_expr = self.parse_expr()?;
-                self.trace.pop();
-                Ast {
-                    span: (peeked.span.from, phi_expr.span.to).into(),
-                    node: AstNode::PhiExpr(Box::new(phi_expr))
                 }
             },
             TokenData::Dollar => {
@@ -504,7 +504,9 @@ impl<'int, 'src> Parser<'int, 'src> {
                                 None => return Err(ParseError {
                                     highlighted_span: Some(peeked.span),
                                     backtrace: self.trace.clone(),
-                                    error: ParseErrorKind::ExpectingEscapeSeq
+                                    error: ParseErrorKind::ExpectingEscapeSeq {
+                                        literal: *data,
+                                    }
                                 })
                             };
                             
@@ -916,7 +918,10 @@ pub enum ParseErrorKind<'src> {
         literal: &'src str,
     },
     /// A backslash character was encountered with no escaped character
-    ExpectingEscapeSeq,
+    ExpectingEscapeSeq {
+        /// The string that an escape sequence was found in
+        literal: &'src str,
+    },
 }
 
 impl fmt::Display for ParseErrorKind<'_> {
@@ -926,7 +931,7 @@ impl fmt::Display for ParseErrorKind<'_> {
             Self::UnexpectedEOF{expecting} => writeln!(f, "Unexpected EOF, expecting {}", expecting),
             Self::NumberParse{number} => writeln!(f, "Failed to parse numeric literal {}", number),
             Self::UnknownEscapeSeq{escaped, literal} => writeln!(f, "Unknown escape sequence '\\{}' in string literal \"{}\"", escaped, literal),
-            Self::ExpectingEscapeSeq => writeln!(f, "Expecting an escape sequence"),
+            Self::ExpectingEscapeSeq{literal} => writeln!(f, "Expecting an escape sequence in \"{}\"", literal),
         }
     }
 }

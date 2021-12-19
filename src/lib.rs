@@ -19,9 +19,9 @@ type test_struct {
 
 fun test_fn {
     let a := if true {
-        
+        phi "test\na" 
     } else {
-
+        phi ""
     }
 }
 
