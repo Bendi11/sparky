@@ -1,9 +1,9 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
-use std::collections::HashMap;
-
+use std::collections::HashMap;
+
 use bitflags::bitflags;
-use num_bigint::BigInt;
+use num_bigint::BigInt;
 
 use string_interner::symbol::SymbolU32 as Symbol;
 
@@ -13,6 +13,101 @@ bitflags! {
     /// Structure holding flags of a function's prototype
     pub struct FunFlags: u8 {
         const EXTERN = 0b00000001;
+    }
+}
+
+/// Structure containing a list of symbols separated by the colon
+/// character, for example std:io:open 
+#[derive(Clone, Debug)]
+pub struct UnresolvedPath {
+    internal: UnresolvedPathInternal 
+}
+
+/// Enumeration allowing both a heap-allocated list of parts for a path
+/// or a single stack-allocated [Symbol] for optimization, avoiding a 
+/// heap allocation for every identifier
+///
+/// Kept private becase the [Multiple](UnresolvedPathInternal::Multiple) variant 
+/// must always have at least one symbol and allowing public access risks allowing
+/// that invariant
+#[derive(Clone, Debug)]
+enum UnresolvedPathInternal {
+    /// A path made of a single part
+    Single(Symbol),
+    /// A path made of multiple parts
+    /// **WARNING**
+    /// Must have at least one part
+    Multiple(Vec<Symbol>),
+}
+
+/// An iterator over the items in an [UnresolvedPath]
+pub enum PathIter<'a> {
+    /// A single element path
+    Single(std::iter::Once<Symbol>),
+    /// Multiple path parts to iterate over
+    Multiple(std::slice::Iter<'a, Symbol>)
+}
+
+impl Iterator for PathIter<'_> {
+    type Item = Symbol;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Single(once) => once.next(),
+            Self::Multiple(parts) => parts.next().map(|x| *x)
+        }
+    }
+}
+
+impl ExactSizeIterator for PathIter<'_> {}
+
+impl UnresolvedPath {
+    /// Create a new path with only one identifier
+    pub fn new(part: Symbol) -> Self {
+        Self { internal: UnresolvedPathInternal::Single(part) }
+    }
+    
+    /// Create a new path from a list of parts
+    ///
+    /// **Note**
+    /// The `parts` argument must contain at least one Symbol
+    pub fn new_parts(parts: &[Symbol]) -> Self {
+        if parts.len() == 1 {
+            Self { internal: UnresolvedPathInternal::Single(parts[0]) }
+        } else {
+            Self { internal: UnresolvedPathInternal::Multiple(parts.to_owned()) }
+        }
+    }
+    
+    /// Get the length of this path
+    pub fn len(&self) -> usize {
+        match self.internal {
+            UnresolvedPathInternal::Single(_) => 1,
+            UnresolvedPathInternal::Multiple(ref parts) => parts.len(),
+        }
+    }
+
+    /// Retrieve the last identifier in the path
+    pub fn last(&self) -> Symbol {
+        match self.internal {
+            UnresolvedPathInternal::Single(last) => last,
+            UnresolvedPathInternal::Multiple(ref parts) => *parts.last().unwrap()
+        }
+    }
+    
+    /// Return the first part of this path
+    pub fn first(&self) -> Symbol {
+        match self.internal {
+            UnresolvedPathInternal::Single(first) => first,
+            UnresolvedPathInternal::Multiple(ref parts) => *parts.first().unwrap()
+        }
+    }
+    
+    /// Return an iterator over all parts of this path from first to last
+    pub fn iter(&self) -> PathIter<'_> {
+        match &self.internal {
+            UnresolvedPathInternal::Single(single) => PathIter::Single(std::iter::once(*single)),
+            UnresolvedPathInternal::Multiple(parts) => PathIter::Multiple(parts.into_iter())
+        }
     }
 }
 
@@ -35,7 +130,7 @@ pub struct FunProto {
 pub enum AstNode<Type = UnresolvedType> 
 where Type: Clone + std::fmt::Debug {
     /// A variable access by name
-    VarAccess(Symbol),
+    VarAccess(UnresolvedPath),
     /// Member item access with the '.' operator
     MemberAccess(Box<Ast>, Symbol),
     /// An array-like index expression using '[' ']'
@@ -44,7 +139,7 @@ where Type: Clone + std::fmt::Debug {
         index: Box<Ast>,
     },
     /// Function call with argument expressions
-    FunCall(Symbol, Vec<Ast>),
+    FunCall(UnresolvedPath, Vec<Ast>),
     /// If statement / expression
     IfExpr(IfExpr),
     /// A variable declaration using the `let` or `mut` keywords
@@ -72,6 +167,8 @@ where Type: Clone + std::fmt::Debug {
     StringLiteral(String),
     /// A literal boolean value
     BooleanLiteral(bool),
+    /// A tuple made up of multiple expressions
+    TupleLiteral(Vec<Ast>),
     /// Casting an expression to the given type
     Cast(Type, Box<Ast>),
 }

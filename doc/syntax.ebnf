@@ -31,17 +31,18 @@
 <expr> ::= <literal> | <prefix> | <op> <expr> | <expr> <op> <expr> | <ifexpr> | <matchexpr>
         | "$" <typename> <expr>
 
+<exprlist> ::= ( <expr> "," )* <expr>?
+
 <prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")"
 
-<callexpr> ::= <ident> "(" ( <expr> "," )* <expr>? ")"
-<varaccessexpr> ::= <ident>
+<callexpr> ::= <path> "(" <exprlist> ")"
+<varaccessexpr> ::= <path>
                   | <prefix> "[" <expr> "]"
                   | <prefix> "." <ident>
 
 <typename> ::= "bool" | "char" | "()"
              | ( "i" | "u" ) ( "8" | "16" | "32" | "64" )
              | "f" ( "32" | "64" )
-             | <ident> ( "<" ( ""))
              | <user-typename>
              | "*" <typename>
              | <array-typename>
@@ -55,6 +56,9 @@
 <string-literal> ::= "\"" ( . | ( "\\" . ) )* "\""
 <bool-literal> ::= "true" | "false"
 <char-literal> ::= "'" ( . | "\\" . ) "'"
+<array-literal> := "[" (<exprlist> "]"
+<tuple-literal> ::+ "(" <exprlist> ")"
+<struct-literal> ::= <user-typename> "{" ( <ident> "=" <expr> "," )* ( <ident> "=" <expr> )? "}"
 
 <op> ::= "+" | "-" | "*" | "/" | "%" | "&" | "|" | "~" | "^" | "<" | ">" | "=="
        | "<=" | ">=" | "<<" | ">>" | "&&" | "||" | "!" | "!="

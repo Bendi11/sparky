@@ -6,7 +6,7 @@ use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
 use crate::{
     util::loc::Span, 
-    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule}, 
+    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, UnresolvedPath}, 
     parse::token::Op
 };
 
@@ -107,6 +107,23 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             })
         }
+    }
+    
+    /// Consume the next path from the input tokens, requiring at least one identifier
+    fn expect_next_path(&mut self, expected: &'static [TokenData<'static>]) -> ParseResult<'src, UnresolvedPath> {
+        let first = self.expect_next_ident(expected)?;
+        let mut parts = vec![self.symbol(first)];
+        while let Some(TokenData::Colon) = self.toks.peek().map(|tok| &tok.data) {
+            self.toks.next();
+            let part = self.expect_next_ident(expected)?;
+            parts.push(self.symbol(part));
+        }
+        
+        Ok(if parts.len() == 1 {
+            UnresolvedPath::new(parts[0])
+        } else {
+            UnresolvedPath::new_parts(&parts)
+        })
     }
 
     /// Consume the next token and expect it to be the given type of token
@@ -631,9 +648,12 @@ impl<'int, 'src> Parser<'int, 'src> {
             TokenData::OpenBracket(BracketType::Smooth)
         ];
 
-        let next = self.next_tok(EXPECTING_NEXT)?;
+        let next = self.peek_tok(EXPECTING_NEXT)?.clone();
         let member_of = match next.data {
-            TokenData::Ident(name) => {
+            TokenData::Ident(_) => {
+                self.trace.push("variable or funcion name".into());
+                let name = self.expect_next_path(EXPECTING_NEXT)?;
+                self.trace.pop();
                 let peeked = self.toks.peek();
                 if let Some(TokenData::OpenBracket(BracketType::Smooth)) = peeked.map(|tok| &tok.data) {
                     self.next_tok(EXPECTING_NEXT)?; //Consume the opening bracket
@@ -660,19 +680,22 @@ impl<'int, 'src> Parser<'int, 'src> {
 
                     Ast {
                         span: next.span,
-                        node: AstNode::FunCall(self.symbol(name), args)
+                        node: AstNode::FunCall(name, args)
                     }
 
                 } else {
                     Ast {
                         span: next.span,
-                        node: AstNode::VarAccess(self.symbol(name))
+                        node: AstNode::VarAccess(name)
                     }
                 }
             },
             TokenData::OpenBracket(BracketType::Smooth) => {
                 self.trace.push("expression in parentheses".into());
                 let expr = self.parse_expr()?;
+                if let Some(TokenData::Comma) = self.toks.peek().map(|tok| &tok.data) {
+
+                }
                 self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
                 self.trace.pop();
                 expr
