@@ -1,4 +1,6 @@
-use std::{cmp::Ordering, num::NonZeroU16, fmt};
+use std::{cmp::Ordering, num::NonZeroU16, fmt, io::Write};
+
+use super::files::CompiledFile;
 
 /// A type holding one location in source text
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord)]
@@ -63,6 +65,38 @@ impl Span {
             "Attempting to create a new span with from location higher than to location"
         );
         Self { from, to }
+    }
+
+    /// Display this token data using a source file
+    pub fn display(&self, file: &CompiledFile) -> std::io::Result<()> {
+        let start_line = *file
+            .lines
+            .get(self.from.line.get() as usize - 1)
+            .expect("Invalid span line when displaying token");
+        let startpos = start_line + self.from.col as usize;
+
+        let end_line = *file
+            .lines
+            .get(self.to.line.get() as usize - 1)
+            .expect("Invalid span line when displaying token");
+        let endpos = end_line + self.to.col as usize;
+
+        let mut stdout = std::io::stderr();
+        let mut line = self.from.line.get();
+        let mut buf = [0u8; 4];
+
+        stdout.write_fmt(format_args!("{}: ", line))?;
+        for character in file.text[startpos..=endpos].chars() {
+            character.encode_utf8(&mut buf);
+            stdout.write(&buf[..character.len_utf8()])?;
+
+            if character == '\n' {
+                line += 1;
+                stdout.write_fmt(format_args!("{}: ", line))?;
+            }
+        }
+
+        stdout.flush()
     }
 
     /// Create a new span from a single location in a source file

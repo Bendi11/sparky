@@ -1,8 +1,10 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
+use std::collections::HashMap;
+
 use bitflags::bitflags;
 use num_bigint::BigInt;
-use smallvec::SmallVec;
+
 use string_interner::symbol::SymbolU32 as Symbol;
 
 use crate::{util::loc::Span, parse::token::Op};
@@ -27,13 +29,11 @@ pub struct FunProto {
     pub return_ty: UnresolvedType,
 }
 
+
 /// A node in an Abstract Syntax Tree
 #[derive(Clone, Debug)]
-pub enum AstNode {
-    /// A function declaration with no definition
-    FunDecl(FunProto),
-    /// A function definition with both a prototype and body
-    FunDef(FunProto, Vec<Ast>),
+pub enum AstNode<Type = UnresolvedType> 
+where Type: Clone + std::fmt::Debug {
     /// A variable access by name
     VarAccess(Symbol),
     /// Member item access with the '.' operator
@@ -52,20 +52,28 @@ pub enum AstNode {
         /// The name of the variable being declared
         name: Symbol,
         /// Optionally specified type of the variable
-        ty: Option<UnresolvedType>,
+        ty: Option<Type>,
         /// If the variable is mutable
         mutable: bool,
+        /// If an assignment was given, assign this expression
+        assigned: Option<Box<Ast>>,
     },
     /// A binary expression with LHS, operator, and RHS
     BinExpr(Box<Ast>, Op, Box<Ast>),
     /// A unary expression with only operator and RHS
     UnaryExpr(Op, Box<Ast>),
+    /// Phi returning a value from the current block
+    PhiExpr(Box<Ast>),
+    /// Casting an expression to a type
+    CastExpr(Type, Box<Ast>),
     /// A floating or fixed point number literal
     NumberLiteral(NumberLiteral),
     /// A string literal value
     StringLiteral(String),
+    /// A literal boolean value
+    BooleanLiteral(bool),
     /// Casting an expression to the given type
-    Cast(UnresolvedType, Box<Ast>),
+    Cast(Type, Box<Ast>),
 }
 
 #[derive(Clone, Debug)]
@@ -93,6 +101,62 @@ pub struct Ast {
     pub node: AstNode,
     /// The span of the source string that this AST node occupies
     pub span: Span,
+}
+
+/// An enum representing all parseable definitions
+#[derive(Clone, Debug)]
+pub enum DefData {
+    /// A function definition with body and prototype
+    FunDef(FunProto, Vec<Ast>),
+    /// A function declaration with no body
+    FunDec(FunProto),
+    /// A structure type definition
+    StructDef {
+        /// The name of the structure type
+        name: Symbol,
+        /// A map of all fields in the type
+        fields: HashMap<Symbol, UnresolvedType>
+    },
+}
+impl DefData {
+    /// Get the name of this definition
+    pub const fn name(&self) -> Symbol {
+        match self {
+            Self::FunDef(proto, _) | Self::FunDec(proto) => proto.name,
+            Self::StructDef {
+                name,
+                ..
+            } => *name
+        }
+    }
+}
+
+/// A structure holding both [DefData] and metadata
+/// used for error messages like location in source
+#[derive(Clone, Debug)]
+pub struct Def {
+    pub data: DefData,
+    pub span: Span,
+}
+
+/// Structure representing a fully parsed module with easy access 
+/// to all defined types and functions
+#[derive(Clone, Debug)]
+pub struct ParsedModule {
+    /// A map of names to all definitions in the module
+    pub defs: HashMap<Symbol, Def>,
+    /// The name of the module
+    pub name: Symbol,
+}
+
+impl ParsedModule {
+    /// Create a new empty module
+    pub fn new(name: Symbol) -> Self {
+        Self {
+            defs: HashMap::new(),
+            name,
+        }
+    }
 }
 
 /// A number literal holding either a big integer or

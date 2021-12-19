@@ -85,6 +85,34 @@ pub enum TokenData<'src> {
     Assign,
 }
 
+impl fmt::Display for TokenData<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ident(name) => write!(f, "identifier: \"{}\"", name),
+            Self::Number(num) => write!(f, "number: {}", num),
+            Self::String(literal) => write!(f, "string literal: \"{}\"", literal),
+            Self::Char(character) => write!(f, "character literal: '{}'", character),
+            Self::OpenBracket(ty) => write!(f, "'{}'", match ty {
+                BracketType::Smooth => '(',
+                BracketType::Curly => '{',
+                BracketType::Square => '['
+            }),
+            Self::CloseBracket(ty) => write!(f, "'{}'", match ty {
+                BracketType::Smooth => ')',
+                BracketType::Curly => '}',
+                BracketType::Square => ']'
+            }),
+            Self::Comma => write!(f, "','"),
+            Self::Period => write!(f, "'.'"),
+            Self::Arrow => write!(f, "->"),
+            Self::Op(op) => write!(f, "'{}'", op),
+            Self::Colon => write!(f, "':'"),
+            Self::Dollar => write!(f, "'$'"),
+            Self::Assign => write!(f, "':='")
+        }
+    }
+}
+
 /// A binary or unary operator
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum Op {
