@@ -430,6 +430,9 @@ impl<'int, 'src> Parser<'int, 'src> {
                     })
                 };
 
+                self.trace.pop();
+                self.trace.push(format!("variable declaration '{}'", self.interner.resolve(name).unwrap()).into());
+
                 let assigned = if TokenData::Assign == self.peek_tok(&[TokenData::Assign])?.data {
                     self.toks.next();
                     let assigned_expr = self.parse_expr()?;
@@ -474,7 +477,6 @@ impl<'int, 'src> Parser<'int, 'src> {
             TokenData::Ident("return") => {
                 self.toks.next();
                 self.trace.push("return statement".into());
-                let after_return = self.toks.peek();
                 //Attempt to parse a return expression
                 let returned = self.parse_expr()?;
 
@@ -752,18 +754,38 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             },
             TokenData::OpenBracket(BracketType::Smooth) => {
+                self.toks.next(); //Consume the opening bracket
                 self.trace.push("expression in parentheses".into());
                 let expr = self.parse_expr()?;
                 
                 //Check for a tuple literal
                 let expr = if let Some(TokenData::Comma) = self.toks.peek().map(|tok| &tok.data) {
+                    self.toks.next(); //Consume the first comma
+                    const EXPECTING_AFTER_TUPLE_EXPR: &[TokenData<'static>] = &[
+                        TokenData::CloseBracket(BracketType::Smooth), 
+                        TokenData::Comma
+                    ];
+
                     let old_expr_from = expr.span.from;
 
                     let mut tuple_elements = vec![expr];
                     self.trace.push("tuple literal".into());
-                    while let Some(TokenData::Comma) = self.toks.peek().map(|tok| &tok.data) {
+                    loop {
                         let tuple_element = self.parse_expr()?;
                         tuple_elements.push(tuple_element);
+                        let next = self.next_tok(EXPECTING_AFTER_TUPLE_EXPR)?;
+                        match next.data {
+                            TokenData::CloseBracket(BracketType::Smooth) => break,
+                            TokenData::Comma => continue,
+                            _ => return Err(ParseError {
+                                highlighted_span: Some((old_expr_from, next.span.to).into()),
+                                backtrace: self.trace.clone(),
+                                error: ParseErrorKind::UnexpectedToken {
+                                    found: next,
+                                    expecting: ExpectingOneOf(EXPECTING_AFTER_TUPLE_EXPR)
+                                }
+                            })
+                        }
                     }
                     self.trace.pop();
                     Ast {
@@ -772,10 +794,10 @@ impl<'int, 'src> Parser<'int, 'src> {
                     }
 
                 } else {
+                    self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
                     expr
                 };
 
-                self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
                 self.trace.pop();
                 expr
             },

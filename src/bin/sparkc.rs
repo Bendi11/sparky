@@ -25,7 +25,7 @@ fun test_fn {
     } else {
         phi ""
     }
-    mut b := (100, "test")
+    let b := (10, "testing") 
 }
 
 "#;
@@ -51,6 +51,8 @@ fun test_fn {
             if let DefData::FunDef(_, body) = def.data {
                 for expr in body {
                     expr.node.display(&mut stdout, &interner, 0).unwrap();
+                    writeln!(&mut stdout).unwrap();
+                    expr.span.display(&file).unwrap();
                     writeln!(&mut stdout).unwrap();
                 }
             }
