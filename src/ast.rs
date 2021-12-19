@@ -1,11 +1,11 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
 use bitflags::bitflags;
 use num_bigint::BigInt;
 
-use string_interner::symbol::SymbolU32 as Symbol;
+use string_interner::{symbol::SymbolU32 as Symbol, StringInterner};
 
 use crate::{util::loc::Span, parse::token::Op};
 
@@ -150,8 +150,13 @@ where Type: Clone + std::fmt::Debug {
         ty: Option<Type>,
         /// If the variable is mutable
         mutable: bool,
-        /// If an assignment was given, assign this expression
-        assigned: Option<Box<Ast>>,
+    },
+    /// A value is being assigned to another value
+    Assignment {
+        /// The left hand side of the assignment expression
+        lhs: Box<Ast>,
+        /// The value being assigned to the left hand side
+        rhs: Box<Ast>,
     },
     /// A binary expression with LHS, operator, and RHS
     BinExpr(Box<Ast>, Op, Box<Ast>),
@@ -159,6 +164,8 @@ where Type: Clone + std::fmt::Debug {
     UnaryExpr(Op, Box<Ast>),
     /// Phi returning a value from the current block
     PhiExpr(Box<Ast>),
+    /// Returning an optional expression from a function
+    Return(Box<Ast>),
     /// Casting an expression to a type
     CastExpr(Type, Box<Ast>),
     /// A floating or fixed point number literal
@@ -169,8 +176,6 @@ where Type: Clone + std::fmt::Debug {
     BooleanLiteral(bool),
     /// A tuple made up of multiple expressions
     TupleLiteral(Vec<Ast>),
-    /// Casting an expression to the given type
-    Cast(Type, Box<Ast>),
 }
 
 #[derive(Clone, Debug)]
@@ -301,10 +306,15 @@ pub enum UnresolvedType {
     },
     /// Unit type with only one value, like void in C or () in rust
     Unit,
+    /// Tuple made up of multiple arbitrary types
+    Tuple {
+        /// The element types contained in the tuple
+        elements: Vec<UnresolvedType>,
+    },
     /// User-defined identifier
     UserDefined {
         /// The name of the user-defined type
-        name: Symbol,
+        name: UnresolvedPath,
     },
 }
 
@@ -316,4 +326,117 @@ pub enum IntegerWidth {
     Sixteen = 16,
     ThirtyTwo = 32,
     SixtyFour = 64
+}
+
+impl<T: std::fmt::Debug + Clone> AstNode<T> {
+    pub fn display<W: Write>(&self, w: &mut W, interner: &StringInterner, numtabs: u16) -> std::io::Result<()> {
+        match self {
+            Self::NumberLiteral(num) => write!(w, "NUMBER LITERAL {:?}", num),
+            Self::StringLiteral(string) => write!(w, "STRING LITERAL {}", string),
+            Self::TupleLiteral(tuple) => {
+                write!(w, "TUPLE LITERAL ( ")?;
+                for element in tuple {
+                    element.node.display(w, interner, numtabs)?;
+                    write!(w, ", ")?;
+                }
+                write!(w, " )")
+            },
+            Self::Return(expr) => {
+                write!(w, "RETURN ")?;
+                expr.node.display(w, interner, numtabs)
+            },
+            Self::PhiExpr(expr) => {
+                write!(w, "PHI ")?;
+                expr.node.display(w, interner, numtabs)
+            },
+            Self::CastExpr(cast, casted) => {
+                write!(w, "CAST ${:?} ", cast)?;
+                casted.node.display(w, interner, numtabs)
+            },
+            Self::BooleanLiteral(boolean) => write!(w, "BOOL {}", boolean),
+            Self::Assignment{lhs, rhs} => {
+                write!(w, "ASSIGN ")?;
+                lhs.node.display(w, interner, numtabs)?;
+                write!(w, " = ")?;
+                rhs.node.display(w, interner, numtabs)
+            },
+            Self::UnaryExpr(op, expr) => {
+                write!(w, "UNARY {} ", op)?;
+                expr.node.display(w, interner, numtabs)
+            },
+            Self::VarDeclaration {
+                name, ty, mutable
+            } => write!(w, "VARDEC {} ({:?}) {}", if *mutable { "mut" } else { "let" }, ty, interner.resolve(*name).unwrap() ),
+            Self::VarAccess(path) => {
+                write!(w, "VARACCESSS ")?;
+                for part in path.iter() {
+                    write!(w, "{}:", interner.resolve(part).unwrap())?;
+                }
+                Ok(())
+            },
+            Self::FunCall(path, args) => {
+                write!(w, "FUNCALL ")?;
+                for part in path.iter() {
+                    write!(w, "{}:", interner.resolve(part).unwrap())?;
+                }
+
+                write!(w, "( ")?;
+                for arg in args {
+                    arg.node.display(w, interner, numtabs)?;
+                    write!(w, ", ")?;
+                }
+                write!(w, " )")
+            },
+            Self::MemberAccess(lhs, index) => {
+                write!(w, "MEMBERACCESS ")?;
+                lhs.node.display(w, interner, numtabs)?;
+                write!(w, ".")?;
+                write!(w, "{}", interner.resolve(*index).unwrap())
+            },
+            Self::BinExpr(lhs, op, rhs) => {
+                write!(w, "BIN ")?;
+                lhs.node.display(w, interner, numtabs)?;
+                write!(w, " {} ", op)?;
+                rhs.node.display(w, interner, numtabs)
+            },
+            Self::IfExpr(ifexpr) => {
+                fn display_if<W: Write>(ifexpr: &IfExpr, w: &mut W, interner: &StringInterner, numtabs: u16) -> std::io::Result<()> {
+                    write!(w, "IF ")?;
+                    ifexpr.cond.node.display(w, interner, numtabs)?;
+                    writeln!(w, " {{")?;
+                    for expr in ifexpr.body.iter() {
+                        write!(w, "{}", (0..numtabs + 1).into_iter().map(|_| "  ").collect::<Vec<_>>().join(""))?;
+                        expr.node.display(w, interner, numtabs + 1)?;
+                        writeln!(w)?;
+                    }
+                    write!(w, "}}")?;
+                    
+                    if let Some(ref else_expr) = ifexpr.else_expr {
+                        write!(w, "{}", (0..numtabs).into_iter().map(|_| "  ").collect::<Vec<_>>().join(""))?;
+                        match else_expr {
+                            ElseExpr::ElseIf(another_if) => display_if(&*another_if, w, interner, numtabs),
+                            ElseExpr::Else(stmts) => {
+                                for expr in stmts.iter() {
+                                    write!(w, "{}", (0..numtabs + 1).into_iter().map(|_| "  ").collect::<Vec<_>>().join(""))?;
+                                    expr.node.display(w, interner, numtabs + 1)?;
+                                    writeln!(w)?;
+                                }
+                                write!(w, "}}")
+                            }
+                        }?
+                    }
+                    Ok(())
+                }
+
+                display_if(ifexpr, w, interner, numtabs)
+            },
+            Self::Index{object, index} => {
+                write!(w, "INDEX ")?;
+                object.node.display(w, interner, numtabs)?;
+                write!(w, " [ ")?;
+                index.node.display(w, interner, numtabs)?;
+                write!(w, " ]")
+            }
+        }
+    }
 }

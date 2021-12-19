@@ -33,7 +33,14 @@ pub type ParseResult<'src, T> = Result<T, ParseError<'src>>;
 impl<'int, 'src> Parser<'int, 'src> {
     /// All tokens expected to begin when parsing an expression
     const EXPECTED_FOR_EXPRESSION: &'static [TokenData<'static>] = &[
-
+        TokenData::Ident("if"),
+        TokenData::Ident("true"), TokenData::Ident("false"),
+        TokenData::Dollar,
+        TokenData::Op(Op::Star),
+        TokenData::Op(Op::AND),
+        TokenData::String("string literal"),
+        TokenData::Number("number literal"),
+        TokenData::OpenBracket(BracketType::Smooth),
     ];
     
     /// Parse the input source code into a full AST
@@ -112,13 +119,19 @@ impl<'int, 'src> Parser<'int, 'src> {
     /// Consume the next path from the input tokens, requiring at least one identifier
     fn expect_next_path(&mut self, expected: &'static [TokenData<'static>]) -> ParseResult<'src, UnresolvedPath> {
         let first = self.expect_next_ident(expected)?;
-        let mut parts = vec![self.symbol(first)];
+        let first = self.symbol(first);
+        self.expect_next_path_with(expected, first)
+    }
+    
+    /// Get the next path in the token stream using a first identifier
+    fn expect_next_path_with(&mut self, expected: &'static [TokenData<'static>], first: Symbol) -> ParseResult<'src, UnresolvedPath> {
+        let mut parts = vec![first];
         while let Some(TokenData::Colon) = self.toks.peek().map(|tok| &tok.data) {
-            self.toks.next();
+            self.toks.next(); //Consume the colon character
             let part = self.expect_next_ident(expected)?;
             parts.push(self.symbol(part));
         }
-        
+
         Ok(if parts.len() == 1 {
             UnresolvedPath::new(parts[0])
         } else {
@@ -376,6 +389,13 @@ impl<'int, 'src> Parser<'int, 'src> {
         let peeked = self.peek_tok(EXPECTING_FOR_STMT)?.clone();
 
         match peeked.data {
+            TokenData::Ident("if") => {
+                let if_stmt = self.parse_if()?;
+                Ok(Ast {
+                    span: peeked.span,
+                    node: AstNode::IfExpr(if_stmt)
+                })
+            },
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
                     TokenData::Ident("variable name"),
@@ -420,13 +440,24 @@ impl<'int, 'src> Parser<'int, 'src> {
 
                 self.trace.pop();
 
+                let var_dec = AstNode::VarDeclaration {
+                    name,
+                    ty: var_type,
+                    mutable
+                };
+
                 Ok(Ast {
                     span: (peeked.span.from, next.span.to).into(),
-                    node: AstNode::VarDeclaration {
-                        name,
-                        ty: var_type,
-                        mutable,
-                        assigned
+                    node: if let Some(assigned) = assigned {
+                        AstNode::Assignment {
+                            lhs: Box::new(Ast {
+                                span: (peeked.span.from, next.span.to).into(),
+                                node: var_dec
+                            }),
+                            rhs: assigned
+                        }
+                    } else { 
+                        var_dec
                     }
                 })
             },
@@ -440,6 +471,36 @@ impl<'int, 'src> Parser<'int, 'src> {
                     node: AstNode::PhiExpr(Box::new(phi_expr))
                 })
             },
+            TokenData::Ident("return") => {
+                self.toks.next();
+                self.trace.push("return statement".into());
+                let after_return = self.toks.peek();
+                //Attempt to parse a return expression
+                let returned = self.parse_expr()?;
+
+                self.trace.pop();
+                Ok(Ast {
+                    span: peeked.span,
+                    node: AstNode::Return(Box::new(returned))
+                })
+            },
+            //Parse an assignment expression
+            TokenData::Ident(_) | TokenData::OpenBracket(BracketType::Smooth) => {
+                self.trace.push("assignment statement".into());
+                let prefix = self.parse_prefix_expr()?;
+                
+                self.expect_next(&[TokenData::Assign])?;
+                let assigned = self.parse_expr()?;
+                self.trace.pop();
+                
+                Ok(Ast {
+                    span: (prefix.span.from, assigned.span.to).into(),
+                    node: AstNode::Assignment {
+                        lhs: Box::new(prefix),
+                        rhs: Box::new(assigned)
+                    }
+                })
+            }
             _ => Err(ParseError {
                 highlighted_span: Some(peeked.span),
                 backtrace: self.trace.clone(),
@@ -451,7 +512,7 @@ impl<'int, 'src> Parser<'int, 'src> {
         }
 
     }
-
+        
     /// Parse a full expression from the token stream
     fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
         let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?.clone();
@@ -488,7 +549,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 self.trace.pop();
                 Ast {
                     span: (peeked.span.from, expr.span.to).into(),
-                    node: AstNode::Cast(casted_to, Box::new(expr))
+                    node: AstNode::CastExpr(casted_to, Box::new(expr))
                 }
             },
 
@@ -781,6 +842,7 @@ impl<'int, 'src> Parser<'int, 'src> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
             TokenData::Ident("type name"),
             TokenData::OpenBracket(BracketType::Smooth),
+            TokenData::OpenBracket(BracketType::Square),
         ];
 
         const EXPECTING_INTEGER: &[TokenData<'static>] = &[
@@ -822,7 +884,17 @@ impl<'int, 'src> Parser<'int, 'src> {
                         }
                     })
                 },
-                _ => Ok(UnresolvedType::UserDefined { name: self.symbol(name) })
+                _ => {
+                    self.trace.push("user-defined typename".into());
+                    let name = self.symbol(name);
+                    let ty = UnresolvedType::UserDefined { name: self.expect_next_path_with(
+                            &[TokenData::Ident("typename path part")], 
+                            name
+                        )? 
+                    };
+                    self.trace.pop();
+                    Ok(ty)
+                }
             },
             TokenData::OpenBracket(BracketType::Square) => {
                 self.trace.push("array type length".into());
@@ -855,11 +927,49 @@ impl<'int, 'src> Parser<'int, 'src> {
                 }
             },
             TokenData::OpenBracket(BracketType::Smooth) => {
-                self.trace.push("unit type".into());
-                self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-                self.trace.pop();
+                self.trace.push("unit or tuple type".into());
+                let peeked = self.peek_tok(&[TokenData::CloseBracket(BracketType::Smooth), TokenData::Ident("tuple element typename")])?.clone();
+                let ty = match peeked.data {
+                    TokenData::CloseBracket(BracketType::Smooth) => {
+                        self.toks.next();
+                        self.trace.pop();
+                        UnresolvedType::Unit
+                    },
+                    _ => {
+                        const EXPECTING_AFTER_TUPLE_TYPENAME: &[TokenData<'static>] = &[
+                            TokenData::Comma,
+                            TokenData::CloseBracket(BracketType::Smooth)
+                        ];
 
-                Ok(UnresolvedType::Unit)
+                        //Replace trace with more descriptive string
+                        self.trace.pop();
+                        self.trace.push("tuple typename".into());
+                        let mut tuple_types = vec![];
+                        loop {
+                            let element_type = self.parse_typename()?;
+                            tuple_types.push(element_type);
+                            let after_typename = self.next_tok(EXPECTING_AFTER_TUPLE_TYPENAME)?;
+                            match after_typename.data {
+                                TokenData::CloseBracket(BracketType::Smooth) => break,
+                                TokenData::Comma => continue,
+                                _ => return Err(ParseError {
+                                    highlighted_span: Some((next.span.from, peeked.span.to).into()),
+                                    backtrace: self.trace.clone(),
+                                    error: ParseErrorKind::UnexpectedToken {
+                                        found: after_typename,
+                                        expecting: ExpectingOneOf(EXPECTING_AFTER_TUPLE_TYPENAME)
+                                    }
+                                })
+                            }
+                        }
+                        self.trace.pop();
+                        UnresolvedType::Tuple {
+                            elements: tuple_types
+                        }
+                    }
+                };
+
+                Ok(ty)
             },
             TokenData::Op(Op::Star) => {
                 self.trace.push("pointer type".into());

@@ -46,7 +46,9 @@
              | <user-typename>
              | "*" <typename>
              | <array-typename>
+             | <tuple-typename>
 
+<tuple-typename> ::= "(" <typename> "," ( <typename> "," )* <typename>? ")"
 <array-typename> ::= "[" <digit>+? "]" <typename>
 
 <user-typename> ::= <path> ( "|" ( (<typename> "," )* <typename>? ) "|" )?

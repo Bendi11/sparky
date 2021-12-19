@@ -4,9 +4,11 @@ pub mod ast;
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
     use string_interner::StringInterner;
 
-    use crate::{parse::Parser, util::files::CompiledFile};
+    use crate::{parse::Parser, util::files::CompiledFile, ast::DefData};
 
     
 
@@ -43,7 +45,16 @@ fun test_fn {
             }
             panic!()
         });
-        println!("{:#?}", module);
+
+        let mut stdout = std::io::stdout();
+        for (_, def) in module.defs {
+            if let DefData::FunDef(_, body) = def.data {
+                for expr in body {
+                    expr.node.display(&mut stdout, &interner, 0).unwrap();
+                    writeln!(&mut stdout).unwrap();
+                }
+            }
+        }
         panic!()
     }
 }
