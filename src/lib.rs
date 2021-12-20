@@ -1,6 +1,7 @@
 pub mod parse;
 pub mod util;
 pub mod ast;
+pub mod ir;
 
 #[cfg(test)]
 mod tests {

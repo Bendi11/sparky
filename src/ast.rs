@@ -7,7 +7,7 @@ use num_bigint::BigInt;
 
 use string_interner::{symbol::SymbolU32 as Symbol, StringInterner};
 
-use crate::{util::loc::Span, parse::token::Op};
+use crate::{util::{loc::Span, files::FileId}, parse::token::Op};
 
 bitflags! {
     /// Structure holding flags of a function's prototype
@@ -212,6 +212,7 @@ pub enum ElseExpr {
     Else(Vec<Ast>)
 }
 
+
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
 #[derive(Clone, Debug)]
@@ -287,14 +288,20 @@ pub struct ParsedModule {
     pub defs: HashMap<Symbol, Def>,
     /// The name of the module
     pub name: Symbol,
+    /// The file that this module was parsed from
+    pub file: FileId,
+    /// All children of this module
+    pub children: HashMap<Symbol, ParsedModule>,
 }
 
 impl ParsedModule {
     /// Create a new empty module
-    pub fn new(name: Symbol) -> Self {
+    pub fn new(name: Symbol, file: FileId) -> Self {
         Self {
             defs: HashMap::new(),
             name,
+            file,
+            children: HashMap::new(),
         }
     }
 }
