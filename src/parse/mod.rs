@@ -41,6 +41,7 @@ impl<'int, 'src> Parser<'int, 'src> {
         TokenData::String("string literal"),
         TokenData::Number("number literal"),
         TokenData::OpenBracket(BracketType::Smooth),
+        TokenData::OpenBracket(BracketType::Square),
     ];
     
     /// Parse the input source code into a full AST
@@ -169,11 +170,24 @@ impl<'int, 'src> Parser<'int, 'src> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
             TokenData::Ident("fun"),
             TokenData::Ident("type"),
-            TokenData::Ident("const")
+            TokenData::Ident("const"),
+            TokenData::Ident("imp"),
         ];
 
         let next = self.next_tok(EXPECTING_NEXT)?;
         match next.data {
+            TokenData::Ident("imp") => {
+                self.trace.push("import statement".into());
+                let imported = self.expect_next_path(&[TokenData::Ident("imported module")])?;
+                self.trace.pop();
+
+                Ok(Def {
+                    span: next.span,
+                    data: DefData::ImportDef {
+                        name: imported
+                    }
+                })
+            },
             TokenData::Ident("fun") => {
                 let name = self.expect_next_ident(&[TokenData::Ident("function name")])?;
                 self.trace.push(format!("function declaration '{}'", name).into());
@@ -383,12 +397,39 @@ impl<'int, 'src> Parser<'int, 'src> {
 
     fn parse_stmt(&mut self) -> ParseResult<'src, Ast> {
         const EXPECTING_FOR_STMT: &[TokenData<'static>] = &[
-
+            TokenData::Ident("if"), TokenData::Ident("let"), TokenData::Ident("mut"),
+            TokenData::Ident("phi"), TokenData::Ident("return"), TokenData::Ident("break"),
+            TokenData::Ident("continue"), TokenData::Ident("loop"),
+            TokenData::Ident("variable / function name"),
+            TokenData::OpenBracket(BracketType::Smooth)
         ];
 
         let peeked = self.peek_tok(EXPECTING_FOR_STMT)?.clone();
 
         match peeked.data {
+            TokenData::Ident("break") => {
+                self.toks.next();
+                Ok(Ast {
+                    span: peeked.span,
+                    node: AstNode::Break
+                })
+            },
+            TokenData::Ident("continue") => {
+                self.toks.next();
+                Ok(Ast {
+                    span: peeked.span,
+                    node: AstNode::Continue
+                })
+            },
+            TokenData::Ident("loop") => {
+                self.trace.push("loop statement".into());
+                let loop_body = self.parse_body()?;
+                self.trace.pop();
+                Ok(Ast {
+                    span: peeked.span,
+                    node: AstNode::Loop(loop_body)
+                })
+            },
             TokenData::Ident("if") => {
                 let if_stmt = self.parse_if()?;
                 Ok(Ast {
@@ -527,6 +568,16 @@ impl<'int, 'src> Parser<'int, 'src> {
                     node: AstNode::IfExpr(if_expr)
                 }
             },
+            TokenData::Ident("loop") => {
+                self.toks.next();
+                self.trace.push("loop expression".into());
+                let body = self.parse_body()?;
+                self.trace.pop();
+                Ast {
+                    span: peeked.span,
+                    node: AstNode::Loop(body)
+                }
+            },
             TokenData::Ident("true") => {
                 self.toks.next();
                 Ast {
@@ -566,6 +617,47 @@ impl<'int, 'src> Parser<'int, 'src> {
                     node: AstNode::UnaryExpr(*unaryop, Box::new(rhs))
                 }
             },
+            TokenData::OpenBracket(BracketType::Square) => {
+                self.trace.push("array literal".into());
+                self.toks.next();
+
+                let elements = if let Some(TokenData::CloseBracket(BracketType::Square)) = self.toks.peek().map(|tok| &tok.data) {
+                    vec![]
+                } else {
+                    const EXPECTING_FOR_ARRAY: &[TokenData<'static>] = &[
+                        TokenData::CloseBracket(BracketType::Square),
+                        TokenData::Comma
+                    ];
+                    let mut elements = vec![];
+
+                    loop {
+                        let element = self.parse_expr()?;
+                        elements.push(element);
+
+                        let next = self.next_tok(EXPECTING_FOR_ARRAY)?;
+                        match next.data {
+                            TokenData::Comma => continue,
+                            TokenData::CloseBracket(BracketType::Square) => break elements,
+                            _ => return Err(ParseError {
+                                highlighted_span: Some((peeked.span.from, elements.last().unwrap().span.to).into()),
+                                backtrace: self.trace.clone(),
+                                error: ParseErrorKind::UnexpectedToken {
+                                    found: next,
+                                    expecting: ExpectingOneOf(EXPECTING_FOR_ARRAY)
+                                }
+                            })
+                        }
+                    }
+                };
+                self.trace.pop();
+
+                Ast {
+                    span: if let Some(last) = elements.last() {
+                        (peeked.span.from, last.span.to).into()
+                    } else { peeked.span },
+                    node: AstNode::ArrayLiteral(elements)
+                }
+            }
             TokenData::String(data) => {
                 self.toks.next();
                 self.trace.push("string literal".into());
@@ -1051,7 +1143,6 @@ impl<'int, 'src> Parser<'int, 'src> {
            }) 
         }
     }
-
 
 }
 

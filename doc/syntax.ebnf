@@ -10,7 +10,11 @@
             | <typedecl> <typename> ( "|" <typename> )+
 <structfields> ::= "{" ( <typename> <ident> "," )* ( <typename> <ident>? ) "}"
 
-<typedecl> ::= "type" <user-typename> "="
+<typedecl> ::= "type" <ident> (
+    "{" ( <typename> <ident> "," )* ( <typename> <ident> )? "}",
+    <typename>
+    <typename> ( "|" <typename> )+
+)
 
 <stmt> ::= <callexpr> | <assignstmt> | <varstmt> | <retstmt> | <matchexpr> | <ifexpr> | "break" | "cont"
 

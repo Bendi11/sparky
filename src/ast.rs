@@ -176,6 +176,14 @@ where Type: Clone + std::fmt::Debug {
     BooleanLiteral(bool),
     /// A tuple made up of multiple expressions
     TupleLiteral(Vec<Ast>),
+    /// An array literal with list of expressions for array elements
+    ArrayLiteral(Vec<Ast>),
+    /// Breaking out of a loop
+    Break,
+    /// Continuing in a loop
+    Continue,
+    /// An infinite loop with body
+    Loop(Vec<Ast>),
 }
 
 #[derive(Clone, Debug)]
@@ -232,11 +240,15 @@ pub enum DefData {
         name: Symbol,
         /// All variants of this enum
         variants: Vec<UnresolvedType>,
+    },
+    /// An imported module definition
+    ImportDef {
+        name: UnresolvedPath
     }
 }
 impl DefData {
     /// Get the name of this definition
-    pub const fn name(&self) -> Symbol {
+    pub fn name(&self) -> Symbol {
         match self {
             Self::FunDef(proto, _) | Self::FunDec(proto) => proto.name,
             Self::StructDef {
@@ -245,6 +257,7 @@ impl DefData {
             } => *name,
             Self::EnumDef{name, ..} => *name,
             Self::AliasDef{name, ..} => *name,
+            Self::ImportDef{name} => name.last(),
         }
     }
 }
@@ -331,6 +344,25 @@ pub enum IntegerWidth {
 impl<T: std::fmt::Debug + Clone> AstNode<T> {
     pub fn display<W: Write>(&self, w: &mut W, interner: &StringInterner, numtabs: u16) -> std::io::Result<()> {
         match self {
+            Self::ArrayLiteral(parts) => {
+                write!(w, "ARRAY [ ")?;
+                for part in parts.iter() {
+                    part.node.display(w, interner, numtabs)?;
+                    write!(w, ", ")?;
+                }
+                write!(w, " ]")
+            }
+            Self::Loop(body) => {
+                writeln!(w, "LOOP {{")?;
+                for stmt in body.iter() {
+                    write!(w, "{}", (0..numtabs+1).into_iter().map(|_|"  ").collect::<Vec<_>>().join(""))?;
+                    stmt.node.display(w, interner, numtabs + 1)?;
+                    writeln!(w)?;
+                }
+                write!(w, "}}")
+            }
+            Self::Break => write!(w, "BREAK"),
+            Self::Continue => write!(w, "CONTINUE"),
             Self::NumberLiteral(num) => write!(w, "NUMBER LITERAL {:?}", num),
             Self::StringLiteral(string) => write!(w, "STRING LITERAL {}", string),
             Self::TupleLiteral(tuple) => {
