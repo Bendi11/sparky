@@ -6,7 +6,7 @@ use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
 use crate::{
     util::loc::Span, 
-    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, UnresolvedPath}, 
+    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, UnresolvedPath, UnresolvedFunType}, 
     parse::token::Op
 };
 
@@ -1016,6 +1016,43 @@ impl<'int, 'src> Parser<'int, 'src> {
                 "f" => match &name[1..] {
                     "32" => Ok(UnresolvedType::Float { doublewide: false }),
                     "64" => Ok(UnresolvedType::Float { doublewide: true }),
+                    "un" => {
+                        self.trace.push("function typename".into());
+
+                        self.expect_next(&[TokenData::OpenBracket(BracketType::Smooth)])?;
+                        let mut arg_tys = if let Some(TokenData::CloseBracket(BracketType::Smooth)) = self.toks.peek().map(|tok| &tok.data) {
+                            self.toks.next(); //Consume the closing brace
+                            vec![]
+                        } else {
+                            let mut args = vec![];
+                            loop {
+                                args.push(self.parse_typename()?);
+                                let next = self.next_tok(&[TokenData::Comma, TokenData::CloseBracket(BracketType::Smooth)])?;
+                                match next.data {
+                                    TokenData::CloseBracket(BracketType::Smooth) => break args,
+                                    TokenData::Comma => continue,
+                                    _ => return Err(ParseError {
+                                        highlighted_span: Some(next.span),
+                                        backtrace: self.trace.clone(),
+                                        error: ParseErrorKind::UnexpectedToken {
+                                            found: next,
+                                            expecting: ExpectingOneOf(&[TokenData::Comma, TokenData::CloseBracket(BracketType::Smooth)])
+                                        }
+                                    })
+                                }
+                            }
+                        };
+
+                        self.expect_next(&[TokenData::Arrow])?;
+
+                        let return_ty = self.parse_typename()?;
+
+                        self.trace.pop();
+                        Ok(UnresolvedType::Fun(Box::new(UnresolvedFunType {
+                            return_ty,
+                            arg_tys,
+                        })))
+                    }
                     _ => Err(ParseError {
                         highlighted_span: Some(next.span),
                         backtrace: self.trace.clone(),

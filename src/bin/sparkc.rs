@@ -29,6 +29,8 @@ fun test_fn {
         let testing := a[0]
         phi testing
     }:(132)
+
+    let(fun()->()) a := {}
 }
 
 "#;

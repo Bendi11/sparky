@@ -307,6 +307,15 @@ pub enum NumberLiteral {
     Float(f64),
 }
 
+/// Type representing a function's type in spark
+#[derive(Clone, Debug)]
+pub struct UnresolvedFunType {
+    /// The return type of the function
+    pub return_ty: UnresolvedType,
+    /// What argument types this function takes
+    pub arg_tys: Vec<UnresolvedType>,
+}
+
 /// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as
 /// user-defined types are resolved when lowering the AST to IR
 #[derive(Clone, Debug)]
@@ -317,6 +326,8 @@ pub enum UnresolvedType {
         /// Is the integer type signed or unsigned
         signed: bool,
     },
+    /// A function type
+    Fun(Box<UnresolvedFunType>),
     Float {
         /// If this is an f32 or an f64
         doublewide: bool,

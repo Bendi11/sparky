@@ -52,6 +52,7 @@
              | "*" <typename>
              | <array-typename>
              | <tuple-typename>
+             | "fun" "(" ( <typename> "," )* <typename>? ")" "->" <typename>
 
 <tuple-typename> ::= "(" <typename> "," ( <typename> "," )* <typename>? ")"
 <array-typename> ::= "[" <digit>+? "]" <typename>
