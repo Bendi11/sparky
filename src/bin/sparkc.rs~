@@ -28,7 +28,7 @@ fun test_fn {
     let b := {
         let testing := a[0]
         phi testing
-    }:(132)
+    }
 }
 
 "#;
@@ -54,6 +54,8 @@ fun test_fn {
             if let DefData::FunDef(_, body) = def.data {
                 for expr in body {
                     expr.node.display(&mut stdout, &interner, 0).unwrap();
+                    writeln!(&mut stdout).unwrap();
+                    expr.span.display(&file).unwrap();
                     writeln!(&mut stdout).unwrap();
                 }
             }

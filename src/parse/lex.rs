@@ -15,16 +15,26 @@ pub struct Lexer<'src> {
     line: u16,
     /// Current column number of the lexer's cursor
     col: u16,
+    /// The next token to be returned when `next` or `peek` is called
+    current: Option<Token<'src>>,
+    /// The token after `current`, returned with `peek2`
+    peek2: Option<Token<'src>>,
 }
 
 impl<'src> Lexer<'src> {
+    /// Create a new `Lexer` to tokenize the given source string
     pub fn new(src: &'src str) -> Self {
-        Self {
+        let mut this = Self {
             chars: src.char_indices().peekable(),
             src,
             line: 1,
             col: 0,
-        }
+            current: None,
+            peek2: None,
+        };
+        this.current = this.token();
+        this.peek2 = this.token();
+        this
     }
 
     /// Consume one character from the character iterator if one exists,
@@ -267,12 +277,38 @@ impl<'src> Lexer<'src> {
     pub fn pos(&self) -> Loc {
         (self.line, self.col).into()
     }
+    
+    /// Peek the current token 
+    pub fn peek(&self) -> Option<&Token<'src>> {
+        self.current.as_ref()
+    }
+    
+    /// Peek the token two spots ahead
+    pub fn peek2(&self) -> Option<&Token<'src>> {
+        self.peek2.as_ref()
+    }
 }
 
 impl<'src> Iterator for Lexer<'src> {
     type Item = Token<'src>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.token()
+        use std::mem::replace;
+        if self.current.is_none() {
+            return None
+        }
+
+        let next = if self.peek2.is_some() {
+            let tok = self.token();
+            let next = replace(
+                &mut self.current,
+                replace(&mut self.peek2, tok)
+            );
+            next?
+        } else {
+            self.current.take()?
+        };
+
+        Some(next)
     }
 }
 

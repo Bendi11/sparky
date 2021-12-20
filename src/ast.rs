@@ -129,8 +129,8 @@ pub struct FunProto {
 #[derive(Clone, Debug)]
 pub enum AstNode<Type = UnresolvedType> 
 where Type: Clone + std::fmt::Debug {
-    /// A variable access by name
-    VarAccess(UnresolvedPath),
+    /// A variable / enum / constant / function access by name
+    Access(UnresolvedPath),
     /// Member item access with the '.' operator
     MemberAccess(Box<Ast>, Symbol),
     /// An array-like index expression using '[' ']'
@@ -139,7 +139,7 @@ where Type: Clone + std::fmt::Debug {
         index: Box<Ast>,
     },
     /// Function call with argument expressions
-    FunCall(UnresolvedPath, Vec<Ast>),
+    FunCall(Box<Ast>, Vec<Ast>),
     /// If statement / expression
     IfExpr(IfExpr),
     /// A variable declaration using the `let` or `mut` keywords
@@ -184,6 +184,15 @@ where Type: Clone + std::fmt::Debug {
     Continue,
     /// An infinite loop with body
     Loop(Vec<Ast>),
+    /// A block of statements
+    Block(Vec<Ast>),
+    /// A match statement
+    Match {
+        //The expression being matched
+        matched: Box<Ast>,
+        //The possible cases being tested for
+        cases: HashMap<Ast, Ast>,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -344,6 +353,24 @@ pub enum IntegerWidth {
 impl<T: std::fmt::Debug + Clone> AstNode<T> {
     pub fn display<W: Write>(&self, w: &mut W, interner: &StringInterner, numtabs: u16) -> std::io::Result<()> {
         match self {
+            Self::Match {matched, cases} => {
+                write!(w, "MATCH ")?;
+                matched.node.display(w, interner, numtabs)?;
+                writeln!(w, " {{")?;
+                for (literal, case_expr) in cases.iter() {
+
+                }
+                write!(w, "}}")
+            }
+            Self::Block(stmts) => {
+                writeln!(w, "BLOCK {{")?;
+                for stmt in stmts {
+                    write!(w, "{}", (0..numtabs+1).into_iter().map(|_|"  ").collect::<Vec<_>>().join(""))?;
+                    stmt.node.display(w, interner, numtabs)?;
+                    writeln!(w)?;
+                }
+                write!(w, "}}")
+            },
             Self::ArrayLiteral(parts) => {
                 write!(w, "ARRAY [ ")?;
                 for part in parts.iter() {
@@ -399,18 +426,16 @@ impl<T: std::fmt::Debug + Clone> AstNode<T> {
             Self::VarDeclaration {
                 name, ty, mutable
             } => write!(w, "VARDEC {} ({:?}) {}", if *mutable { "mut" } else { "let" }, ty, interner.resolve(*name).unwrap() ),
-            Self::VarAccess(path) => {
-                write!(w, "VARACCESSS ")?;
+            Self::Access(path) => {
+                write!(w, "ACCESSS ")?;
                 for part in path.iter() {
                     write!(w, "{}:", interner.resolve(part).unwrap())?;
                 }
                 Ok(())
             },
-            Self::FunCall(path, args) => {
+            Self::FunCall(called, args) => {
                 write!(w, "FUNCALL ")?;
-                for part in path.iter() {
-                    write!(w, "{}:", interner.resolve(part).unwrap())?;
-                }
+                called.node.display(w, interner, numtabs)?;
 
                 write!(w, "( ")?;
                 for arg in args {

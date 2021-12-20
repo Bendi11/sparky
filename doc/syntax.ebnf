@@ -18,7 +18,8 @@
 
 <stmt> ::= <callexpr> | <assignstmt> | <varstmt> | <retstmt> | <matchexpr> | <ifexpr> | "break" | "cont"
 
-<matchcase> ::= <user-typename> <ident>?
+<matchcase> ::= <user-typename>  <ident>?
+              | <literal>
 
 <matcharm> ::= <matchcase>? "->" ( <body> | <expr> | <phistmt> )
 <matchexpr> ::= "match" <expr> "{" ( <matcharm> "," )* <matcharm>? "}"
@@ -37,12 +38,12 @@
 
 <exprlist> ::= ( <expr> "," )* <expr>?
 
-<prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")"
+<prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")" | <block>
 
-<callexpr> ::= <path> "(" <exprlist> ")"
+<callexpr> ::= <prefixexpr> ":" "(" <exprlist> ")"
 <varaccessexpr> ::= <path>
-                  | <prefix> "[" <expr> "]"
-                  | <prefix> "." <ident>
+                  | <prefixexpr> "[" <expr> "]"
+                  | <prefixexpr> "." <ident>
 
 <typename> ::= "bool" | "char" | "()"
              | ( "i" | "u" ) ( "8" | "16" | "32" | "64" )

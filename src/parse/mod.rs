@@ -1,4 +1,4 @@
-use std::{iter::Peekable, fmt, convert::TryFrom, borrow::Cow, collections::HashMap};
+use std::{fmt, convert::TryFrom, borrow::Cow, collections::HashMap};
 
 use num_bigint::BigInt;
 use smallvec::SmallVec;
@@ -19,7 +19,7 @@ pub mod token;
 #[derive(Debug)]
 pub struct Parser<'int, 'src> {
     /// The token stream to consume tokens from
-    toks: Peekable<Lexer<'src>>,
+    toks: Lexer<'src>,
     /// The current parse trace used for error and debug backtraces
     trace: SmallVec<[Cow<'static, str> ; 24]>,
     /// The string interner used for building an AST with Symbols instead of allocating strings
@@ -42,6 +42,7 @@ impl<'int, 'src> Parser<'int, 'src> {
         TokenData::Number("number literal"),
         TokenData::OpenBracket(BracketType::Smooth),
         TokenData::OpenBracket(BracketType::Square),
+        TokenData::OpenBracket(BracketType::Curly),
     ];
     
     /// Parse the input source code into a full AST
@@ -63,7 +64,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     /// Create a new `Parser` from the given source string
     pub fn new(src: &'src str, interner: &'int mut StringInterner, filename: &str) -> Self {
         Self {
-            toks: Lexer::new(src).peekable(),
+            toks: Lexer::new(src),
             trace: SmallVec::new(),
             modulename: interner.get_or_intern(filename),
             interner,
@@ -128,9 +129,13 @@ impl<'int, 'src> Parser<'int, 'src> {
     fn expect_next_path_with(&mut self, expected: &'static [TokenData<'static>], first: Symbol) -> ParseResult<'src, UnresolvedPath> {
         let mut parts = vec![first];
         while let Some(TokenData::Colon) = self.toks.peek().map(|tok| &tok.data) {
-            self.toks.next(); //Consume the colon character
-            let part = self.expect_next_ident(expected)?;
-            parts.push(self.symbol(part));
+            if let Some(TokenData::Ident(_)) = self.toks.peek2().map(|tok| &tok.data) {
+                self.toks.next(); //Consume the colon character
+                let part = self.expect_next_ident(expected)?;
+                parts.push(self.symbol(part));
+            } else {
+                break
+            }
         }
 
         Ok(if parts.len() == 1 {
@@ -717,7 +722,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                     node: AstNode::NumberLiteral(num)
                 }
             },
-            TokenData::OpenBracket(BracketType::Smooth) | TokenData::Ident(_) => self.parse_prefix_expr()?,
+            TokenData::OpenBracket(BracketType::Smooth) | TokenData::Ident(_) | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr()?,
             _ => return Err(ParseError {
                 highlighted_span: Some(peeked.span),
                 backtrace: self.trace.clone(),
@@ -800,7 +805,8 @@ impl<'int, 'src> Parser<'int, 'src> {
     fn parse_prefix_expr(&mut self) -> ParseResult<'src, Ast> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
             TokenData::Ident("variable or function name"),
-            TokenData::OpenBracket(BracketType::Smooth)
+            TokenData::OpenBracket(BracketType::Smooth),
+            TokenData::OpenBracket(BracketType::Curly),
         ];
 
         let next = self.peek_tok(EXPECTING_NEXT)?.clone();
@@ -809,42 +815,21 @@ impl<'int, 'src> Parser<'int, 'src> {
                 self.trace.push("variable or funcion name".into());
                 let name = self.expect_next_path(EXPECTING_NEXT)?;
                 self.trace.pop();
-                let peeked = self.toks.peek();
-                if let Some(TokenData::OpenBracket(BracketType::Smooth)) = peeked.map(|tok| &tok.data) {
-                    self.next_tok(EXPECTING_NEXT)?; //Consume the opening bracket
-
-                    let mut args = vec![];
-
-                    loop {
-                        let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
-                        match next_in_args.data {
-                            TokenData::Comma => {
-                                self.next_tok(&[TokenData::Comma])?;
-                            },
-                            TokenData::CloseBracket(BracketType::Smooth) => {
-                                self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-                                break
-                            },
-                            _ => {
-                                self.trace.push("function call argument".into());
-                                args.push(self.parse_expr()?);
-                                self.trace.pop();
-                            }
-                        }
-                    }
-
-                    Ast {
-                        span: next.span,
-                        node: AstNode::FunCall(name, args)
-                    }
-
-                } else {
-                    Ast {
-                        span: next.span,
-                        node: AstNode::VarAccess(name)
-                    }
+                Ast {
+                    span: next.span,
+                    node: AstNode::Access(name)
                 }
             },
+            TokenData::OpenBracket(BracketType::Curly) => {
+                self.trace.push("block expression".into());
+                let block = self.parse_body()?;
+                self.trace.pop();
+
+                Ast {
+                    span: next.span,
+                    node: AstNode::Block(block)
+                }
+            }
             TokenData::OpenBracket(BracketType::Smooth) => {
                 self.toks.next(); //Consume the opening bracket
                 self.trace.push("expression in parentheses".into());
@@ -863,6 +848,11 @@ impl<'int, 'src> Parser<'int, 'src> {
                     let mut tuple_elements = vec![expr];
                     self.trace.push("tuple literal".into());
                     loop {
+                        if self.toks.peek().map(|tok| &tok.data) == Some(&TokenData::CloseBracket(BracketType::Smooth)) {
+                            self.toks.next();
+                            break
+                        }
+
                         let tuple_element = self.parse_expr()?;
                         tuple_elements.push(tuple_element);
                         let next = self.next_tok(EXPECTING_AFTER_TUPLE_EXPR)?;
@@ -912,7 +902,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     fn parse_access(&mut self, accessing: Ast) -> ParseResult<'src, Ast> {
         const ACCESS_EXPECTING: &[TokenData<'static>] = &[
             TokenData::Period,
-            TokenData::OpenBracket(BracketType::Square)
+            TokenData::OpenBracket(BracketType::Square),
         ];
 
         let peeked = self.peek_tok(ACCESS_EXPECTING)?.clone();
@@ -945,8 +935,45 @@ impl<'int, 'src> Parser<'int, 'src> {
                         index: Box::new(index)
                     }
                 })
-            }
+            },
+            //Function call
+            TokenData::Colon => {
+                self.trace.push("function call".into());
 
+                self.toks.next();
+                self.expect_next(&[TokenData::OpenBracket(BracketType::Smooth)])?;
+
+                let mut args = vec![];
+
+                loop {
+                    let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+                    match next_in_args.data {
+                        TokenData::Comma => {
+                            self.next_tok(&[TokenData::Comma])?;
+                        },
+                        TokenData::CloseBracket(BracketType::Smooth) => {
+                            self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                            break
+                        },
+                        _ => {
+                            self.trace.push("function call argument".into());
+                            args.push(self.parse_expr()?);
+                            self.trace.pop();
+                        }
+                    }
+                }
+
+                self.trace.pop();
+
+                Ok(Ast {
+                    span: if let Some(last) = args.last() {
+                        (peeked.span.from, last.span.to).into()
+                    } else {
+                        peeked.span
+                    },
+                    node: AstNode::FunCall(Box::new(accessing), args)
+                })
+            },
             _ => Ok(accessing)
         }
     }
