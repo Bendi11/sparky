@@ -336,6 +336,8 @@ pub enum UnresolvedType {
         /// Is the integer type signed or unsigned
         signed: bool,
     },
+    /// True / False type
+    Bool,
     /// A function type
     Fun(Box<UnresolvedFunType>),
     Float {
@@ -365,10 +367,10 @@ pub enum UnresolvedType {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug)]
 pub enum IntegerWidth {
-    Eight = 8,
-    Sixteen = 16,
-    ThirtyTwo = 32,
-    SixtyFour = 64
+    Eight,
+    Sixteen,
+    ThirtyTwo,
+    SixtyFour,
 }
 
 impl<T: std::fmt::Debug + Clone> AstNode<T> {

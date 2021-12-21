@@ -87,14 +87,8 @@ pub struct IRContext {
     pub types: Arena<Type>,
     pub blocks: Arena<Block>,
 
-    pub u8_id: TypeId,
-    pub u16_id: TypeId,
-    pub u32_id: TypeId,
-    pub u64_id: TypeId,
-    pub i8_id: TypeId,
-    pub i16_id: TypeId,
-    pub i32_id: TypeId,
-    pub i64_id: TypeId,
+    pub u_ids: [TypeId ; 4],
+    pub i_ids: [TypeId ; 4],
     pub f32_id: TypeId,
     pub f64_id: TypeId,
     pub bool_id: TypeId,
@@ -163,39 +157,44 @@ pub struct Module {
 }
 
 
-impl Module {
+impl IRContext {
     /// Get either a child module or an imported module of this module
-    pub fn get_submodule(&self, name: Symbol) -> Option<ModuleId> {
-        match self.children.get(&name) {
+    pub fn get_submodule(&self, id: ModuleId, name: Symbol) -> Option<ModuleId> {
+        let module = &self.modules[id];
+        match module.children.get(&name) {
             Some(moduleid) => Some(*moduleid),
-            None => self.imports.get(&name).copied(),
+            None => module.imports.get(&name).copied(),
         }
     }
     
     /// Get an imported or child from this module by path
-    pub fn get_submodule_path(&self, ctx: &IRContext, path: SymbolPath) -> Option<ModuleId> {
-        self.get_module_impl(ctx, path.iter())
+    pub fn get_submodule_path(&self, id: ModuleId, path: &SymbolPath) -> Option<ModuleId> {
+        self.get_module_impl(id, path.iter())
     }
     
     /// Get a submodule or import by path
-    fn get_module_impl(&self, ctx: &IRContext, mut iter: PathIter) -> Option<ModuleId> {
+    fn get_module_impl(&self, id: ModuleId, mut iter: PathIter) -> Option<ModuleId> {
         match iter.next() {
-            Some(name) => ctx.modules[self.get_submodule(name)?].get_module_impl(ctx, iter),
-            None => Some(self.id)
+            Some(name) => {
+                let id = self.get_submodule(id, name)?;
+                self.get_module_impl(id, iter)
+            }
+            None => Some(id)
         }
     }
     
     /// Get a type by path from this module
-    pub fn get_type(&self, ctx: &IRContext, path: SymbolPath) -> Option<TypeId> {
-        self.get_type_impl(ctx, path.iter())
+    pub fn get_type(&self, id: ModuleId, path: &SymbolPath) -> Option<TypeId> {
+        self.get_type_impl(id, path.iter())
     }
     
     /// Get a type from this module by path
-    fn get_type_impl(&self, ctx: &IRContext, mut iter: PathIter) -> Option<TypeId> {
+    fn get_type_impl(&self, id: ModuleId, mut iter: PathIter) -> Option<TypeId> {
         if iter.len() == 1 {
-            self.typedefs.get(&iter.next().unwrap()).copied()
+            self.modules[id].typedefs.get(&iter.next().unwrap()).copied()
         } else {
-            ctx.modules[self.get_submodule(iter.next().unwrap())?].get_type_impl(ctx, iter)
+            let submod = self.get_submodule(id, iter.next().unwrap())?;
+            self.get_type_impl(submod, iter)
         }
     }
 }

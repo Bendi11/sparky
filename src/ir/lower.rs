@@ -1,6 +1,6 @@
 use string_interner::StringInterner;
 
-use crate::{ast::{ParsedModule, DefData, Def}, util::{files::{Files, FileId}, loc::Span}};
+use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType}, util::{files::{Files, FileId}, loc::Span}};
 use super::*;
 
 
@@ -87,18 +87,20 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
     /// Resolve all previously forward declared types with definitions
     fn resolve_types(&mut self, (parsed, id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
         for def in parsed.defs.values() {
-            match def.data {
+            match &def.data {
                 DefData::StructDef {
                     name,
                     fields
                 } => {
-
+                     
                 },
                 _ => ()
             }
         }
         Ok(())
     }
+
+
     /// Walk a module and any submodules 
     fn walk_module_with<R, F: FnMut(&mut Self, (&ParsedModule, ModuleId)) -> SemanticResult<R>>(&mut self, module: &ParsedModule, mut f: F) -> SemanticResult<R> {
         let id = self.forward_modules[&module.name];
@@ -112,6 +114,81 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
 
     fn symbol(&self, sym: Symbol) -> &str {
         self.symbols.resolve(sym).unwrap()
+    }
+    
+    /// Resolve a type in the context of the given module
+    fn resolve_type(&mut self, span: Span, file_id: FileId, ty: &UnresolvedType, module: ModuleId) -> SemanticResult<TypeId> {
+        Ok(match ty {
+            UnresolvedType::Integer { width, signed } => match signed {
+                true => self.ctx.i_ids[*width as u8 as usize],
+                false => self.ctx.u_ids[*width as u8 as usize],
+            },
+            UnresolvedType::Bool => self.ctx.bool_id,
+            UnresolvedType::Unit => self.ctx.unit_id,
+            UnresolvedType::Fun(unresolved_fun_ty) => {
+                let fun_ty_id = self.ctx.new_type();
+                let return_ty = self.resolve_type(span, file_id, &unresolved_fun_ty.return_ty, module)?;
+                let args = unresolved_fun_ty.arg_tys.iter()
+                        .map(|ty| self.resolve_type(span, file_id, ty, module))
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                let fun_ty = &mut self.ctx.types[fun_ty_id];
+                fun_ty.data = TypeData::Fun {
+                    return_ty, 
+                    args,
+                };
+                fun_ty_id
+            },
+            UnresolvedType::Float { doublewide } => if *doublewide { self.ctx.f64_id } else { self.ctx.f32_id },
+            UnresolvedType::Array { elements, len } => {
+                let array_type_id = self.ctx.new_type();
+                let elements = self.resolve_type(span, file_id, elements, module)?;
+                let array_ty = &mut self.ctx.types[array_type_id];
+                array_ty.data = TypeData::Array {
+                    elements,                   
+                    len: *len,
+                };
+                array_type_id
+            },
+            UnresolvedType::Tuple { elements } => {
+                let tuple_type_id = self.ctx.new_type();
+                let elements =  elements.iter()
+                        .map(|ty| self.resolve_type(span, file_id, ty, module))
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                let tuple_type = &mut self.ctx.types[tuple_type_id];
+                tuple_type.data = TypeData::Tuple { 
+                    elements,
+                };
+                tuple_type_id
+            },
+            UnresolvedType::Pointer(to) => {
+                let pointer_ty_id = self.ctx.new_type();
+                let pointee_ty = self.resolve_type(span, file_id, &*to, module)?;
+                let pointer_ty = &mut self.ctx.types[pointer_ty_id];
+                pointer_ty.data = TypeData::Pointer(pointee_ty);
+                pointer_ty_id
+            },
+            UnresolvedType::UserDefined { name } => {
+                match self.ctx.get_type(module, name) {
+                    Some(id) => id,
+                    None => return Err(SemanticError::new(format!("Unknown type name '{}'", self.display_path(name)), file_id)
+                        .with_span(span)
+                    )
+                }
+            }
+        })
+    }
+
+    fn display_path(&self, path: &SymbolPath) -> String {
+        let mut display = String::new();
+        for (i, part) in path.iter().enumerate() {
+            display.push_str(self.symbol(part));
+            if i != path.len() - 1 {
+                display.push(':');
+            }
+        }
+        display
     }
 
 }
