@@ -19,8 +19,8 @@ bitflags! {
 /// Structure containing a list of symbols separated by the colon
 /// character, for example std:io:open 
 #[derive(Clone, Debug)]
-pub struct UnresolvedPath {
-    internal: UnresolvedPathInternal 
+pub struct SymbolPath {
+    internal: SymbolPathInternal 
 }
 
 /// Enumeration allowing both a heap-allocated list of parts for a path
@@ -31,7 +31,7 @@ pub struct UnresolvedPath {
 /// must always have at least one symbol and allowing public access risks allowing
 /// that invariant
 #[derive(Clone, Debug)]
-enum UnresolvedPathInternal {
+enum SymbolPathInternal {
     /// A path made of a single part
     Single(Symbol),
     /// A path made of multiple parts
@@ -60,10 +60,10 @@ impl Iterator for PathIter<'_> {
 
 impl ExactSizeIterator for PathIter<'_> {}
 
-impl UnresolvedPath {
+impl SymbolPath {
     /// Create a new path with only one identifier
     pub fn new(part: Symbol) -> Self {
-        Self { internal: UnresolvedPathInternal::Single(part) }
+        Self { internal: SymbolPathInternal::Single(part) }
     }
     
     /// Create a new path from a list of parts
@@ -72,41 +72,41 @@ impl UnresolvedPath {
     /// The `parts` argument must contain at least one Symbol
     pub fn new_parts(parts: &[Symbol]) -> Self {
         if parts.len() == 1 {
-            Self { internal: UnresolvedPathInternal::Single(parts[0]) }
+            Self { internal: SymbolPathInternal::Single(parts[0]) }
         } else {
-            Self { internal: UnresolvedPathInternal::Multiple(parts.to_owned()) }
+            Self { internal: SymbolPathInternal::Multiple(parts.to_owned()) }
         }
     }
     
     /// Get the length of this path
     pub fn len(&self) -> usize {
         match self.internal {
-            UnresolvedPathInternal::Single(_) => 1,
-            UnresolvedPathInternal::Multiple(ref parts) => parts.len(),
+            SymbolPathInternal::Single(_) => 1,
+            SymbolPathInternal::Multiple(ref parts) => parts.len(),
         }
     }
 
     /// Retrieve the last identifier in the path
     pub fn last(&self) -> Symbol {
         match self.internal {
-            UnresolvedPathInternal::Single(last) => last,
-            UnresolvedPathInternal::Multiple(ref parts) => *parts.last().unwrap()
+            SymbolPathInternal::Single(last) => last,
+            SymbolPathInternal::Multiple(ref parts) => *parts.last().unwrap()
         }
     }
     
     /// Return the first part of this path
     pub fn first(&self) -> Symbol {
         match self.internal {
-            UnresolvedPathInternal::Single(first) => first,
-            UnresolvedPathInternal::Multiple(ref parts) => *parts.first().unwrap()
+            SymbolPathInternal::Single(first) => first,
+            SymbolPathInternal::Multiple(ref parts) => *parts.first().unwrap()
         }
     }
     
     /// Return an iterator over all parts of this path from first to last
     pub fn iter(&self) -> PathIter<'_> {
         match &self.internal {
-            UnresolvedPathInternal::Single(single) => PathIter::Single(std::iter::once(*single)),
-            UnresolvedPathInternal::Multiple(parts) => PathIter::Multiple(parts.into_iter())
+            SymbolPathInternal::Single(single) => PathIter::Single(std::iter::once(*single)),
+            SymbolPathInternal::Multiple(parts) => PathIter::Multiple(parts.into_iter())
         }
     }
 }
@@ -130,7 +130,7 @@ pub struct FunProto {
 pub enum AstNode<Type = UnresolvedType> 
 where Type: Clone + std::fmt::Debug {
     /// A variable / enum / constant / function access by name
-    Access(UnresolvedPath),
+    Access(SymbolPath),
     /// Member item access with the '.' operator
     MemberAccess(Box<Ast>, Symbol),
     /// An array-like index expression using '[' ']'
@@ -253,7 +253,7 @@ pub enum DefData {
     },
     /// An imported module definition
     ImportDef {
-        name: UnresolvedPath
+        name: SymbolPath
     }
 }
 impl DefData {
@@ -286,6 +286,8 @@ pub struct Def {
 pub struct ParsedModule {
     /// A map of names to all definitions in the module
     pub defs: HashMap<Symbol, Def>,
+    /// All imports for this module
+    pub imports: Vec<Symbol>,
     /// The name of the module
     pub name: Symbol,
     /// The file that this module was parsed from
@@ -302,6 +304,7 @@ impl ParsedModule {
             name,
             file,
             children: HashMap::new(),
+            imports: vec![],
         }
     }
 }
@@ -354,7 +357,7 @@ pub enum UnresolvedType {
     /// User-defined identifier
     UserDefined {
         /// The name of the user-defined type
-        name: UnresolvedPath,
+        name: SymbolPath,
     },
 }
 

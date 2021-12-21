@@ -9,7 +9,7 @@ use generational_arena::{Index, Arena};
 use num_bigint::BigInt;
 use string_interner::symbol::SymbolU32 as Symbol;
 
-use crate::ast::IntegerWidth;
+use crate::ast::{IntegerWidth, SymbolPath, PathIter};
 
 pub type ModuleId = Index;
 
@@ -18,9 +18,16 @@ pub type TypeId = Index;
 pub type BlockId = Index;
 pub type RegId = Index;
 
+/// Structure holding both a type ID and the type data
+#[derive(Clone, Debug)]
+pub struct Type {
+    pub id: TypeId,
+    pub data: TypeData,
+}
+
 /// Structure containing all data needed to represent any type in the IR
 #[derive(Clone, Debug)]
-pub enum Type {
+pub enum TypeData {
     /// An integer type with width and signededness
     Integer {
         /// If this is an unsigned integer type
@@ -68,6 +75,8 @@ pub enum Type {
     },
     /// A zero-byte sized type that acts as a void type
     Unit,
+    /// A type indicating an internal compiler error
+    Invalid,
 }
 
 /// An IR context containing all blocks, definitions, etc.
@@ -77,11 +86,67 @@ pub struct IRContext {
     pub funs: Arena<Fun>,
     pub types: Arena<Type>,
     pub blocks: Arena<Block>,
+
+    pub u8_id: TypeId,
+    pub u16_id: TypeId,
+    pub u32_id: TypeId,
+    pub u64_id: TypeId,
+    pub i8_id: TypeId,
+    pub i16_id: TypeId,
+    pub i32_id: TypeId,
+    pub i64_id: TypeId,
+    pub f32_id: TypeId,
+    pub f64_id: TypeId,
+    pub bool_id: TypeId,
+    pub unit_id: TypeId,
+}
+
+impl IRContext {
+    /// Create a new module with the given name
+    pub fn new_module(&mut self, name: Symbol) -> ModuleId {
+        self.modules.insert_with(|id| Module {
+            id,
+            children: HashMap::new(),
+            imports: HashMap::new(),
+            typedefs: HashMap::new(),
+            funs: HashMap::new(),
+            name
+        })
+    }
+    
+    /// Create a new empty function with the given name
+    pub fn new_fun(&mut self, name: Symbol) -> FunId {
+        self.funs.insert_with(|id| Fun {
+            name,
+            args: Vec::new(),
+            return_ty: self.unit_id,
+            entry: None,
+            id,
+        })
+    }
+    
+    /// Create a new IR block in the arena
+    pub fn new_block(&mut self) -> BlockId {
+        self.blocks.insert_with(|id| Block {
+            id,
+            insts: vec![],
+
+        })
+    }
+
+    pub fn new_type(&mut self) -> TypeId {
+        self.types.insert_with(|id| Type {
+            id,
+            data: TypeData::Unit
+        })
+    }
 }
 
 /// A single module containing multiple definitions 
 #[derive(Clone, Debug)]
 pub struct Module {
+    /// The ID of this module
+    pub id: ModuleId,
     /// A map of names to child modules
     pub children: HashMap<Symbol, ModuleId>,
     /// A map of all imports in the module
@@ -94,15 +159,26 @@ pub struct Module {
     pub name: Symbol,
 }
 
+
 impl Module {
-    /// Create a new module from the name
-    pub fn new(name: Symbol) -> Self {
-        Self {
-            children: HashMap::new(),
-            imports: HashMap::new(),
-            typedefs: HashMap::new(),
-            funs: HashMap::new(),
-            name
+    /// Get either a child module or an imported module of this module
+    pub fn get_submodule(&self, name: Symbol) -> Option<ModuleId> {
+        match self.children.get(&name) {
+            Some(moduleid) => Some(*moduleid),
+            None => self.imports.get(&name).copied(),
+        }
+    }
+    
+    /// Get an imported or child from this module by path
+    pub fn get_submodule_path(&self, ctx: &IRContext, path: SymbolPath) -> Option<ModuleId> {
+        self.get_module_impl(ctx, path.iter())
+    }
+    
+    /// Get a submodule or import by path
+    fn get_module_impl(&self, ctx: &IRContext, mut iter: PathIter) -> Option<ModuleId> {
+        match iter.next() {
+            Some(name) => ctx.modules[self.get_submodule(name)?].get_module_impl(ctx, iter),
+            None => Some(self.id)
         }
     }
 }
@@ -110,6 +186,8 @@ impl Module {
 /// A single function with name, argument types, etc.
 #[derive(Clone, Debug)]
 pub struct Fun {
+    /// ID of the function in the context
+    pub id: FunId,
     /// The name of the function
     pub name: Symbol, 
     /// The argument types and optional names of the function
@@ -124,6 +202,8 @@ pub struct Fun {
 /// that contains all statements in a function body
 #[derive(Clone, Debug)]
 pub struct Block {
+    /// ID of the block in the context
+    pub id: BlockId,
     /// A list of all nodes in the block
     pub insts: Vec<Node>,
 }

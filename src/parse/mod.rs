@@ -6,7 +6,7 @@ use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
 use crate::{
     util::loc::Span, 
-    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, UnresolvedPath, UnresolvedFunType}, 
+    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, SymbolPath, UnresolvedFunType}, 
     parse::token::Op
 };
 
@@ -119,14 +119,14 @@ impl<'int, 'src> Parser<'int, 'src> {
     }
     
     /// Consume the next path from the input tokens, requiring at least one identifier
-    fn expect_next_path(&mut self, expected: &'static [TokenData<'static>]) -> ParseResult<'src, UnresolvedPath> {
+    fn expect_next_path(&mut self, expected: &'static [TokenData<'static>]) -> ParseResult<'src, SymbolPath> {
         let first = self.expect_next_ident(expected)?;
         let first = self.symbol(first);
         self.expect_next_path_with(expected, first)
     }
     
     /// Get the next path in the token stream using a first identifier
-    fn expect_next_path_with(&mut self, expected: &'static [TokenData<'static>], first: Symbol) -> ParseResult<'src, UnresolvedPath> {
+    fn expect_next_path_with(&mut self, expected: &'static [TokenData<'static>], first: Symbol) -> ParseResult<'src, SymbolPath> {
         let mut parts = vec![first];
         while let Some(TokenData::Colon) = self.toks.peek().map(|tok| &tok.data) {
             if let Some(TokenData::Ident(_)) = self.toks.peek2().map(|tok| &tok.data) {
@@ -139,9 +139,9 @@ impl<'int, 'src> Parser<'int, 'src> {
         }
 
         Ok(if parts.len() == 1 {
-            UnresolvedPath::new(parts[0])
+            SymbolPath::new(parts[0])
         } else {
-            UnresolvedPath::new_parts(&parts)
+            SymbolPath::new_parts(&parts)
         })
     }
 
