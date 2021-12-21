@@ -116,10 +116,12 @@ impl IRContext {
     
     /// Create a new empty function with the given name
     pub fn new_fun(&mut self, name: Symbol) -> FunId {
+        let unit_id = self.unit_id;
+
         self.funs.insert_with(|id| Fun {
             name,
             args: Vec::new(),
-            return_ty: self.unit_id,
+            return_ty: unit_id,
             entry: None,
             id,
         })

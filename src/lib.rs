@@ -9,7 +9,7 @@ mod tests {
 
     use string_interner::StringInterner;
 
-    use crate::{parse::Parser, util::files::CompiledFile, ast::DefData};
+    use crate::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData};
 
     
 
@@ -32,9 +32,10 @@ fun test_fn {
     
     #[test]
     pub fn test_parse() {
-        let file = CompiledFile::in_memory(SOURCE.to_owned());
+        let mut files = Files::new();
+        let file = files.add(CompiledFile::in_memory(SOURCE.to_owned()));
         let mut interner = StringInterner::new();
-        let mut parser = Parser::new(SOURCE, &mut interner, "buffer");
+        let mut parser = Parser::new(SOURCE, &mut interner, "buffer", file);
         let module = parser.parse().unwrap_or_else(|e| {
             for name in e.backtrace {
                 eprintln!("in {}", name)
@@ -42,7 +43,7 @@ fun test_fn {
 
             eprintln!("{}", e.error);
             if let Some(span) = e.highlighted_span {
-                span.display(&file).unwrap();
+                span.display(&files.get(file)).unwrap();
             }
             panic!()
         });

@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
 use crate::{
-    util::loc::Span, 
+    util::{loc::Span, files::FileId}, 
     ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, SymbolPath, UnresolvedFunType}, 
     parse::token::Op
 };
@@ -26,6 +26,8 @@ pub struct Parser<'int, 'src> {
     interner: &'int mut StringInterner,
     /// Name of the currently parsed module
     modulename: Symbol,
+    /// The ID of the currently parsed file
+    file_id: FileId,
 }
 
 pub type ParseResult<'src, T> = Result<T, ParseError<'src>>;
@@ -47,7 +49,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     
     /// Parse the input source code into a full AST
     pub fn parse(&mut self) -> ParseResult<'src, ParsedModule> {
-        let mut module = ParsedModule::new(self.modulename);
+        let mut module = ParsedModule::new(self.modulename, self.file_id);
         let modulename = self.interner.resolve(self.modulename).unwrap(); 
         self.trace.push(format!("module {}", modulename).into());
 
@@ -62,12 +64,13 @@ impl<'int, 'src> Parser<'int, 'src> {
     }
 
     /// Create a new `Parser` from the given source string
-    pub fn new(src: &'src str, interner: &'int mut StringInterner, filename: &str) -> Self {
+    pub fn new(src: &'src str, interner: &'int mut StringInterner, filename: &str, file_id: FileId) -> Self {
         Self {
             toks: Lexer::new(src),
             trace: SmallVec::new(),
             modulename: interner.get_or_intern(filename),
             interner,
+            file_id,
         }
     }
 
