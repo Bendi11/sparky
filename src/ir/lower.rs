@@ -38,11 +38,13 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         self.forward_modules = self.forward_modules(modules)?;
         self.walk_modules_with(modules, &mut Self::forward_types)?;
         self.walk_modules_with(modules, &mut Self::resolve_types)?;
+        self.walk_modules_with(modules, &mut Self::gen_fundecls)?;
         println!("{:#?}", self.ctx);
         Ok(())
     }
-        
     
+    
+
     /// Generate forward definitions of all modules in the IR context and return a map of module
     /// names to more module IDs
     pub fn forward_modules(&mut self, modules: &[ParsedModule]) -> SemanticResult<HashMap<Symbol, ModuleId>> {
@@ -99,6 +101,34 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
 
     }
     
+    /// Generate code for function declarations, leaving entry blocks as None
+    fn gen_fundecls(&mut self, (parsedmod, mod_id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
+        for def in parsedmod.defs.values() {
+            match &def.data {
+                DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
+                    let fun_id = self.ctx.new_fun(proto.name);
+                    
+                    let args = proto.args
+                        .iter()
+                        .map(|(name, ty)| match self.resolve_type(def.span, parsedmod.file, ty, mod_id) {
+                            Ok(ty) => Ok((ty, Some(*name))),
+                            Err(e) => Err(e)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let ret = self.resolve_type(def.span, parsedmod.file, &proto.return_ty, mod_id)?;
+                    
+                    let fun = &mut self.ctx.funs[fun_id];
+                    fun.args = args;
+                    fun.return_ty = ret;
+                    drop(fun);
+                    self.ctx.modules[mod_id].funs.insert(proto.name, fun_id);
+                }
+                _ => (),
+            }
+        }
+        Ok(())
+    }
+
     /// Resolve all previously forward declared types with definitions
     fn resolve_types(&mut self, (parsed, id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
         for def in parsed.defs.values() {

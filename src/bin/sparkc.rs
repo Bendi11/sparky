@@ -19,7 +19,7 @@ type test_struct {
     i32 field
 }
 
-fun test_fn {
+fun test_fn i32 a -> () {
     let a := if true {
         phi "test\na" 
     } else {
