@@ -75,6 +75,8 @@ pub enum TypeData {
     },
     /// A zero-byte sized type that acts as a void type
     Unit,
+    /// An alias to another type
+    Alias(TypeId),
     /// A type indicating an internal compiler error
     Invalid,
 }

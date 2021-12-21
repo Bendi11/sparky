@@ -10,7 +10,6 @@ use super::*;
 pub struct AstLowerer<'ctx, 'sym, 'files> {
     ctx: &'ctx mut IRContext,
     symbols: &'sym StringInterner,
-    modules: Vec<ParsedModule>,
     /// A map of module names to their IDs in the context
     forward_modules: HashMap<Symbol, ModuleId>,
     /// Structure responsible for outputting emitted diagnostics
@@ -26,21 +25,28 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         symbols: &'sym StringInterner, 
         files: &'files Files, 
         modules: Vec<ParsedModule>
-    ) -> SemanticResult<Self> {
-        let mut this = Self {
+    ) -> Self {
+        Self {
             ctx,
             symbols,
-            modules,
             diagnostic: DiagnosticManager::new(files),
             forward_modules: HashMap::new()
-        };
-        this.forward_modules = this.forward_modules()?;
-        Ok(this)
+        }
     }
+    
+    /// Generate code for all passed modules
+    pub fn codegen(&mut self, modules: &[ParsedModule]) -> SemanticResult<()> {
+        self.forward_modules = self.forward_modules(modules)?;
+        self.walk_modules_with(modules, Self::forward_types)?;
+        self.walk_modules_with(modules, Self::resolve_types)?;
+        println!("{:#?}", self.ctx);
+        Ok(())
+    }
+        
     
     /// Generate forward definitions of all modules in the IR context and return a map of module
     /// names to more module IDs
-    pub fn forward_modules(&mut self) -> SemanticResult<HashMap<Symbol, ModuleId>> {
+    pub fn forward_modules(&mut self, modules: &[ParsedModule]) -> SemanticResult<HashMap<Symbol, ModuleId>> {
         fn forward_modules_for(ctx: &mut IRContext, list: &HashMap<Symbol, ParsedModule>) -> SemanticResult<HashMap<Symbol, ModuleId>> {
             let mut submods = HashMap::new();
             for submod in list.values() {
@@ -50,15 +56,15 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
             }
             Ok(submods)
         }
-        let mut modules = HashMap::new();
-        for module in self.modules.iter() {
+        let mut modules_map = HashMap::new();
+        for module in modules.iter() {
             let irmod_id = self.ctx.new_module(module.name);
             let children = forward_modules_for(&mut self.ctx, &module.children)?;
             self.ctx.modules[irmod_id].children = children;
 
-            modules.insert(module.name, irmod_id);
+            modules_map.insert(module.name, irmod_id);
         }
-        Ok(modules)
+        Ok(modules_map)
     }
     
     /// Create Type entries for all type definitions in a module
@@ -114,6 +120,37 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
                     };
                     self.ctx.types[struct_id].data = struct_ty;
                 },
+                DefData::EnumDef {
+                    name,
+                    variants
+                } => {
+                    let enum_id = *self
+                        .ctx
+                        .modules[id]
+                        .typedefs
+                        .get(name)
+                        .expect("Forward declarations already declared");
+                    let enum_ty = TypeData::Enum {
+                        variants: variants
+                            .iter()
+                            .map(|variant| self.resolve_type(def.span, parsed.file, variant, id))
+                            .collect::<Result<Vec<_>, _>>()?
+                    };
+                    self.ctx.types[enum_id].data = enum_ty;
+                },
+                DefData::AliasDef {
+                    name,
+                    aliased
+                } => {
+                    let alias_id = *self
+                        .ctx
+                        .modules[id]
+                        .typedefs
+                        .get(name)
+                        .expect("Forward declarations already declared");
+                    let alias_ty = TypeData::Alias(self.resolve_type(def.span, parsed.file, aliased, id)?);
+                    self.ctx.types[alias_id].data = alias_ty;
+                }
                 _ => ()
             }
         }
@@ -130,7 +167,17 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         f(self, (module, id))
     }
 
-    
+    /// Walk all modules using the specified function
+    fn walk_modules_with<R, F: FnMut(&mut Self, (&ParsedModule, ModuleId)) -> SemanticResult<R>>(
+        &mut self,
+        modules: &[ParsedModule],
+        mut f: F
+    ) -> SemanticResult<R> {
+        for module in modules.iter().skip(1) {
+            self.walk_module_with(module, &mut f)?;
+        }
+        self.walk_module_with(&modules[0], &mut f)
+    }
 
     fn symbol(&self, sym: Symbol) -> &str {
         self.symbols.resolve(sym).unwrap()
