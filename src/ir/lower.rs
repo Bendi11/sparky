@@ -1,32 +1,37 @@
 use string_interner::StringInterner;
 
-use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType}, util::{files::{Files, FileId}, loc::Span}};
+use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
 use super::*;
 
 
 /// A structure responsible for lowering a parsed AST into
 /// intermediate representation, resolving all unknown symbols
 #[derive(Debug)]
-pub struct AstLowerer<'ctx, 'sym> {
+pub struct AstLowerer<'ctx, 'sym, 'files> {
     ctx: &'ctx mut IRContext,
     symbols: &'sym StringInterner,
     modules: Vec<ParsedModule>,
     /// A map of module names to their IDs in the context
     forward_modules: HashMap<Symbol, ModuleId>,
-
-    files: Files,
+    /// Structure responsible for outputting emitted diagnostics
+    diagnostic: DiagnosticManager<'files>,
 }
 
-pub type SemanticResult<T> = Result<T, SemanticError>;
+pub type SemanticResult<T> = Result<T, ()>;
 
-impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
+impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     /// Create a new lowerer from an ir context
-    pub fn new(ctx: &'ctx mut IRContext, symbols: &'sym StringInterner, files: Files, modules: Vec<ParsedModule>) -> SemanticResult<Self> {
+    pub fn new(
+        ctx: &'ctx mut IRContext, 
+        symbols: &'sym StringInterner, 
+        files: &'files Files, 
+        modules: Vec<ParsedModule>
+    ) -> SemanticResult<Self> {
         let mut this = Self {
             ctx,
             symbols,
             modules,
-            files,
+            diagnostic: DiagnosticManager::new(files),
             forward_modules: HashMap::new()
         };
         this.forward_modules = this.forward_modules()?;
@@ -68,10 +73,15 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
                 | DefData::AliasDef { name, aliased: _ } => {
                     //Ensure that two type definitions don't have colliding names
                     if let Some(ref other_def) = remembered_defs.get(&name) {
-                        return Err(SemanticError::new(format!("In module {}: two type definitions with the same name", self.symbol(parsed.name)), parsed.file)
+                        self.diagnostic.emit(
+                            Diagnostic::error(
+                                format!("In module {}: two type definitions with the same name", self.symbol(parsed.name)), 
+                                parsed.file
+                            )
                             .with_span(def.span)
                             .with_span(other_def.span)
-                        )
+                        );
+                        return Err(())
                     }
                     remembered_defs.insert(name, def.clone());
 
@@ -92,7 +102,17 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
                     name,
                     fields
                 } => {
-                     
+                    let struct_id = *self.ctx.modules[id].typedefs.get(name).expect("Forward declarations created for all types");
+                    let struct_ty = TypeData::Struct {
+                        fields: fields
+                            .iter()
+                            .map(|(name, ty)| match self.resolve_type(def.span, parsed.file, ty, id) {
+                                Ok(ty) => Ok((*name, ty)),
+                                Err(e) => Err(e)
+                            })
+                            .collect::<Result<HashMap<_, _>, _>>()?
+                    };
+                    self.ctx.types[struct_id].data = struct_ty;
                 },
                 _ => ()
             }
@@ -172,9 +192,15 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
             UnresolvedType::UserDefined { name } => {
                 match self.ctx.get_type(module, name) {
                     Some(id) => id,
-                    None => return Err(SemanticError::new(format!("Unknown type name '{}'", self.display_path(name)), file_id)
-                        .with_span(span)
-                    )
+                    None => {
+                        self.diagnostic.emit(Diagnostic::error(
+                                format!("Unknown type name '{}'", self.display_path(name)),
+                                file_id
+                            )
+                            .with_span(span)
+                        );
+                        return Err(())
+                    }
                 }
             }
         })
@@ -191,29 +217,4 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
         display
     }
 
-}
-
-/// An error found in the AST lowerer
-pub struct SemanticError {
-    /// The error message of this error
-    pub msg: String,
-    /// The highlighted span of this error
-    pub spans: Vec<Span>,
-    /// The this error was in
-    pub in_file: FileId,
-}
-
-impl SemanticError {
-    pub fn new(msg: impl ToString, file: FileId) -> Self {
-        Self {
-            msg: msg.to_string(),
-            in_file: file,
-            spans: vec![]
-        }
-    } 
-
-    pub fn with_span(mut self, span: Span) -> Self {
-        self.spans.push(span);
-        self
-    }
 }
