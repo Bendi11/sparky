@@ -61,15 +61,11 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
         //Keep a map of recorded definitions to check for duplicate names
         let mut remembered_defs: HashMap::<Symbol, Def>  = HashMap::new();
         
-        for (defname, def) in parsed.defs.iter() {
+        for def in parsed.defs.values() {
             match def.data {
                 DefData::StructDef { name, fields: _ }
                 | DefData::EnumDef { name, variants: _ }
                 | DefData::AliasDef { name, aliased: _ } => {
-                    let type_id = self.ctx.new_type();
-                    let type_ = &mut self.ctx.types[type_id];
-                    type_.data = TypeData::Invalid;
-                    
                     //Ensure that two type definitions don't have colliding names
                     if let Some(ref other_def) = remembered_defs.get(&name) {
                         return Err(SemanticError::new(format!("In module {}: two type definitions with the same name", self.symbol(parsed.name)), parsed.file)
@@ -79,7 +75,7 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
                     }
                     remembered_defs.insert(name, def.clone());
 
-                    self.ctx.modules[id].typedefs.insert(name, type_id);
+                    self.ctx.modules[id].typedefs.insert(name, self.ctx.invalid_id);
                 },
                 _ => (),
             }
@@ -88,14 +84,31 @@ impl<'ctx, 'sym> AstLowerer<'ctx, 'sym> {
 
     }
     
+    /// Resolve all previously forward declared types with definitions
+    fn resolve_types(&mut self, (parsed, id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
+        for def in parsed.defs.values() {
+            match def.data {
+                DefData::StructDef {
+                    name,
+                    fields
+                } => {
+
+                },
+                _ => ()
+            }
+        }
+        Ok(())
+    }
     /// Walk a module and any submodules 
     fn walk_module_with<R, F: FnMut(&mut Self, (&ParsedModule, ModuleId)) -> SemanticResult<R>>(&mut self, module: &ParsedModule, mut f: F) -> SemanticResult<R> {
         let id = self.forward_modules[&module.name];
         for submodule in module.children.values() {
-           self.walk_module_with(submodule, &mut f); 
+           self.walk_module_with(submodule, &mut f)?; 
         }
         f(self, (module, id))
     }
+
+    
 
     fn symbol(&self, sym: Symbol) -> &str {
         self.symbols.resolve(sym).unwrap()

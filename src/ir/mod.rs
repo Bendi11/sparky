@@ -99,6 +99,7 @@ pub struct IRContext {
     pub f64_id: TypeId,
     pub bool_id: TypeId,
     pub unit_id: TypeId,
+    pub invalid_id: TypeId,
 }
 
 impl IRContext {
@@ -181,6 +182,20 @@ impl Module {
         match iter.next() {
             Some(name) => ctx.modules[self.get_submodule(name)?].get_module_impl(ctx, iter),
             None => Some(self.id)
+        }
+    }
+    
+    /// Get a type by path from this module
+    pub fn get_type(&self, ctx: &IRContext, path: SymbolPath) -> Option<TypeId> {
+        self.get_type_impl(ctx, path.iter())
+    }
+    
+    /// Get a type from this module by path
+    fn get_type_impl(&self, ctx: &IRContext, mut iter: PathIter) -> Option<TypeId> {
+        if iter.len() == 1 {
+            self.typedefs.get(&iter.next().unwrap()).copied()
+        } else {
+            ctx.modules[self.get_submodule(iter.next().unwrap())?].get_type_impl(ctx, iter)
         }
     }
 }
