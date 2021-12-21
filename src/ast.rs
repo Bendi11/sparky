@@ -58,7 +58,14 @@ impl Iterator for PathIter<'_> {
     }
 }
 
-impl ExactSizeIterator for PathIter<'_> {}
+impl ExactSizeIterator for PathIter<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Single(sym) => sym.len(),
+            Self::Multiple(iter) => iter.len(),
+        }
+    }
+}
 
 impl SymbolPath {
     /// Create a new path with only one identifier

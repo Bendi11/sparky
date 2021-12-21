@@ -80,6 +80,11 @@ impl<'files> DiagnosticManager<'files> {
     
     /// Emit a diagnostic to the console 
     pub fn emit(&self, diag: Diagnostic) {
-    
+        let file = self.files.get(diag.file);
+        println!("[{}]", file.path.display());
+        println!("{}", diag.message);
+        for span in diag.spans.iter() {
+            span.display(file);
+        }
     }
 }

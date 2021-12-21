@@ -10,7 +10,7 @@ mod tests {
 
     use string_interner::StringInterner;
 
-    use crate::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData};
+    use crate::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData, ir::{lower::AstLowerer, IRContext}};
 
     
 
@@ -30,7 +30,6 @@ fun test_fn {
 }
 
 "#;
-    
     #[test]
     pub fn test_parse() {
         let mut files = Files::new();
@@ -50,7 +49,7 @@ fun test_fn {
         });
 
         let mut stdout = std::io::stdout();
-        for (_, def) in module.defs {
+        for (_, def) in module.defs.iter() {
             if let DefData::FunDef(_, body) = def.data {
                 for expr in body {
                     expr.node.display(&mut stdout, &interner, 0).unwrap();
@@ -58,6 +57,12 @@ fun test_fn {
                 }
             }
         }
+
+        let mut ctx = IRContext::new();
+        let mut lowerer = AstLowerer::new(&mut ctx, &interner, &files);
+        lowerer.codegen(&[module]).unwrap();
+        drop(lowerer);
+        println!("\n{:#?}", ctx);
         panic!()
     }
 }

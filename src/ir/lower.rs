@@ -24,7 +24,6 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         ctx: &'ctx mut IRContext, 
         symbols: &'sym StringInterner, 
         files: &'files Files, 
-        modules: Vec<ParsedModule>
     ) -> Self {
         Self {
             ctx,
@@ -37,8 +36,8 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     /// Generate code for all passed modules
     pub fn codegen(&mut self, modules: &[ParsedModule]) -> SemanticResult<()> {
         self.forward_modules = self.forward_modules(modules)?;
-        self.walk_modules_with(modules, Self::forward_types)?;
-        self.walk_modules_with(modules, Self::resolve_types)?;
+        self.walk_modules_with(modules, &mut Self::forward_types)?;
+        self.walk_modules_with(modules, &mut Self::resolve_types)?;
         println!("{:#?}", self.ctx);
         Ok(())
     }
@@ -159,24 +158,28 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
 
 
     /// Walk a module and any submodules 
-    fn walk_module_with<R, F: FnMut(&mut Self, (&ParsedModule, ModuleId)) -> SemanticResult<R>>(&mut self, module: &ParsedModule, mut f: F) -> SemanticResult<R> {
+    fn walk_module_with<R>(
+        &mut self, 
+        module: &ParsedModule, 
+        f: &mut dyn FnMut(&mut Self, (&ParsedModule, ModuleId)) -> SemanticResult<R>
+    ) -> SemanticResult<R>{
         let id = self.forward_modules[&module.name];
         for submodule in module.children.values() {
-           self.walk_module_with(submodule, &mut f)?; 
+           self.walk_module_with(submodule, f)?; 
         }
         f(self, (module, id))
     }
 
     /// Walk all modules using the specified function
-    fn walk_modules_with<R, F: FnMut(&mut Self, (&ParsedModule, ModuleId)) -> SemanticResult<R>>(
+    fn walk_modules_with<R>(
         &mut self,
         modules: &[ParsedModule],
-        mut f: F
+        f: &mut dyn FnMut(&mut Self, (&ParsedModule, ModuleId)) -> SemanticResult<R>
     ) -> SemanticResult<R> {
         for module in modules.iter().skip(1) {
-            self.walk_module_with(module, &mut f)?;
+            self.walk_module_with(module, f)?;
         }
-        self.walk_module_with(&modules[0], &mut f)
+        self.walk_module_with(&modules[0], f)
     }
 
     fn symbol(&self, sym: Symbol) -> &str {

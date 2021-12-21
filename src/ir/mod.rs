@@ -99,6 +99,33 @@ pub struct IRContext {
 }
 
 impl IRContext {
+    /// Create a new IR context, populating the types arena with integeral types
+    pub fn new() -> Self {
+        let mut types = Arena::new();
+        Self {
+            u_ids: [
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: false } }),
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::Sixteen, signed: false } }),
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::ThirtyTwo, signed: false } }),
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::SixtyFour, signed: false } }),
+            ],
+            i_ids: [
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: true } }),
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::Sixteen, signed: true } }),
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::ThirtyTwo, signed: true } }),
+                types.insert_with(|id| Type {id, data: TypeData::Integer { width: IntegerWidth::SixtyFour, signed: true } }),
+            ],
+            f32_id: types.insert_with(|id| Type {id, data: TypeData::Float{doublewide: false}}),
+            f64_id: types.insert_with(|id| Type {id, data: TypeData::Float{doublewide: true}}),
+            bool_id: types.insert_with(|id| Type {id, data: TypeData::Bool}),
+            unit_id: types.insert_with(|id| Type {id, data: TypeData::Unit}),
+            invalid_id: types.insert_with(|id| Type {id, data: TypeData::Invalid}),
+            types,
+            modules: Arena::new(),
+            blocks: Arena::new(),
+            funs: Arena::new(),
+        }
+    }
     /// Create a new module with the given name
     pub fn new_module(&mut self, name: Symbol) -> ModuleId {
         self.modules.insert_with(|id| Module {

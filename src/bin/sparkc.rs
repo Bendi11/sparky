@@ -8,7 +8,7 @@ use std::io::Write;
 
     use string_interner::StringInterner;
 
-    use spark::{parse::Parser, util::files::CompiledFile, ast::DefData};
+    use spark::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData, ir::{IRContext, lower::AstLowerer}};
 
     
 
@@ -36,9 +36,10 @@ fun test_fn {
 "#;
     
     pub fn test_parse() {
-        let file = CompiledFile::in_memory(SOURCE.to_owned());
+        let mut files = Files::new();
+        let file = files.add(CompiledFile::in_memory(SOURCE.to_owned()));
         let mut interner = StringInterner::new();
-        let mut parser = Parser::new(SOURCE, &mut interner, "buffer");
+        let mut parser = Parser::new(SOURCE, &mut interner, "buffer", file);
         let module = parser.parse().unwrap_or_else(|e| {
             for name in e.backtrace {
                 eprintln!("in {}", name)
@@ -46,19 +47,25 @@ fun test_fn {
 
             eprintln!("{}", e.error);
             if let Some(span) = e.highlighted_span {
-                span.display(&file).unwrap();
+                span.display(&files.get(file)).unwrap();
             }
             panic!()
         });
 
         let mut stdout = std::io::stdout();
-        for (_, def) in module.defs {
-            if let DefData::FunDef(_, body) = def.data {
+        for (_, def) in module.defs.iter() {
+            if let DefData::FunDef(_, body) = &def.data {
                 for expr in body {
                     expr.node.display(&mut stdout, &interner, 0).unwrap();
                     writeln!(&mut stdout).unwrap();
                 }
             }
         }
+
+        let mut ctx = IRContext::new();
+        let mut lowerer = AstLowerer::new(&mut ctx, &interner, &files);
+        lowerer.codegen(&[module]).unwrap();
+        drop(lowerer);
+        println!("\n{:#?}", ctx);
         
     }

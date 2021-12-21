@@ -1023,7 +1023,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                         self.trace.push("function typename".into());
 
                         self.expect_next(&[TokenData::OpenBracket(BracketType::Smooth)])?;
-                        let mut arg_tys = if let Some(TokenData::CloseBracket(BracketType::Smooth)) = self.toks.peek().map(|tok| &tok.data) {
+                        let arg_tys = if let Some(TokenData::CloseBracket(BracketType::Smooth)) = self.toks.peek().map(|tok| &tok.data) {
                             self.toks.next(); //Consume the closing brace
                             vec![]
                         } else {
@@ -1065,6 +1065,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                         }
                     })
                 },
+                "b" if name == "bool" => Ok(UnresolvedType::Bool),
                 _ => {
                     self.trace.push("user-defined typename".into());
                     let name = self.symbol(name);
