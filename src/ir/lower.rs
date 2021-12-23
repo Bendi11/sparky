@@ -1,7 +1,7 @@
 use quickscope::ScopeMap;
 use string_interner::StringInterner;
 
-use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType, Ast, IfExpr, ElseExpr}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
+use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType, Ast, IfExpr, ElseExpr, NumberLiteralAnnotation}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
 use super::*;
 
 
@@ -147,7 +147,14 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     
     /// Transform the AST by resolving all types to their type IDs, creating variable Ids for
     /// variables instead of names
-    fn resolve_ast(&mut self, module: ModuleId, file: FileId, ast: Ast, scope: &mut ScopeMap<Symbol, VarId>) -> SemanticResult<Node> {
+    fn resolve_ast(
+        &mut self, 
+        module: ModuleId, 
+        file: FileId, 
+        ast: Ast, 
+        scope: &mut ScopeMap<Symbol, VarId>, 
+        type_hint: Option<TypeId>
+    ) -> SemanticResult<Node> {
         Ok(match ast.node {
             AstNode::Access(name) => match scope.get(&name.last()) {
                 Some(var) => Node::VarAccess(*var),
@@ -164,10 +171,10 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
             AstNode::FunCall(called, args) => {
                 let args = args
                     .into_iter()
-                    .map(|ast| self.resolve_ast(module, file, ast, scope))
+                    .map(|ast| self.resolve_ast(module, file, ast, scope, None))
                     .collect::<Result<Vec<_>, _>>()?;
                 Node::Call {
-                    fun_expr: Box::new(self.resolve_ast(module, file, *called, scope)?),
+                    fun_expr: Box::new(self.resolve_ast(module, file, *called, scope, None)?),
                     args,
                 }
             },
@@ -214,7 +221,7 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
                 ty,
                 mutable
             } => {
-
+                scope.define(name, )
             },
             _ => unimplemented!("AST conversion for {:?} not implemented", ast.node)
         })
@@ -307,7 +314,28 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     fn get_ast_ty(&self, scope: &ScopeMap<Symbol, VarId>, ast: &AstNode) -> Option<TypeId> {
         match ast {
             AstNode::PhiExpr(phi) => self.get_ast_ty(scope, &phi.node),
-            AstNode::NumberLiteral(_) => 
+            AstNode::NumberLiteral(n) => if let Some(annotation) = n.annotation() {
+                match annotation {
+                    NumberLiteralAnnotation::U8 => Some(self.ctx.u_ids[IntegerWidth::Eight as u8 as usize]),
+                    NumberLiteralAnnotation::U16 => Some(self.ctx.u_ids[IntegerWidth::Sixteen as u8 as usize]),
+                    NumberLiteralAnnotation::U32 => Some(self.ctx.u_ids[IntegerWidth::ThirtyTwo as u8 as usize]),
+                    NumberLiteralAnnotation::U64 => Some(self.ctx.u_ids[IntegerWidth::SixtyFour as u8 as usize]),
+                    
+                    NumberLiteralAnnotation::I8 => Some(self.ctx.i_ids[IntegerWidth::Eight as u8 as usize]),
+                    NumberLiteralAnnotation::I16 => Some(self.ctx.i_ids[IntegerWidth::Sixteen as u8 as usize]),
+                    NumberLiteralAnnotation::I32 => Some(self.ctx.i_ids[IntegerWidth::ThirtyTwo as u8 as usize]),
+                    NumberLiteralAnnotation::I64 => Some(self.ctx.i_ids[IntegerWidth::SixtyFour as u8 as usize]),
+
+                    NumberLiteralAnnotation::F32 => Some(self.ctx.f32_id),
+                    NumberLiteralAnnotation::F64 => Some(self.ctx.f64_id),
+                }
+            } else {
+                match n {
+                    NumberLiteral::Integer(..) => Some(self.ctx.i_ids[IntegerWidth::ThirtyTwo as u8 as usize]),
+                    NumberLiteral::Float(..) => Some(self.ctx.f64_id),
+                }
+            },
+            AstNode::StringLiteral(_) => 
         }
     }
 

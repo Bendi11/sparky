@@ -4,6 +4,7 @@ pub mod ast;
 pub mod ir;
 pub mod error;
 pub mod backend;
+pub mod arena;
 
 #[cfg(test)]
 mod tests {

@@ -6,7 +6,7 @@ use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
 
 use crate::{
     util::{loc::Span, files::FileId}, 
-    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, SymbolPath, UnresolvedFunType}, 
+    ast::{Ast, UnresolvedType, IntegerWidth, FunProto, AstNode, FunFlags, IfExpr, ElseExpr, NumberLiteral, Def, DefData, ParsedModule, SymbolPath, UnresolvedFunType, NumberLiteralAnnotation}, 
     parse::token::Op
 };
 
@@ -1081,8 +1081,8 @@ impl<'int, 'src> Parser<'int, 'src> {
             TokenData::OpenBracket(BracketType::Square) => {
                 self.trace.push("array type length".into());
                 let len = match self.parse_numliteral()? {
-                    NumberLiteral::Integer(bigint) => u64::try_from(bigint).unwrap(),
-                    NumberLiteral::Float(floating) => floating as u64
+                    NumberLiteral::Integer(bigint, _) => u64::try_from(bigint).unwrap(),
+                    NumberLiteral::Float(floating, _) => floating as u64
                 };
 
                 self.trace.pop();
@@ -1187,10 +1187,33 @@ impl<'int, 'src> Parser<'int, 'src> {
                     }
                 } else { (10, false) };
             let number = &num_str[if ignore_start { 2 } else { 0 }..];
+
+            let annotation = if let Some(TokenData::Ident(ident)) = self.toks.peek().map(|t| &t.data) {
+                match *ident {
+                    "u8" => { self.toks.next(); Some(NumberLiteralAnnotation::U8) },
+                    "u16" => { self.toks.next(); Some(NumberLiteralAnnotation::U16) },
+                    "u32" => { self.toks.next(); Some(NumberLiteralAnnotation::U32) },
+                    "u64" => { self.toks.next(); Some(NumberLiteralAnnotation::U64) },
+
+                    "i8" => { self.toks.next(); Some(NumberLiteralAnnotation::I8) },
+                    "i16" => { self.toks.next(); Some(NumberLiteralAnnotation::I16) },
+                    "i32" => { self.toks.next(); Some(NumberLiteralAnnotation::I32) },
+                    "i64" => { self.toks.next(); Some(NumberLiteralAnnotation::I64) },
+
+                    "f32" => { self.toks.next(); Some(NumberLiteralAnnotation::F32) },
+                    "f64" => { self.toks.next(); Some(NumberLiteralAnnotation::F64) },
+
+                    _ => None
+                }
+            } else {
+                None
+            };
+
+
             Ok(match BigInt::parse_bytes(number.as_bytes(), base) {
-                Some(val) => NumberLiteral::Integer(val),
+                Some(val) => NumberLiteral::Integer(val, annotation),
                 None => match number.parse::<f64>() {
-                    Ok(val) => NumberLiteral::Float(val),
+                    Ok(val) => NumberLiteral::Float(val, annotation),
                     Err(_) => return Err(ParseError {
                         highlighted_span: Some(next.span),
                         backtrace: self.trace.clone(),

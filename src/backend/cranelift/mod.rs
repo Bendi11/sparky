@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use cranelift::{
     frontend::{FunctionBuilder, FunctionBuilderContext}, prelude::{Value, InstBuilder},
 };
@@ -22,8 +24,8 @@ impl<'files> CraneliftBackend<'files> {
     /// Compile one AST node
     fn compile_node(&mut self, node: &Node, builder: &mut FunctionBuilder<'_>) -> SemanticResult<Option<Value>> {
         Ok(match node {
-            Node::NumberLiteral(NumberLiteral::Integer(bigint)) => {
-                Some(builder.ins.iconst(bigint., N))
+            Node::NumberLiteral(NumberLiteral::Integer(bigint, ty)) => {
+                Some(builder.ins().iconst(bigint.try_into().unwrap(), N))
             },
             Node::NumberLiteral(NumberLiteral::Float(f)) => {
                 Some(builder.ins().f64const(*f))

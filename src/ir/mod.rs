@@ -5,18 +5,26 @@ pub mod lower;
 
 use std::collections::HashMap;
 
-use generational_arena::{Index, Arena};
+use crate::arena::{Index, Arena};
 use num_bigint::BigInt;
 use string_interner::symbol::SymbolU32 as Symbol;
 
 use crate::{ast::{IntegerWidth, SymbolPath, PathIter, AstNode, NumberLiteral}, parse::token::Op};
 
-pub type ModuleId = Index;
+pub type ModuleId = Index<Module>;
 
-pub type FunId = Index;
-pub type TypeId = Index;
-pub type BlockId = Index;
-pub type VarId = Index;
+pub type FunId = Index<Fun>;
+pub type TypeId = Index<Type>;
+pub type VarId = Index<Var>;
+
+/// A single variable declaration's data
+#[derive(Clone, Debug)]
+pub struct Var {
+    /// The type of the variable
+    pub ty: TypeId,
+    /// The index of this variable in an [IRContext]
+    pub id: VarId,
+}
 
 /// Structure holding both a type ID and the type data
 #[derive(Clone, Debug)]
@@ -87,6 +95,7 @@ pub struct IRContext {
     pub modules: Arena<Module>,
     pub funs: Arena<Fun>,
     pub types: Arena<Type>,
+    pub vars: Arena<Var>,
 
     pub u_ids: [TypeId ; 4],
     pub i_ids: [TypeId ; 4],
@@ -122,7 +131,16 @@ impl IRContext {
             types,
             modules: Arena::new(),
             funs: Arena::new(),
+            vars: Arena::new(),
         }
+    }
+        
+    /// Create a new variable entry in the arena and return an index to it
+    pub fn new_var(&mut self, ty: TypeId) -> VarId {
+        self.vars.insert_with(|id| Var {
+            ty,
+            id
+        })
     }
 
 

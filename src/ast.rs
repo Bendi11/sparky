@@ -333,8 +333,32 @@ impl ParsedModule {
 /// floating point value
 #[derive(Clone, Debug)]
 pub enum NumberLiteral {
-    Integer(BigInt, Option<UnresolvedType>),
-    Float(f64, bool),
+    Integer(BigInt, Option<NumberLiteralAnnotation>),
+    Float(f64, Option<NumberLiteralAnnotation>),
+}
+
+impl NumberLiteral {
+    /// Get user-defined annotated type of this number literal
+    pub fn annotation(&self) -> Option<NumberLiteralAnnotation> {
+        match self {
+            Self::Integer(_, annotation) | Self::Float(_, annotation) => *annotation
+        }
+    }
+}
+
+/// The type added to the end of a number literal
+#[derive(Clone, Copy, Debug, )]
+pub enum NumberLiteralAnnotation {
+    F32,
+    F64,
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
 }
 
 /// Type representing a function's type in spark
