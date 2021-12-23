@@ -9,14 +9,14 @@ use generational_arena::{Index, Arena};
 use num_bigint::BigInt;
 use string_interner::symbol::SymbolU32 as Symbol;
 
-use crate::ast::{IntegerWidth, SymbolPath, PathIter};
+use crate::{ast::{IntegerWidth, SymbolPath, PathIter, AstNode}, parse::token::Op};
 
 pub type ModuleId = Index;
 
 pub type FunId = Index;
 pub type TypeId = Index;
 pub type BlockId = Index;
-pub type RegId = Index;
+pub type VarId = Index;
 
 /// Structure holding both a type ID and the type data
 #[derive(Clone, Debug)]
@@ -87,7 +87,6 @@ pub struct IRContext {
     pub modules: Arena<Module>,
     pub funs: Arena<Fun>,
     pub types: Arena<Type>,
-    pub blocks: Arena<Block>,
 
     pub u_ids: [TypeId ; 4],
     pub i_ids: [TypeId ; 4],
@@ -122,10 +121,11 @@ impl IRContext {
             invalid_id: types.insert_with(|id| Type {id, data: TypeData::Invalid}),
             types,
             modules: Arena::new(),
-            blocks: Arena::new(),
             funs: Arena::new(),
         }
     }
+
+
     /// Create a new module with the given name
     pub fn new_module(&mut self, name: Symbol) -> ModuleId {
         self.modules.insert_with(|id| Module {
@@ -146,17 +146,8 @@ impl IRContext {
             name,
             args: Vec::new(),
             return_ty: unit_id,
-            entry: None,
+            body: None,
             id,
-        })
-    }
-    
-    /// Create a new IR block in the arena
-    pub fn new_block(&mut self) -> BlockId {
-        self.blocks.insert_with(|id| Block {
-            id,
-            insts: vec![],
-
         })
     }
 
@@ -226,6 +217,22 @@ impl IRContext {
             self.get_type_impl(submod, iter)
         }
     }
+
+    /// Get a function by path from this module
+    pub fn get_fun(&self, id: ModuleId, path: &SymbolPath) -> Option<FunId> {
+        self.get_fun_impl(id, path.iter())
+    }
+    
+    /// Get a function from this module by path
+    fn get_fun_impl(&self, id: ModuleId, mut iter: PathIter) -> Option<FunId> {
+        if iter.len() == 1 {
+            self.modules[id].funs.get(&iter.next().unwrap()).copied()
+        } else {
+            let submod = self.get_submodule(id, iter.next().unwrap())?;
+            self.get_fun_impl(submod, iter)
+        }
+    }
+
 }
 
 /// A single function with name, argument types, etc.
@@ -240,86 +247,43 @@ pub struct Fun {
     /// The return type of the function
     pub return_ty: TypeId,
     /// If the function is defined, this is the entry block of the function
-    pub entry: Option<BlockId>,
+    pub body: Option<AstNode<Type>>,
 }
 
-/// A single block in the intermediate representation
-/// that contains all statements in a function body
-#[derive(Clone, Debug)]
-pub struct Block {
-    /// ID of the block in the context
-    pub id: BlockId,
-    /// A list of all nodes in the block
-    pub insts: Vec<Node>,
-}
-
-/// A single instruction in the intermediate representation
-#[derive(Clone, Debug)]
+/// A single expression or statement in the IR
 pub enum Node {
-    /// Declare a variable with a given type
-    Declare {
-        /// The type of the declared variable
-        ty: TypeId,
-        /// The ID that this variable definition lives
-        id: RegId,
+    /// Declare a variable of an explicit type
+    VarDec {
+        id: VarId, 
+        ty: Type, 
+        mutable: bool
     },
-    /// Assign a value to a register
+    /// Function address is being requested
+    FunAccess(FunId),
+    /// Variable accessed by name
+    VarAccess(VarId),
     Assign {
-        /// The id to put the value into
-        id: RegId,
-        /// The instruction to assign to the node
-        assigned: Box<Node>,
+        src: Box<Node>,
+        dest: Box<Node>
     },
-    /// Load a value from the given register
-    Load {
-        /// The register to load from
-        id: RegId,
+    Bin(Box<Node>, Op, Box<Node>),
+    Unary(Op, Box<Node>),
+    /// Call a funtion value
+    Call {
+        fun_expr: Box<Node>,
+        args: Vec<Node>,
     },
-    /// Get the address of a register value
-    Addr {
-        id: RegId,
-    },
-    /// A constant integer value
-    IConst {
-        /// The value of the integer
-        val: BigInt,
-        /// Type of the integer to store
-        ty: TypeId,
-    },
-    /// A constant floating-point value
-    FConst {
-        val: f64,
-        ty: TypeId
-    },
-    /// A constant true or false value
-    BConst {
-        val: bool,
-    },
-    /// Unconditionally jump to a block
-    Jmp(BlockId),
-    /// Jump if the specified condition is true
-    JmpTrue {
-        cond: Box<Node>,
-        to: BlockId
-    },
-    
-    Add(Box<Node>, Box<Node>),
-    Sub(Box<Node>, Box<Node>),
-    Div(Box<Node>, Box<Node>),
-    Mul(Box<Node>, Box<Node>),
-    Mod(Box<Node>, Box<Node>),
+    If(Box<IfNode>),
 
-    AND(Box<Node>, Box<Node>),
-    OR(Box<Node>, Box<Node>),
-    NOT(Box<Node>),
-    XOR(Box<Node>, Box<Node>),
+}
 
-    /// Integer-to-float cast
-    IFCast(Box<Node>, TypeId),
-    /// Float-to-integer cast
-    FICast(Box<Node>, TypeId),
-    /// Pointer-to-integer cast
-    PICast(Box<Node>, TypeId),
-    /// Integer to pointer cast
-    IPCast(Box<Node>, TypeId), 
+pub struct IfNode {
+    cond: Node,
+    body: Vec<Node>,
+    else_node: Option<Box<ElseNode>>,
+}
+
+pub enum ElseNode {
+    ElseIf(IfNode),
+    Else(Vec<Node>)
 }

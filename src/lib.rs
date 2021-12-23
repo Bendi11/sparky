@@ -3,6 +3,7 @@ pub mod util;
 pub mod ast;
 pub mod ir;
 pub mod error;
+pub mod backend;
 
 #[cfg(test)]
 mod tests {
@@ -49,14 +50,6 @@ fun test_fn {
         });
 
         let mut stdout = std::io::stdout();
-        for (_, def) in module.defs.iter() {
-            if let DefData::FunDef(_, body) = def.data {
-                for expr in body {
-                    expr.node.display(&mut stdout, &interner, 0).unwrap();
-                    writeln!(&mut stdout).unwrap();
-                }
-            }
-        }
 
         let mut ctx = IRContext::new();
         let mut lowerer = AstLowerer::new(&mut ctx, &interner, &files);

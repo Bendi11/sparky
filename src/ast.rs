@@ -135,7 +135,7 @@ pub struct FunProto {
 /// A node in an Abstract Syntax Tree
 #[derive(Clone, Debug)]
 pub enum AstNode<Type = UnresolvedType> 
-where Type: Clone + std::fmt::Debug {
+where Type: Clone {
     /// A variable / enum / constant / function access by name
     Access(SymbolPath),
     /// Member item access with the '.' operator
@@ -223,9 +223,10 @@ pub enum ElseExpr {
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
 #[derive(Clone, Debug)]
-pub struct Ast {
+pub struct Ast<Type = UnresolvedType>
+where Type: Clone {
     /// The AST node's data
-    pub node: AstNode,
+    pub node: AstNode<Type>,
     /// The span of the source string that this AST node occupies
     pub span: Span,
 }

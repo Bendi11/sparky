@@ -1,6 +1,7 @@
+use quickscope::ScopeMap;
 use string_interner::StringInterner;
 
-use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
+use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType, Ast}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
 use super::*;
 
 
@@ -43,8 +44,6 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         Ok(())
     }
     
-    
-
     /// Generate forward definitions of all modules in the IR context and return a map of module
     /// names to more module IDs
     pub fn forward_modules(&mut self, modules: &[ParsedModule]) -> SemanticResult<HashMap<Symbol, ModuleId>> {
@@ -128,6 +127,64 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         }
         Ok(())
     }
+    
+    /// Generate function body ASTs for previously declared functions
+    fn gen_fundefs(&mut self, (parsedmod, mod_id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
+        for def in parsedmod.defs.values() {
+            match &def.data {
+                DefData::FunDef(proto, body) => { 
+                    let fun_id = *self.ctx.modules[mod_id].funs.get(&proto.name).expect("Forward declarations already created");
+                },
+                _ => ()
+            }
+        }
+        Ok(())
+    }
+    
+    /// Transform the AST by resolving all types to their type IDs
+    fn resolve_ast(&mut self, module: ModuleId, file: FileId, ast: &Ast, scope: &mut ScopeMap<Symbol, VarId>) -> SemanticResult<Node> {
+        Ok(match &ast.node {
+            AstNode::Access(name) => match scope.get(&name.last()) {
+                Some(var) => Node::VarAccess(*var),
+                None => match self.ctx.get_fun(module, name) {
+                    Some(fun) => Node::FunAccess(fun),
+                    None => {
+                        self.diagnostic.emit(Diagnostic::error(format!("Unkown function or variable {}", self.display_path(name)), file)
+                            .with_span(ast.span)
+                        );
+                        return Err(())
+                    }
+                }
+            },
+            AstNode::FunCall(called, args) => {
+                let args = args
+                    .iter()
+                    .map(|ast| self.resolve_ast(module, file, ast, scope))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Node::Call {
+                    fun_expr: Box::new(self.resolve_ast(module, file, called, scope)?),
+                    args,
+                }
+            },
+            AstNode::Assignment {
+                lhs,
+                rhs
+            } => Node::Assign { 
+                dest: Box::new(self.resolve_ast(module, file, lhs, scope)?),
+                src: Box::new(self.resolve_ast(module, file, rhs, scope)?)
+            },
+            AstNode::BinExpr(lhs, op, rhs) => Node::Bin(
+                Box::new(self.resolve_ast(module, file, lhs, scope)?),
+                *op,
+                Box::new(self.resolve_ast(module, file, rhs, scope)?)
+            ),
+            AstNode::UnaryExpr(op, rhs) => Node::Unary(
+                *op,
+                Box::new(self.resolve_ast(module, file, rhs, scope)?)
+            ),
+            _ => unimplemented!("AST conversion for {:?} not implemented", ast.node)
+        })
+    } 
 
     /// Resolve all previously forward declared types with definitions
     fn resolve_types(&mut self, (parsed, id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
