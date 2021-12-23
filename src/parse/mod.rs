@@ -2,7 +2,7 @@ use std::{fmt, convert::TryFrom, borrow::Cow, collections::HashMap};
 
 use num_bigint::BigInt;
 use smallvec::SmallVec;
-use string_interner::{StringInterner, symbol::SymbolU32 as Symbol};
+use crate::Symbol;
 
 use crate::{
     util::{loc::Span, files::FileId}, 
@@ -17,13 +17,11 @@ pub mod token;
 
 /// A structure consuming a token stream from a lexer and transforming it to an Abstract Syntax Tree
 #[derive(Debug)]
-pub struct Parser<'int, 'src> {
+pub struct Parser<'src> {
     /// The token stream to consume tokens from
     toks: Lexer<'src>,
     /// The current parse trace used for error and debug backtraces
     trace: SmallVec<[Cow<'static, str> ; 24]>,
-    /// The string interner used for building an AST with Symbols instead of allocating strings
-    interner: &'int mut StringInterner,
     /// Name of the currently parsed module
     modulename: Symbol,
     /// The ID of the currently parsed file
@@ -32,7 +30,7 @@ pub struct Parser<'int, 'src> {
 
 pub type ParseResult<'src, T> = Result<T, ParseError<'src>>;
 
-impl<'int, 'src> Parser<'int, 'src> {
+impl<'src> Parser<'src> {
     /// All tokens expected to begin when parsing an expression
     const EXPECTED_FOR_EXPRESSION: &'static [TokenData<'static>] = &[
         TokenData::Ident("if"),
@@ -50,7 +48,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     /// Parse the input source code into a full AST
     pub fn parse(&mut self) -> ParseResult<'src, ParsedModule> {
         let mut module = ParsedModule::new(self.modulename, self.file_id);
-        let modulename = self.interner.resolve(self.modulename).unwrap(); 
+        let modulename = self.modulename.as_str(); 
         self.trace.push(format!("module {}", modulename).into());
 
         while self.toks.peek().is_some() {
@@ -64,12 +62,11 @@ impl<'int, 'src> Parser<'int, 'src> {
     }
 
     /// Create a new `Parser` from the given source string
-    pub fn new(src: &'src str, interner: &'int mut StringInterner, filename: &str, file_id: FileId) -> Self {
+    pub fn new(src: &'src str, filename: &str, file_id: FileId) -> Self {
         Self {
             toks: Lexer::new(src),
             trace: SmallVec::new(),
-            modulename: interner.get_or_intern(filename),
-            interner,
+            modulename: Symbol::from(filename),
             file_id,
         }
     }
@@ -170,7 +167,7 @@ impl<'int, 'src> Parser<'int, 'src> {
     /// Encapsulated as a function to allow for easier refactoring later
     #[inline]
     fn symbol(&mut self, for_str: &'src str) -> Symbol {
-        self.interner.get_or_intern(for_str)
+        Symbol::from(for_str)
     }
 
     /// Parse a top-level declaration from the token stream
@@ -480,7 +477,7 @@ impl<'int, 'src> Parser<'int, 'src> {
                 };
 
                 self.trace.pop();
-                self.trace.push(format!("variable declaration '{}'", self.interner.resolve(name).unwrap()).into());
+                self.trace.push(format!("variable declaration '{}'", name).into());
 
                 let assigned = if TokenData::Assign == self.peek_tok(&[TokenData::Assign])?.data {
                     self.toks.next();

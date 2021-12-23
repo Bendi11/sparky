@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::arena::{Index, Arena};
 use num_bigint::BigInt;
-use string_interner::symbol::SymbolU32 as Symbol;
+use crate::Symbol;
 
 use crate::{ast::{IntegerWidth, SymbolPath, PathIter, AstNode, NumberLiteral}, parse::token::Op};
 
@@ -67,7 +67,7 @@ pub enum TypeData {
     /// A structure type mapping fields to more types
     Struct {
         /// The field names and types of this structure
-        fields: HashMap<Symbol, TypeId>,
+        fields: Vec<(Symbol, TypeId)>,
     },
     /// An enumeration containing one variant of many types
     Enum {
@@ -268,13 +268,23 @@ pub struct Fun {
     pub body: Option<Vec<Node>>,
 }
 
+impl Fun {
+    /// Get the type of this function
+    pub fn fun_type(&self) -> TypeData {
+        TypeData::Fun {
+            args: self.args.iter().map(|(ty, _)| *ty).collect(),
+            return_ty: self.return_ty
+        } 
+    }
+}
+
 /// A single expression or statement in the IR
 #[derive(Clone, Debug)]
 pub enum Node {
     /// Declare a variable of an explicit type
     VarDec {
         id: VarId, 
-        ty: Type, 
+        ty: TypeId, 
         mutable: bool
     },
     /// Function address is being requested

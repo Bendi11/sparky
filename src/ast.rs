@@ -1,11 +1,12 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
+use std::fmt;
 use std::{collections::HashMap, io::Write};
 
 use bitflags::bitflags;
 use num_bigint::BigInt;
 
-use string_interner::{symbol::SymbolU32 as Symbol, StringInterner};
+use crate::Symbol;
 
 use crate::{util::{loc::Span, files::FileId}, parse::token::Op};
 
@@ -50,7 +51,8 @@ pub enum PathIter<'a> {
 
 impl Iterator for PathIter<'_> {
     type Item = Symbol;
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(&mut self) -> Option<Self::Item> {
+
         match self {
             Self::Single(once) => once.next(),
             Self::Multiple(parts) => parts.next().map(|x| *x)
@@ -118,6 +120,26 @@ impl SymbolPath {
     }
 }
 
+impl fmt::Display for SymbolPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.internal {
+            SymbolPathInternal::Single(sym) => sym.fmt(f),
+            SymbolPathInternal::Multiple(parts) => {
+                let mut iter = parts.iter();
+                loop {
+                    if let Some(part) = iter.next() {
+                        part.fmt(f)?;
+                        if !(iter.len() == 0) {
+                            write!(f, ":")?;
+                        }
+                    } else { break }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 /// Data structure storing a function prototype
 #[derive(Clone, Debug)]
 pub struct FunProto {
@@ -133,7 +155,7 @@ pub struct FunProto {
 
 
 /// A node in an Abstract Syntax Tree
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum AstNode<Type = UnresolvedType> 
 where Type: Clone {
     /// A variable / enum / constant / function access by name
@@ -409,7 +431,7 @@ pub enum UnresolvedType {
 
 /// Enumeration for all possible integer bit widths in the [UnresolvedType] enum
 #[repr(u8)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum IntegerWidth {
     Eight,
     Sixteen,
@@ -417,12 +439,11 @@ pub enum IntegerWidth {
     SixtyFour,
 }
 
-impl<T: std::fmt::Debug + Clone> AstNode<T> {
-    pub fn display<W: Write>(&self, w: &mut W, interner: &StringInterner, numtabs: u16) -> std::io::Result<()> {
+impl<T: std::fmt::Debug + Clone> std::fmt::Debug for AstNode<T> {
+    fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Match {matched, cases} => {
-                write!(w, "MATCH ")?;
-                matched.node.display(w, interner, numtabs)?;
+                write!(w, "MATCH {:?}", matched.node)?;
                 writeln!(w, " {{")?;
                 for (literal, case_expr) in cases.iter() {
 
@@ -432,26 +453,21 @@ impl<T: std::fmt::Debug + Clone> AstNode<T> {
             Self::Block(stmts) => {
                 writeln!(w, "BLOCK {{")?;
                 for stmt in stmts {
-                    write!(w, "{}", (0..numtabs+1).into_iter().map(|_|"  ").collect::<Vec<_>>().join(""))?;
-                    stmt.node.display(w, interner, numtabs)?;
-                    writeln!(w)?;
+                    writeln!(w, "{:?}", stmt.node)?;
                 }
                 write!(w, "}}")
             },
             Self::ArrayLiteral(parts) => {
                 write!(w, "ARRAY [ ")?;
                 for part in parts.iter() {
-                    part.node.display(w, interner, numtabs)?;
-                    write!(w, ", ")?;
+                    write!(w, "{:?}, ", part.node)?;
                 }
                 write!(w, " ]")
             }
             Self::Loop(body) => {
                 writeln!(w, "LOOP {{")?;
                 for stmt in body.iter() {
-                    write!(w, "{}", (0..numtabs+1).into_iter().map(|_|"  ").collect::<Vec<_>>().join(""))?;
-                    stmt.node.display(w, interner, numtabs + 1)?;
-                    writeln!(w)?;
+                    writeln!(w, "{:?}", stmt.node)?;
                 }
                 write!(w, "}}")
             }
@@ -462,88 +478,71 @@ impl<T: std::fmt::Debug + Clone> AstNode<T> {
             Self::TupleLiteral(tuple) => {
                 write!(w, "TUPLE LITERAL ( ")?;
                 for element in tuple {
-                    element.node.display(w, interner, numtabs)?;
-                    write!(w, ", ")?;
+                    write!(w, "{:?}, ", element.node)?;
                 }
                 write!(w, " )")
             },
             Self::Return(expr) => {
-                write!(w, "RETURN ")?;
-                expr.node.display(w, interner, numtabs)
+                write!(w, "RETURN {:?}", expr.node)
             },
             Self::PhiExpr(expr) => {
-                write!(w, "PHI ")?;
-                expr.node.display(w, interner, numtabs)
+                write!(w, "PHI {:?}", expr.node)
             },
             Self::CastExpr(cast, casted) => {
-                write!(w, "CAST ${:?} ", cast)?;
-                casted.node.display(w, interner, numtabs)
+                write!(w, "CAST ${:?} {:?}", cast, casted.node)
             },
             Self::BooleanLiteral(boolean) => write!(w, "BOOL {}", boolean),
             Self::Assignment{lhs, rhs} => {
-                write!(w, "ASSIGN ")?;
-                lhs.node.display(w, interner, numtabs)?;
-                write!(w, " = ")?;
-                rhs.node.display(w, interner, numtabs)
+                write!(w, "ASSIGN {:?}", lhs)?;
+                write!(w, " = {:?}", rhs.node)
             },
             Self::UnaryExpr(op, expr) => {
-                write!(w, "UNARY {} ", op)?;
-                expr.node.display(w, interner, numtabs)
+                write!(w, "UNARY {} {:?}", op, expr.node)
             },
             Self::VarDeclaration {
                 name, ty, mutable
-            } => write!(w, "VARDEC {} ({:?}) {}", if *mutable { "mut" } else { "let" }, ty, interner.resolve(*name).unwrap() ),
+            } => write!(w, "VARDEC {} ({:?}) {}", if *mutable { "mut" } else { "let" }, ty, name),
             Self::Access(path) => {
                 write!(w, "ACCESSS ")?;
                 for part in path.iter() {
-                    write!(w, "{}:", interner.resolve(part).unwrap())?;
+                    write!(w, "{}:", part)?;
                 }
                 Ok(())
             },
             Self::FunCall(called, args) => {
-                write!(w, "FUNCALL ")?;
-                called.node.display(w, interner, numtabs)?;
+                write!(w, "FUNCALL {:?}", called.node)?;
 
                 write!(w, "( ")?;
                 for arg in args {
-                    arg.node.display(w, interner, numtabs)?;
-                    write!(w, ", ")?;
+                    write!(w, "{:?}, ", arg.node)?;
                 }
                 write!(w, " )")
             },
             Self::MemberAccess(lhs, index) => {
-                write!(w, "MEMBERACCESS ")?;
-                lhs.node.display(w, interner, numtabs)?;
+                write!(w, "MEMBERACCESS {:?}", lhs.node)?;
                 write!(w, ".")?;
-                write!(w, "{}", interner.resolve(*index).unwrap())
+                write!(w, "{}", index)
             },
             Self::BinExpr(lhs, op, rhs) => {
-                write!(w, "BIN ")?;
-                lhs.node.display(w, interner, numtabs)?;
+                write!(w, "BIN {:?}", lhs.node)?;
                 write!(w, " {} ", op)?;
-                rhs.node.display(w, interner, numtabs)
+                write!(w, "{:?}", rhs.node)
             },
             Self::IfExpr(ifexpr) => {
-                fn display_if<W: Write>(ifexpr: &IfExpr, w: &mut W, interner: &StringInterner, numtabs: u16) -> std::io::Result<()> {
-                    write!(w, "IF ")?;
-                    ifexpr.cond.node.display(w, interner, numtabs)?;
+                fn display_if(ifexpr: &IfExpr, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(w, "IF {:?}", ifexpr.cond.node)?;
                     writeln!(w, " {{")?;
                     for expr in ifexpr.body.iter() {
-                        write!(w, "{}", (0..numtabs + 1).into_iter().map(|_| "  ").collect::<Vec<_>>().join(""))?;
-                        expr.node.display(w, interner, numtabs + 1)?;
-                        writeln!(w)?;
+                        writeln!(w, "{:?}", expr.node)?;
                     }
                     write!(w, "}}")?;
                     
                     if let Some(ref else_expr) = ifexpr.else_expr {
-                        write!(w, "{}", (0..numtabs).into_iter().map(|_| "  ").collect::<Vec<_>>().join(""))?;
                         match else_expr {
-                            ElseExpr::ElseIf(another_if) => display_if(&*another_if, w, interner, numtabs),
+                            ElseExpr::ElseIf(another_if) => display_if(&*another_if, w),
                             ElseExpr::Else(stmts) => {
                                 for expr in stmts.iter() {
-                                    write!(w, "{}", (0..numtabs + 1).into_iter().map(|_| "  ").collect::<Vec<_>>().join(""))?;
-                                    expr.node.display(w, interner, numtabs + 1)?;
-                                    writeln!(w)?;
+                                    writeln!(w, "{:?}", expr.node)?;
                                 }
                                 write!(w, "}}")
                             }
@@ -552,13 +551,12 @@ impl<T: std::fmt::Debug + Clone> AstNode<T> {
                     Ok(())
                 }
 
-                display_if(ifexpr, w, interner, numtabs)
+                display_if(ifexpr, w)
             },
             Self::Index{object, index} => {
-                write!(w, "INDEX ")?;
-                object.node.display(w, interner, numtabs)?;
+                write!(w, "INDEX {:?}", object.node)?;
                 write!(w, " [ ")?;
-                index.node.display(w, interner, numtabs)?;
+                write!(w, "{:?}", index.node)?;
                 write!(w, " ]")
             }
         }

@@ -1,16 +1,19 @@
 use quickscope::ScopeMap;
-use string_interner::StringInterner;
-
-use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType, Ast, IfExpr, ElseExpr, NumberLiteralAnnotation}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
+
+use crate::{
+    ast::{ParsedModule, DefData, Def, UnresolvedType, Ast, IfExpr, ElseExpr, NumberLiteralAnnotation}, 
+    util::{files::{Files, FileId}, loc::Span}, 
+    error::{DiagnosticManager, Diagnostic},
+    Symbol,
+};
 use super::*;
 
 
 /// A structure responsible for lowering a parsed AST into
 /// intermediate representation, resolving all unknown symbols
 #[derive(Debug)]
-pub struct AstLowerer<'ctx, 'sym, 'files> {
+pub struct AstLowerer<'ctx, 'files> {
     ctx: &'ctx mut IRContext,
-    symbols: &'sym StringInterner,
     /// A map of module names to their IDs in the context
     forward_modules: HashMap<Symbol, ModuleId>,
     /// Structure responsible for outputting emitted diagnostics
@@ -19,16 +22,14 @@ pub struct AstLowerer<'ctx, 'sym, 'files> {
 
 pub type SemanticResult<T> = Result<T, ()>;
 
-impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
+impl<'ctx,'files> AstLowerer<'ctx, 'files> {
     /// Create a new lowerer from an ir context
     pub fn new(
         ctx: &'ctx mut IRContext, 
-        symbols: &'sym StringInterner, 
         files: &'files Files, 
     ) -> Self {
         Self {
             ctx,
-            symbols,
             diagnostic: DiagnosticManager::new(files),
             forward_modules: HashMap::new()
         }
@@ -182,29 +183,35 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
                 lhs,
                 rhs
             } => Node::Assign { 
-                dest: Box::new(self.resolve_ast(module, file, *lhs, scope)?),
-                src: Box::new(self.resolve_ast(module, file, *rhs, scope)?)
+                dest: Box::new(self.resolve_ast(module, file, *lhs, scope, self.get_ast_ty(&scope, &rhs.node))?),
+                src: Box::new(self.resolve_ast(
+                        module, 
+                        file, 
+                        *rhs, 
+                        scope,
+                        self.get_ast_ty(&scope, &lhs.node)
+                    )?)
             },
             AstNode::BinExpr(lhs, op, rhs) => Node::Bin(
-                Box::new(self.resolve_ast(module, file, *lhs, scope)?),
+                Box::new(self.resolve_ast(module, file, *lhs, scope, self.get_ast_ty(&scope, &rhs.node))?),
                 op,
-                Box::new(self.resolve_ast(module, file, *rhs, scope)?)
+                Box::new(self.resolve_ast(module, file, *rhs, scope, self.get_ast_ty(&scope, &lhs.node))?)
             ),
             AstNode::UnaryExpr(op, rhs) => Node::Unary(
                 op,
-                Box::new(self.resolve_ast(module, file, *rhs, scope)?)
+                Box::new(self.resolve_ast(module, file, *rhs, scope, type_hint)?)
             ),
             AstNode::CastExpr(ty, expr) => {
                 let type_id = self.resolve_type(ast.span, file, &ty, module)?;
-                Node::Cast(type_id, Box::new(self.resolve_ast(module, file, *expr, scope)?))
+                Node::Cast(type_id, Box::new(self.resolve_ast(module, file, *expr, scope, None)?))
             },
             AstNode::IfExpr(if_expr) => Node::If(Box::new(self.resolve_if_ast(module, file, scope, if_expr)?)),
             AstNode::MemberAccess(expr, member) => Node::FieldAccess(
-                Box::new(self.resolve_ast(module, file, *expr, scope)?),
+                Box::new(self.resolve_ast(module, file, *expr, scope, None)?),
                 member
             ),
-            AstNode::PhiExpr(phi) => Node::Phi(Box::new(self.resolve_ast(module, file, *phi, scope)?)),
-            AstNode::Return(returned) => Node::Return(Box::new(self.resolve_ast(module, file, *returned, scope)?)),
+            AstNode::PhiExpr(phi) => Node::Phi(Box::new(self.resolve_ast(module, file, *phi, scope, type_hint)?)),
+            AstNode::Return(returned) => Node::Return(Box::new(self.resolve_ast(module, file, *returned, scope, type_hint)?)),
             AstNode::NumberLiteral(n) => Node::NumberLiteral(n),
             AstNode::StringLiteral(s) => Node::StringLiteral(s),
             AstNode::BooleanLiteral(b) => Node::BooleanLiteral(b),
@@ -221,7 +228,29 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
                 ty,
                 mutable
             } => {
-                scope.define(name, )
+                let typeid = match ty.map(|ty| self.resolve_type(ast.span, file, &ty, module)) {
+                    Some(id) => id?,
+                    None => match type_hint {
+                        Some(id) => id,
+                        None => {
+                            self.diagnostic.emit(Diagnostic::error(
+                                    format!("No given or inferred type for variable '{}'", name), 
+                                    file
+                                )
+                                .with_span(ast.span)
+                            );
+                            return Err(())
+                        }
+                    }
+                };
+
+                let var_id = self.ctx.new_var(typeid);
+                scope.define(name, var_id);
+                Node::VarDec {
+                    id: var_id,
+                    ty: typeid,
+                    mutable,
+                }
             },
             _ => unimplemented!("AST conversion for {:?} not implemented", ast.node)
         })
@@ -229,7 +258,7 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     
     /// Lower an if AST and its else-if / else clauses
     fn resolve_if_ast(&mut self, module: ModuleId, file: FileId, scope: &mut ScopeMap<Symbol, VarId>, if_expr: IfExpr) -> SemanticResult<IfNode> {
-        let cond = self.resolve_ast(module, file, *if_expr.cond, scope)?;
+        let cond = self.resolve_ast(module, file, *if_expr.cond, scope, Some(self.ctx.bool_id))?;
         let body = self.resolve_ast_body(module, file, scope, if_expr.body)?;
         let else_node = match if_expr.else_expr {
             Some(ElseExpr::Else(body)) => 
@@ -249,7 +278,7 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     fn resolve_ast_body(&mut self, module: ModuleId, file: FileId, scope: &mut ScopeMap<Symbol, VarId>, body: Vec<Ast>) -> SemanticResult<Vec<Node>> {
         body
             .into_iter()
-            .map(|expr| self.resolve_ast(module, file, expr, scope))
+            .map(|expr| self.resolve_ast(module, file, expr, scope, None))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -269,7 +298,7 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
                                 Ok(ty) => Ok((*name, ty)),
                                 Err(e) => Err(e)
                             })
-                            .collect::<Result<HashMap<_, _>, _>>()?
+                            .collect::<Result<Vec<_>, _>>()?
                     };
                     self.ctx.types[struct_id].data = struct_ty;
                 },
@@ -311,7 +340,7 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     }
         
     /// Attempt to infer the type of an AST node 
-    fn get_ast_ty(&self, scope: &ScopeMap<Symbol, VarId>, ast: &AstNode) -> Option<TypeId> {
+    fn get_ast_ty(&self, module: ModuleId, scope: &ScopeMap<Symbol, VarId>, ast: &AstNode) -> Option<TypeId> {
         match ast {
             AstNode::PhiExpr(phi) => self.get_ast_ty(scope, &phi.node),
             AstNode::NumberLiteral(n) => if let Some(annotation) = n.annotation() {
@@ -335,7 +364,24 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
                     NumberLiteral::Float(..) => Some(self.ctx.f64_id),
                 }
             },
-            AstNode::StringLiteral(_) => 
+            AstNode::StringLiteral(_) => {
+                let id = self.ctx.new_type();
+                let ptr_ty = TypeData::Pointer(self.ctx.u_ids[IntegerWidth::Eight as u8 as usize]);
+                self.ctx.types[id].data = ptr_ty;
+                Some(id)
+            },
+            AstNode::Access(path) => match scope.get(&path.last()) {
+                Some(var_id) => Some(self.ctx.vars[*var_id].ty),
+                None => match self.ctx.get_fun(module, path) {
+                    Some(fun) => {
+                        let fun_ty = self.ctx.new_type();
+                        self.ctx.types[fun_ty].data = self.ctx.funs[fun].fun_type();
+                        Some(fun_ty)
+                    },
+                    None => None,
+                }
+            },
+            AstNode::BooleanLiteral(_) => Some(self.ctx.bool_id),
         }
     }
 
@@ -362,10 +408,6 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
             self.walk_module_with(module, f)?;
         }
         self.walk_module_with(&modules[0], f)
-    }
-
-    fn symbol(&self, sym: Symbol) -> &str {
-        self.symbols.resolve(sym).unwrap()
     }
     
     /// Resolve a type in the context of the given module
@@ -441,7 +483,7 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     fn display_path(&self, path: &SymbolPath) -> String {
         let mut display = String::new();
         for (i, part) in path.iter().enumerate() {
-            display.push_str(self.symbol(part));
+            display.push_str(&part);
             if i != path.len() - 1 {
                 display.push(':');
             }

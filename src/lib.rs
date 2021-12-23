@@ -1,3 +1,7 @@
+use internment::LocalIntern;
+
+
+
 pub mod parse;
 pub mod util;
 pub mod ast;
@@ -6,11 +10,11 @@ pub mod error;
 pub mod backend;
 pub mod arena;
 
+pub type Symbol = LocalIntern<String>;
+
 #[cfg(test)]
 mod tests {
     use std::io::Write;
-
-    use string_interner::StringInterner;
 
     use crate::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData, ir::{lower::AstLowerer, IRContext}};
 
@@ -36,8 +40,7 @@ fun test_fn {
     pub fn test_parse() {
         let mut files = Files::new();
         let file = files.add(CompiledFile::in_memory(SOURCE.to_owned()));
-        let mut interner = StringInterner::new();
-        let mut parser = Parser::new(SOURCE, &mut interner, "buffer", file);
+        let mut parser = Parser::new(SOURCE, "buffer", file);
         let module = parser.parse().unwrap_or_else(|e| {
             for name in e.backtrace {
                 eprintln!("in {}", name)
@@ -53,7 +56,7 @@ fun test_fn {
         let mut stdout = std::io::stdout();
 
         let mut ctx = IRContext::new();
-        let mut lowerer = AstLowerer::new(&mut ctx, &interner, &files);
+        let mut lowerer = AstLowerer::new(&mut ctx, &files);
         lowerer.codegen(&[module]).unwrap();
         drop(lowerer);
         println!("\n{:#?}", ctx);
