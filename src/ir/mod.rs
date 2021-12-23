@@ -6,7 +6,6 @@ pub mod lower;
 use std::collections::HashMap;
 
 use crate::arena::{Index, Arena};
-use num_bigint::BigInt;
 use crate::Symbol;
 
 use crate::{ast::{IntegerWidth, SymbolPath, PathIter, AstNode, NumberLiteral}, parse::token::Op};

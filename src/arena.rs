@@ -1,7 +1,6 @@
 //! Arena types that contain a large collection of objects that cannot be 
 //! removed from the collection, with indexes instead of references
 
-use hashbrown::HashMap;
 use std::{marker::PhantomData, fmt, ops};
 
 

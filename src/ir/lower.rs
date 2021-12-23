@@ -342,7 +342,7 @@ impl<'ctx,'files> AstLowerer<'ctx, 'files> {
     /// Attempt to infer the type of an AST node 
     fn get_ast_ty(&self, module: ModuleId, scope: &ScopeMap<Symbol, VarId>, ast: &AstNode) -> Option<TypeId> {
         match ast {
-            AstNode::PhiExpr(phi) => self.get_ast_ty(scope, &phi.node),
+            AstNode::PhiExpr(phi) => self.get_ast_ty(module, scope, &phi.node),
             AstNode::NumberLiteral(n) => if let Some(annotation) = n.annotation() {
                 match annotation {
                     NumberLiteralAnnotation::U8 => Some(self.ctx.u_ids[IntegerWidth::Eight as u8 as usize]),
@@ -382,6 +382,16 @@ impl<'ctx,'files> AstLowerer<'ctx, 'files> {
                 }
             },
             AstNode::BooleanLiteral(_) => Some(self.ctx.bool_id),
+            AstNode::Continue | AstNode::Break => None,
+            AstNode::MemberAccess(object, field) => if let Some(obj_ty) = self.get_ast_ty(module, scope, &object.node) {
+                if let TypeData::Struct{fields} = self.ctx.types[obj_ty].data {
+                    fields.iter().find(|(name, _)| name == field).map(|(_, ty)| *ty)
+                } else { None }
+            } else { None },
+            AstNode::ArrayLiteral(items) => self.get_ast_ty(module, scope, &items.first()?.node),
+            AstNode::TupleLiteral(items) => {
+                
+            },
         }
     }
 
