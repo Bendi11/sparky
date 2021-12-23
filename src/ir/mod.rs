@@ -9,7 +9,7 @@ use generational_arena::{Index, Arena};
 use num_bigint::BigInt;
 use string_interner::symbol::SymbolU32 as Symbol;
 
-use crate::{ast::{IntegerWidth, SymbolPath, PathIter, AstNode}, parse::token::Op};
+use crate::{ast::{IntegerWidth, SymbolPath, PathIter, AstNode, NumberLiteral}, parse::token::Op};
 
 pub type ModuleId = Index;
 
@@ -247,10 +247,11 @@ pub struct Fun {
     /// The return type of the function
     pub return_ty: TypeId,
     /// If the function is defined, this is the entry block of the function
-    pub body: Option<AstNode<Type>>,
+    pub body: Option<Vec<Node>>,
 }
 
 /// A single expression or statement in the IR
+#[derive(Clone, Debug)]
 pub enum Node {
     /// Declare a variable of an explicit type
     VarDec {
@@ -262,6 +263,13 @@ pub enum Node {
     FunAccess(FunId),
     /// Variable accessed by name
     VarAccess(VarId),
+    /// Accessing a field of a structure
+    FieldAccess(Box<Node>, Symbol),
+    /// Indexing using an expression
+    Index {
+        expr: Box<Node>,
+        idx: Box<Node>,
+    },
     Assign {
         src: Box<Node>,
         dest: Box<Node>
@@ -274,15 +282,32 @@ pub enum Node {
         args: Vec<Node>,
     },
     If(Box<IfNode>),
-
+    
+    Phi(Box<Node>),
+    Return(Box<Node>),
+    Cast(TypeId, Box<Node>),
+    NumberLiteral(NumberLiteral),
+    StringLiteral(String),
+    BooleanLiteral(bool),
+    TupleLiteral(Vec<Node>),
+    ArrayLiteral(Vec<Node>),
+    Unit,
+    
+    Break,
+    Continue,
+    
+    Loop(Vec<Node>),
+    Block(Vec<Node>),
 }
 
+#[derive(Clone, Debug)]
 pub struct IfNode {
     cond: Node,
     body: Vec<Node>,
     else_node: Option<Box<ElseNode>>,
 }
 
+#[derive(Clone, Debug)]
 pub enum ElseNode {
     ElseIf(IfNode),
     Else(Vec<Node>)

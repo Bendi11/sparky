@@ -1,7 +1,7 @@
 use quickscope::ScopeMap;
 use string_interner::StringInterner;
 
-use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType, Ast}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
+use crate::{ast::{ParsedModule, DefData, Def, UnresolvedType, Ast, IfExpr, ElseExpr}, util::{files::{Files, FileId}, loc::Span}, error::{DiagnosticManager, Diagnostic}};
 use super::*;
 
 
@@ -40,6 +40,7 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         self.walk_modules_with(modules, &mut Self::forward_types)?;
         self.walk_modules_with(modules, &mut Self::resolve_types)?;
         self.walk_modules_with(modules, &mut Self::gen_fundecls)?;
+        self.walk_modules_with(modules, &mut Self::gen_fundefs)?;
         println!("{:#?}", self.ctx);
         Ok(())
     }
@@ -132,8 +133,11 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
     fn gen_fundefs(&mut self, (parsedmod, mod_id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
         for def in parsedmod.defs.values() {
             match &def.data {
-                DefData::FunDef(proto, body) => { 
+                DefData::FunDef(proto, body) => {
+                    let mut scope = ScopeMap::new();
                     let fun_id = *self.ctx.modules[mod_id].funs.get(&proto.name).expect("Forward declarations already created");
+                    let body = self.resolve_ast_body(mod_id, parsedmod.file, &mut scope, body.to_owned())?;
+                    self.ctx.funs[fun_id].body = Some(body);
                 },
                 _ => ()
             }
@@ -141,15 +145,16 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         Ok(())
     }
     
-    /// Transform the AST by resolving all types to their type IDs
-    fn resolve_ast(&mut self, module: ModuleId, file: FileId, ast: &Ast, scope: &mut ScopeMap<Symbol, VarId>) -> SemanticResult<Node> {
-        Ok(match &ast.node {
+    /// Transform the AST by resolving all types to their type IDs, creating variable Ids for
+    /// variables instead of names
+    fn resolve_ast(&mut self, module: ModuleId, file: FileId, ast: Ast, scope: &mut ScopeMap<Symbol, VarId>) -> SemanticResult<Node> {
+        Ok(match ast.node {
             AstNode::Access(name) => match scope.get(&name.last()) {
                 Some(var) => Node::VarAccess(*var),
-                None => match self.ctx.get_fun(module, name) {
+                None => match self.ctx.get_fun(module, &name) {
                     Some(fun) => Node::FunAccess(fun),
                     None => {
-                        self.diagnostic.emit(Diagnostic::error(format!("Unkown function or variable {}", self.display_path(name)), file)
+                        self.diagnostic.emit(Diagnostic::error(format!("Unkown function or variable {}", self.display_path(&name)), file)
                             .with_span(ast.span)
                         );
                         return Err(())
@@ -158,11 +163,11 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
             },
             AstNode::FunCall(called, args) => {
                 let args = args
-                    .iter()
+                    .into_iter()
                     .map(|ast| self.resolve_ast(module, file, ast, scope))
                     .collect::<Result<Vec<_>, _>>()?;
                 Node::Call {
-                    fun_expr: Box::new(self.resolve_ast(module, file, called, scope)?),
+                    fun_expr: Box::new(self.resolve_ast(module, file, *called, scope)?),
                     args,
                 }
             },
@@ -170,21 +175,76 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
                 lhs,
                 rhs
             } => Node::Assign { 
-                dest: Box::new(self.resolve_ast(module, file, lhs, scope)?),
-                src: Box::new(self.resolve_ast(module, file, rhs, scope)?)
+                dest: Box::new(self.resolve_ast(module, file, *lhs, scope)?),
+                src: Box::new(self.resolve_ast(module, file, *rhs, scope)?)
             },
             AstNode::BinExpr(lhs, op, rhs) => Node::Bin(
-                Box::new(self.resolve_ast(module, file, lhs, scope)?),
-                *op,
-                Box::new(self.resolve_ast(module, file, rhs, scope)?)
+                Box::new(self.resolve_ast(module, file, *lhs, scope)?),
+                op,
+                Box::new(self.resolve_ast(module, file, *rhs, scope)?)
             ),
             AstNode::UnaryExpr(op, rhs) => Node::Unary(
-                *op,
-                Box::new(self.resolve_ast(module, file, rhs, scope)?)
+                op,
+                Box::new(self.resolve_ast(module, file, *rhs, scope)?)
             ),
+            AstNode::CastExpr(ty, expr) => {
+                let type_id = self.resolve_type(ast.span, file, &ty, module)?;
+                Node::Cast(type_id, Box::new(self.resolve_ast(module, file, *expr, scope)?))
+            },
+            AstNode::IfExpr(if_expr) => Node::If(Box::new(self.resolve_if_ast(module, file, scope, if_expr)?)),
+            AstNode::MemberAccess(expr, member) => Node::FieldAccess(
+                Box::new(self.resolve_ast(module, file, *expr, scope)?),
+                member
+            ),
+            AstNode::PhiExpr(phi) => Node::Phi(Box::new(self.resolve_ast(module, file, *phi, scope)?)),
+            AstNode::Return(returned) => Node::Return(Box::new(self.resolve_ast(module, file, *returned, scope)?)),
+            AstNode::NumberLiteral(n) => Node::NumberLiteral(n),
+            AstNode::StringLiteral(s) => Node::StringLiteral(s),
+            AstNode::BooleanLiteral(b) => Node::BooleanLiteral(b),
+            AstNode::TupleLiteral(exprs) => {
+                let exprs = self.resolve_ast_body(module, file, scope, exprs)?;
+                Node::TupleLiteral(exprs)
+            },
+            AstNode::ArrayLiteral(exprs) => {
+                let exprs = self.resolve_ast_body(module, file, scope, exprs)?;
+                Node::ArrayLiteral(exprs)
+            },
+            AstNode::VarDeclaration {
+                name,
+                ty,
+                mutable
+            } => {
+
+            },
             _ => unimplemented!("AST conversion for {:?} not implemented", ast.node)
         })
-    } 
+    }
+    
+    /// Lower an if AST and its else-if / else clauses
+    fn resolve_if_ast(&mut self, module: ModuleId, file: FileId, scope: &mut ScopeMap<Symbol, VarId>, if_expr: IfExpr) -> SemanticResult<IfNode> {
+        let cond = self.resolve_ast(module, file, *if_expr.cond, scope)?;
+        let body = self.resolve_ast_body(module, file, scope, if_expr.body)?;
+        let else_node = match if_expr.else_expr {
+            Some(ElseExpr::Else(body)) => 
+                Some(Box::new(ElseNode::Else(self.resolve_ast_body(module, file, scope, body)?))),
+            Some(ElseExpr::ElseIf(if_expr)) => 
+                Some(Box::new(ElseNode::ElseIf(self.resolve_if_ast(module, file, scope, *if_expr)?))),
+            None => None
+        };
+        Ok(IfNode {
+            cond,
+            body,
+            else_node
+        })
+    }
+    
+    /// Lower each AST statement in a body
+    fn resolve_ast_body(&mut self, module: ModuleId, file: FileId, scope: &mut ScopeMap<Symbol, VarId>, body: Vec<Ast>) -> SemanticResult<Vec<Node>> {
+        body
+            .into_iter()
+            .map(|expr| self.resolve_ast(module, file, expr, scope))
+            .collect::<Result<Vec<_>, _>>()
+    }
 
     /// Resolve all previously forward declared types with definitions
     fn resolve_types(&mut self, (parsed, id): (&ParsedModule, ModuleId)) -> SemanticResult<()> {
@@ -242,7 +302,14 @@ impl<'ctx, 'sym, 'files> AstLowerer<'ctx, 'sym, 'files> {
         }
         Ok(())
     }
-
+        
+    /// Attempt to infer the type of an AST node 
+    fn get_ast_ty(&self, scope: &ScopeMap<Symbol, VarId>, ast: &AstNode) -> Option<TypeId> {
+        match ast {
+            AstNode::PhiExpr(phi) => self.get_ast_ty(scope, &phi.node),
+            AstNode::NumberLiteral(_) => 
+        }
+    }
 
     /// Walk a module and any submodules 
     fn walk_module_with<R>(

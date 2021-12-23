@@ -202,6 +202,18 @@ where Type: Clone {
     }
 }
 
+impl AstNode<UnresolvedType> {   
+    /// Return true if the body has a phi node
+    fn has_phi(body: &[Ast]) -> bool {
+        for node in body {
+            if let Self::PhiExpr(_) = node.node {
+                return true
+            }
+        }
+        false
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct IfExpr {
     /// Conditional expression
@@ -269,7 +281,7 @@ impl DefData {
     pub fn name(&self) -> Symbol {
         match self {
             Self::FunDef(proto, _) | Self::FunDec(proto) => proto.name,
-            Self::StructDef {
+    Self::StructDef {
                 name,
                 ..
             } => *name,
@@ -321,8 +333,8 @@ impl ParsedModule {
 /// floating point value
 #[derive(Clone, Debug)]
 pub enum NumberLiteral {
-    Integer(BigInt),
-    Float(f64),
+    Integer(BigInt, Option<UnresolvedType>),
+    Float(f64, bool),
 }
 
 /// Type representing a function's type in spark
