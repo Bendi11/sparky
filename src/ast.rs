@@ -1,6 +1,7 @@
 //! Abstract syntax tree structures, the first representation of the program made by the compiler
 
-use std::fmt;
+use std::fmt;
+
 use std::{collections::HashMap, io::Write};
 
 use bitflags::bitflags;
@@ -121,8 +122,9 @@ impl SymbolPath {
 }
 
 impl fmt::Display for SymbolPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.internal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        match &self.internal {
             SymbolPathInternal::Single(sym) => sym.fmt(f),
             SymbolPathInternal::Multiple(parts) => {
                 let mut iter = parts.iter();

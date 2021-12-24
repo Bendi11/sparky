@@ -1,8 +1,9 @@
 //! Arena types that contain a large collection of objects that cannot be 
 //! removed from the collection, with indexes instead of references
 
-use std::{marker::PhantomData, fmt, ops};
+use std::{marker::PhantomData, fmt, ops, hash::Hash};
 
+use hashbrown::HashMap;
 
 /// An index into an [Arena] structure
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash,)]
@@ -16,8 +17,6 @@ impl<T> Clone for Index<T> {
 impl<T> Copy for Index<T> {}
 
 impl<T> Index<T> {
-    /// The type name used in debug printing
-    const TYPENAME: &'static str = std::any::type_name::<T>();
 
     /// Create a new Index with the internal value
     const fn new(idx: usize) -> Self {
@@ -43,6 +42,64 @@ impl<T> Index<T> {
 pub struct Arena<T> {
     /// The items contained in this arena
     data: Vec<T>,
+}
+
+/// Structure similar to the [Arena] that holds its data in a Vec<T>,
+/// but only allocates new elements when a unique one is added,
+/// so two elements that are equal share the same ID
+#[derive(Debug, Clone, )]
+pub struct Interner<T: Hash + Eq> {
+    /// A map of instances of T to their positions in `arena`
+    ids: HashMap<T, Index<T>>,
+    /// The arena holding instances of `T`
+    arena: Arena<T>,
+}
+
+impl<T: Hash + Eq + Clone> Interner<T> {
+    /// Create a new empty interner
+    pub fn new() -> Self {
+        Self {
+            ids: HashMap::new(),
+            arena: Arena::new()
+        }
+    }
+    
+    /// Insert an item into the arena or return a previously stored ID
+    pub fn insert(&mut self, val: T) -> Index<T> {
+        match self.ids.get(&val) {
+            Some(id) => *id,
+            None => {
+                let Self {arena, ids} = self;
+                arena.insert_with(|id| {
+                    ids.insert(val.clone(), id);
+                    val
+                })
+            }
+        }
+    }
+    
+    /// Insert the element created from a closure that takes an ID, used for 
+    /// types that contain an ID as a field
+    pub fn insert_with<F: FnOnce(Index<T>) -> T>(&mut self, f: F) -> Index<T> {
+        let val = f(Index::new(self.arena.data.len()));
+        self.insert(val)
+    } 
+    
+    /// Get the item at a specific index
+    #[inline]
+    pub fn get(&self, idx: Index<T>) -> &T {
+        self.arena.get(idx)
+    }
+    /// Get a mutable reference to the item at a specified index
+    #[inline]
+    pub fn get_mut(&mut self, idx: Index<T>) -> &mut T {
+        self.arena.get_mut(idx)
+    }
+    
+    /// Set the item at the specified index to the specified value
+    pub fn set(&mut self, idx: Index<T>, val: T) {
+        *self.get_mut(idx) = val;
+    }
 }
 
 impl<T> Arena<T> {
@@ -103,7 +160,6 @@ impl<T> Arena<T> {
     }
 }
 
-
 impl<T> IntoIterator for Arena<T> {
     type IntoIter = std::vec::IntoIter<T>;
     type Item = T;
@@ -132,6 +188,17 @@ impl<T> ops::IndexMut<Index<T>> for Arena<T> {
         self.get_mut(index)
     }
 }
+impl<T: Hash + Eq + Clone> ops::Index<Index<T>> for Interner<T> {
+    type Output = T;
+    fn index(&self, index: Index<T>) -> &Self::Output {
+        self.get(index)
+    }
+}
+impl<T: Hash + Eq + Clone> ops::IndexMut<Index<T>> for Interner<T> {
+    fn index_mut(&mut self, index: Index<T>) -> &mut Self::Output {
+        self.get_mut(index)
+    }
+}
 
 impl<T: fmt::Debug> fmt::Debug for Arena<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -143,6 +210,6 @@ impl<T: fmt::Debug> fmt::Debug for Arena<T> {
 
 impl<T> fmt::Debug for Index<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Index<{}>({})", Self::TYPENAME, self.0)
+        write!(f, "Index({})",self.0)
     }
 }
