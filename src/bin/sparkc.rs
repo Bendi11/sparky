@@ -16,7 +16,7 @@ type test_struct {
 }
 
 fun test_fn i32 a -> () {
-    mut(i64) bb := { phi test_fn }:(5)
+    mut(i64) bb := { phi test_fn }:((*($*[56]test_struct 0b00000010))[5].field)
 }
 
 "#;
