@@ -2,7 +2,7 @@ use std::{rc::Rc, cell::RefCell};
 
 use hashbrown::HashMap;
 
-use crate::{arena::Index, ast::IntegerWidth};
+use crate::{Symbol, arena::Index, ast::IntegerWidth};
 
 pub type SparkModuleId = Index<SparkModule>;
 pub type TypeId = Index<Type>;
@@ -70,7 +70,6 @@ pub struct FunctionType {
     return_ty: TypeId,
     args: Vec<TypeId>,
 }
-
 
 /// Structure holding all definitions contained in a single module
 #[derive(Clone, Debug)]

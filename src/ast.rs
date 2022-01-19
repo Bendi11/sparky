@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use std::{collections::HashMap, io::Write};
+use std::{collections::HashMap, io::Write, hash::Hash, cmp::Eq};
 
 use bitflags::bitflags;
 use num_bigint::BigInt;
@@ -20,7 +20,7 @@ bitflags! {
 
 /// Structure containing a list of symbols separated by the colon
 /// character, for example std:io:open 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SymbolPath {
     internal: SymbolPathInternal 
 }
@@ -32,7 +32,7 @@ pub struct SymbolPath {
 /// Kept private becase the [Multiple](UnresolvedPathInternal::Multiple) variant 
 /// must always have at least one symbol and allowing public access risks allowing
 /// that invariant
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum SymbolPathInternal {
     /// A path made of a single part
     Single(Symbol),
@@ -144,61 +144,61 @@ impl fmt::Display for SymbolPath {
 
 /// Data structure storing a function prototype
 #[derive(Clone, Debug)]
-pub struct FunProto {
+pub struct FunProto<T: Clone + Hash + Eq> {
     /// User-defined name of the function
     pub name: Symbol,
     /// Any flags that the function has
     pub flags: FunFlags,
     /// Argument name and types
-    pub args: Vec<(Symbol, UnresolvedType)>,
+    pub args: Vec<(Symbol, T)>,
     /// Return type of the function
-    pub return_ty: UnresolvedType,
+    pub return_ty: T,
 }
 
 
 /// A node in an Abstract Syntax Tree
 #[derive(Clone)]
-pub enum AstNode<Type = UnresolvedType> 
-where Type: Clone {
+pub enum AstNode<T = UnresolvedType> 
+where T: Clone + Hash + Eq {
     /// A variable / enum / constant / function access by name
     Access(SymbolPath),
     /// Member item access with the '.' operator
-    MemberAccess(Box<Ast>, Symbol),
+    MemberAccess(Box<Ast<T>>, Symbol),
     /// An array-like index expression using '[' ']'
     Index {
-        object: Box<Ast>,
-        index: Box<Ast>,
+        object: Box<Ast<T>>,
+        index: Box<Ast<T>>,
     },
     /// Function call with argument expressions
-    FunCall(Box<Ast>, Vec<Ast>),
+    FunCall(Box<Ast<T>>, Vec<Ast<T>>),
     /// If statement / expression
-    IfExpr(IfExpr),
+    IfExpr(IfExpr<T>),
     /// A variable declaration using the `let` or `mut` keywords
     VarDeclaration {
         /// The name of the variable being declared
         name: Symbol,
         /// Optionally specified type of the variable
-        ty: Option<Type>,
+        ty: Option<T>,
         /// If the variable is mutable
         mutable: bool,
     },
     /// A value is being assigned to another value
     Assignment {
         /// The left hand side of the assignment expression
-        lhs: Box<Ast>,
+        lhs: Box<Ast<T>>,
         /// The value being assigned to the left hand side
-        rhs: Box<Ast>,
+        rhs: Box<Ast<T>>,
     },
     /// A binary expression with LHS, operator, and RHS
-    BinExpr(Box<Ast>, Op, Box<Ast>),
+    BinExpr(Box<Ast<T>>, Op, Box<Ast<T>>),
     /// A unary expression with only operator and RHS
-    UnaryExpr(Op, Box<Ast>),
+    UnaryExpr(Op, Box<Ast<T>>),
     /// Phi returning a value from the current block
-    PhiExpr(Box<Ast>),
+    PhiExpr(Box<Ast<T>>),
     /// Returning an optional expression from a function
-    Return(Box<Ast>),
+    Return(Box<Ast<T>>),
     /// Casting an expression to a type
-    CastExpr(Type, Box<Ast>),
+    CastExpr(T, Box<Ast<T>>),
     /// A floating or fixed point number literal
     NumberLiteral(NumberLiteral),
     /// A string literal value
@@ -206,29 +206,29 @@ where Type: Clone {
     /// A literal boolean value
     BooleanLiteral(bool),
     /// A tuple made up of multiple expressions
-    TupleLiteral(Vec<Ast>),
+    TupleLiteral(Vec<Ast<T>>),
     /// An array literal with list of expressions for array elements
-    ArrayLiteral(Vec<Ast>),
+    ArrayLiteral(Vec<Ast<T>>),
     /// Breaking out of a loop
     Break,
     /// Continuing in a loop
     Continue,
     /// An infinite loop with body
-    Loop(Vec<Ast>),
+    Loop(Vec<Ast<T>>),
     /// A block of statements
-    Block(Vec<Ast>),
+    Block(Vec<Ast<T>>),
     /// A match statement
     Match {
         //The expression being matched
-        matched: Box<Ast>,
+        matched: Box<Ast<T>>,
         //The possible cases being tested for
-        cases: HashMap<Ast, Ast>,
+        cases: HashMap<Ast<T>, Ast<T>>,
     }
 }
 
-impl AstNode<UnresolvedType> {   
+impl<T: Clone + Hash + Eq> AstNode<T> {   
     /// Return true if the body has a phi node
-    fn has_phi(body: &[Ast]) -> bool {
+    fn has_phi(body: &[Ast<T>]) -> bool {
         for node in body {
             if let Self::PhiExpr(_) = node.node {
                 return true
@@ -239,30 +239,30 @@ impl AstNode<UnresolvedType> {
 }
 
 #[derive(Clone, Debug)]
-pub struct IfExpr {
+pub struct IfExpr<T: Clone + Hash + Eq> {
     /// Conditional expression
-    pub cond: Box<Ast>,
+    pub cond: Box<Ast<T>>,
     /// The body of the if statement
-    pub body: Vec<Ast>,
+    pub body: Vec<Ast<T>>,
     /// Either another if statement or a body
-    pub else_expr: Option<ElseExpr>,
+    pub else_expr: Option<ElseExpr<T>>,
 }
 
 /// Enum representing what can come after an if expression's body
 #[derive(Clone, Debug)]
-pub enum ElseExpr {
-    ElseIf(Box<IfExpr>),
-    Else(Vec<Ast>)
+pub enum ElseExpr<T: Clone + Hash + Eq> {
+    ElseIf(Box<IfExpr<T>>),
+    Else(Vec<Ast<T>>)
 }
 
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
 #[derive(Clone, Debug)]
-pub struct Ast<Type = UnresolvedType>
-where Type: Clone {
+pub struct Ast<T = UnresolvedType>
+where T: Clone + Hash + Eq {
     /// The AST node's data
-    pub node: AstNode<Type>,
+    pub node: AstNode<T>,
     /// The span of the source string that this AST node occupies
     pub span: Span,
 }
@@ -271,9 +271,9 @@ where Type: Clone {
 #[derive(Clone, Debug)]
 pub enum DefData {
     /// A function definition with body and prototype
-    FunDef(FunProto, Vec<Ast>),
+    FunDef(FunProto<UnresolvedType>, Vec<Ast>),
     /// A function declaration with no body
-    FunDec(FunProto),
+    FunDec(FunProto<UnresolvedType>),
     /// A type alias binding a name to a type
     AliasDef {
         /// The alias that `aliased` can be accessed by
@@ -386,7 +386,7 @@ pub enum NumberLiteralAnnotation {
 }
 
 /// Type representing a function's type in spark
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnresolvedFunType {
     /// The return type of the function
     pub return_ty: UnresolvedType,
@@ -396,7 +396,7 @@ pub struct UnresolvedFunType {
 
 /// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as
 /// user-defined types are resolved when lowering the AST to IR
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnresolvedType {
     Integer {
         /// How large in bits is the integer type
@@ -441,7 +441,7 @@ pub enum IntegerWidth {
     SixtyFour,
 }
 
-impl<T: std::fmt::Debug + Clone> std::fmt::Debug for AstNode<T> {
+impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
     fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Match {matched, cases} => {
@@ -476,7 +476,7 @@ impl<T: std::fmt::Debug + Clone> std::fmt::Debug for AstNode<T> {
             Self::Break => write!(w, "BREAK"),
             Self::Continue => write!(w, "CONTINUE"),
             Self::NumberLiteral(num) => write!(w, "NUMBER LITERAL {:?}", num),
-            Self::StringLiteral(string) => write!(w, "STRING LITERAL {}", string),
+            Self::StringLiteral(string) => write!(w, "STRING LITERAL {:?}", string),
             Self::TupleLiteral(tuple) => {
                 write!(w, "TUPLE LITERAL ( ")?;
                 for element in tuple {
@@ -495,7 +495,7 @@ impl<T: std::fmt::Debug + Clone> std::fmt::Debug for AstNode<T> {
             },
             Self::BooleanLiteral(boolean) => write!(w, "BOOL {}", boolean),
             Self::Assignment{lhs, rhs} => {
-                write!(w, "ASSIGN {:?}", lhs)?;
+                write!(w, "ASSIGN {:?}", lhs.node)?;
                 write!(w, " = {:?}", rhs.node)
             },
             Self::UnaryExpr(op, expr) => {
@@ -531,7 +531,7 @@ impl<T: std::fmt::Debug + Clone> std::fmt::Debug for AstNode<T> {
                 write!(w, "{:?}", rhs.node)
             },
             Self::IfExpr(ifexpr) => {
-                fn display_if(ifexpr: &IfExpr, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                fn display_if<T: Clone + Eq + Hash + std::fmt::Debug>(ifexpr: &IfExpr<T>, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                     write!(w, "IF {:?}", ifexpr.cond.node)?;
                     writeln!(w, " {{")?;
                     for expr in ifexpr.body.iter() {

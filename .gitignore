@@ -13,3 +13,6 @@ paths.txt
 vsc-ex
 /sparkc
 /test
+shell.nix
+.replit
+rust-toolchain

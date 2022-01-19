@@ -6,9 +6,7 @@ fn main() {
 
 use std::io::Write;
 
-    use string_interner::StringInterner;
-
-    use spark::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData, ir::{IRContext, lower::AstLowerer}};
+use spark::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData};
 
     
 
@@ -38,8 +36,7 @@ fun test_fn i32 a -> () {
     pub fn test_parse() {
         let mut files = Files::new();
         let file = files.add(CompiledFile::in_memory(SOURCE.to_owned()));
-        let mut interner = StringInterner::new();
-        let mut parser = Parser::new(SOURCE, &mut interner, "buffer", file);
+        let mut parser = Parser::new(SOURCE, "buffer", file);
         let module = parser.parse().unwrap_or_else(|e| {
             for name in e.backtrace {
                 eprintln!("in {}", name)
@@ -56,16 +53,10 @@ fun test_fn i32 a -> () {
         for (_, def) in module.defs.iter() {
             if let DefData::FunDef(_, body) = &def.data {
                 for expr in body {
-                    expr.node.display(&mut stdout, &interner, 0).unwrap();
+                    writeln!(&mut stdout, "{:#?}", expr.node);
                     writeln!(&mut stdout).unwrap();
                 }
             }
         }
-
-        let mut ctx = IRContext::new();
-        let mut lowerer = AstLowerer::new(&mut ctx, &interner, &files);
-        lowerer.codegen(&[module]).unwrap();
-        drop(lowerer);
-        println!("\n{:#?}", ctx);
         
     }

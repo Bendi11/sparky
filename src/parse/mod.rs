@@ -759,7 +759,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse an if statement
-    fn parse_if(&mut self) -> ParseResult<'src, IfExpr> {
+    fn parse_if(&mut self) -> ParseResult<'src, IfExpr<UnresolvedType>> {
         self.expect_next(&[TokenData::Ident("if")])?;
         self.trace.push("if condition".into());
         let cond = self.parse_expr()?;
