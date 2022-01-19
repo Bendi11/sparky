@@ -479,7 +479,7 @@ impl<'src> Parser<'src> {
                 self.trace.pop();
                 self.trace.push(format!("variable declaration '{}'", name).into());
 
-                let assigned = if TokenData::Assign == self.peek_tok(&[TokenData::Assign])?.data {
+                let assigned = if let Some(TokenData::Assign) = self.toks.peek().map(|tok| &tok.data) {
                     self.toks.next();
                     let assigned_expr = self.parse_expr()?;
                     Some(Box::new(assigned_expr))
@@ -534,7 +534,12 @@ impl<'src> Parser<'src> {
             },
             //Parse an assignment expression
             TokenData::Ident(_) | TokenData::OpenBracket(BracketType::Smooth) => {
-                self.trace.push("assignment statement".into());
+                if let TokenData::Ident(name) = peeked.data {
+                    self.trace.push(format!("assignment statement '{}''", name).into());
+                } else {
+                    self.trace.push("assignment statement".into());
+                }
+                
                 let prefix = self.parse_prefix_expr()?;
                 
                 self.expect_next(&[TokenData::Assign])?;
@@ -812,9 +817,8 @@ impl<'src> Parser<'src> {
         let next = self.peek_tok(EXPECTING_NEXT)?.clone();
         let member_of = match next.data {
             TokenData::Ident(_) => {
-                self.trace.push("variable or funcion name".into());
+                self.trace.push("variable or function name".into());
                 let name = self.expect_next_path(EXPECTING_NEXT)?;
-                self.trace.pop();
                 Ast {
                     span: next.span,
                     node: AstNode::Access(name)
@@ -823,7 +827,6 @@ impl<'src> Parser<'src> {
             TokenData::OpenBracket(BracketType::Curly) => {
                 self.trace.push("block expression".into());
                 let block = self.parse_body()?;
-                self.trace.pop();
 
                 Ast {
                     span: next.span,
@@ -880,7 +883,6 @@ impl<'src> Parser<'src> {
                     expr
                 };
 
-                self.trace.pop();
                 expr
             },
             _ => return Err(ParseError {
@@ -894,7 +896,9 @@ impl<'src> Parser<'src> {
         };
 
         //Parse any indexing or member access expressions
-        self.parse_access(member_of)
+        let access = self.parse_access(member_of)?;
+        self.trace.pop();
+        Ok(access)
     }
 
     /// Recursive function to parse member accesses with the '.' token,
@@ -903,6 +907,7 @@ impl<'src> Parser<'src> {
         const ACCESS_EXPECTING: &[TokenData<'static>] = &[
             TokenData::Period,
             TokenData::OpenBracket(BracketType::Square),
+            TokenData::Colon,
         ];
 
         let peeked = self.peek_tok(ACCESS_EXPECTING)?.clone();

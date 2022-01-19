@@ -250,11 +250,11 @@ impl<'src> Lexer<'src> {
                 )
             }
 
-            other if other.is_ascii_alphabetic() || other == '_' || other == ':' => {
+            other if other.is_ascii_alphabetic() || other == '_' => {
                 let mut endpos = startpos;
                 loop {
                     if let Some((peeked_pos, peeked)) = self.chars.peek() {
-                        if peeked.is_ascii_alphanumeric() || *peeked == '_' || *peeked == ':' {
+                        if peeked.is_ascii_alphanumeric() || *peeked == '_' {
                             endpos = *peeked_pos;
                             self.next_char();
                             continue;
