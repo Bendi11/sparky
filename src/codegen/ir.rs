@@ -17,7 +17,39 @@ pub struct SparkCtx {
     types: Interner<Type>,
     modules: Arena<SparkModule>,
     defs: Arena<SparkDef>,
-    root_module: SparkModule,
+    root_module: ModId,
+}
+
+impl SparkCtx {
+    pub const I8:  TypeId = unsafe { TypeId::from_raw(0) };
+    pub const I16: TypeId = unsafe { TypeId::from_raw(1) };
+    pub const I32: TypeId = unsafe { TypeId::from_raw(2) };
+    pub const I64: TypeId = unsafe { TypeId::from_raw(3) };
+
+    pub const U8:  TypeId = unsafe { TypeId::from_raw(4) };
+    pub const U16: TypeId = unsafe { TypeId::from_raw(5) };
+    pub const U32: TypeId = unsafe { TypeId::from_raw(6) };
+    pub const U64: TypeId = unsafe { TypeId::from_raw(7) };
+
+    pub const F32:  TypeId = unsafe { TypeId::from_raw(8) };
+    pub const F64:  TypeId = unsafe { TypeId::from_raw(9) };
+    pub const BOOL: TypeId = unsafe { TypeId::from_raw(10) };
+    pub const UNIT: TypeId = unsafe { TypeId::from_raw(11) };
+    pub const INVALID: TypeId = unsafe { TypeId::from_raw(12) };
+
+    pub fn new() -> Self {
+        let mut types = Interner::new();
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: true}});
+        let mut modules = Arena::new();
+        let root_module = modules.insert_with(|id| SparkModule { id, name: Symbol::from("root"), defs: ScopeMap::new()});
+
+        Self {
+            types,
+            modules,
+            defs: Arena::new(),
+            root_module,
+        }
+    }
 }
 
 /// Structure containing type data plus a type ID that can be used to refer to the
