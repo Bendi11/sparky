@@ -16,7 +16,7 @@ type test_struct {
 }
 
 fun test_fn i32 a -> () {
-    dllfetch:()
+    mut(i64) bb := { phi test_fn }:(5)
 }
 
 "#;

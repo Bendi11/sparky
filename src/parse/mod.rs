@@ -411,7 +411,7 @@ impl<'src> Parser<'src> {
 
         let peeked = self.peek_tok(EXPECTING_FOR_STMT)?.clone();
 
-        match peeked.data {
+        let stmt = match peeked.data {
             TokenData::Ident("break") => {
                 self.toks.next();
                 Ok(Ast {
@@ -477,36 +477,13 @@ impl<'src> Parser<'src> {
                 };
 
                 self.trace.pop();
-                self.trace.push(format!("variable declaration '{}'", name).into());
-
-                let assigned = if let Some(TokenData::Assign) = self.toks.peek().map(|tok| &tok.data) {
-                    self.toks.next();
-                    let assigned_expr = self.parse_expr()?;
-                    Some(Box::new(assigned_expr))
-                } else {
-                    None
-                };
-
-                self.trace.pop();
-
-                let var_dec = AstNode::VarDeclaration {
-                    name,
-                    ty: var_type,
-                    mutable
-                };
 
                 Ok(Ast {
-                    span: (peeked.span.from, next.span.to).into(),
-                    node: if let Some(assigned) = assigned {
-                        AstNode::Assignment {
-                            lhs: Box::new(Ast {
-                                span: (peeked.span.from, next.span.to).into(),
-                                node: var_dec
-                            }),
-                            rhs: assigned
-                        }
-                    } else { 
-                        var_dec
+                    span: next.span,
+                    node: AstNode::VarDeclaration {
+                        name,
+                        ty: var_type,
+                        mutable
                     }
                 })
             },
@@ -533,26 +510,10 @@ impl<'src> Parser<'src> {
                 })
             },
             //Parse an assignment expression
-            TokenData::Ident(_) | TokenData::OpenBracket(BracketType::Smooth) => {
-                if let TokenData::Ident(name) = peeked.data {
-                    self.trace.push(format!("assignment statement '{}''", name).into());
-                } else {
-                    self.trace.push("assignment statement".into());
-                }
-                
-                let prefix = self.parse_prefix_expr()?;
-                
-                self.expect_next(&[TokenData::Assign])?;
-                let assigned = self.parse_expr()?;
-                self.trace.pop();
-                
-                Ok(Ast {
-                    span: (prefix.span.from, assigned.span.to).into(),
-                    node: AstNode::Assignment {
-                        lhs: Box::new(prefix),
-                        rhs: Box::new(assigned)
-                    }
-                })
+            TokenData::Ident(_) | 
+            TokenData::OpenBracket(BracketType::Smooth) |
+            TokenData::OpenBracket(BracketType::Curly) => {
+                self.parse_prefix_expr()
             }
             _ => Err(ParseError {
                 highlighted_span: Some(peeked.span),
@@ -562,6 +523,21 @@ impl<'src> Parser<'src> {
                     expecting: ExpectingOneOf(EXPECTING_FOR_STMT)
                 }
             })
+        }?;
+        
+        if let Some(TokenData::Assign) = self.toks.peek().map(|tok| &tok.data) {
+            self.trace.push("assignment statement".into());
+            self.toks.next();
+            let assigned = self.parse_expr()?;
+            Ok(Ast {
+                span: (stmt.span.from, assigned.span.to).into(),
+                node: AstNode::Assignment {
+                    lhs: Box::new(stmt),
+                    rhs: Box::new(assigned)
+                }
+            })
+        } else {
+            Ok(stmt)
         }
 
     }
