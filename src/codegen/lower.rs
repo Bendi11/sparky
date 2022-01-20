@@ -24,19 +24,21 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     /// Lower a parsed module's definitions and return an ID for the lowered
     /// module
     pub fn lower_module(&mut self, parsed: &ParsedModule) -> ModId {
-        let module_id = self.ctx.new_module(parsed.name);
+        let module_id = self.ctx.new_module(parsed.name, parsed.file);
         let module = &mut self.ctx[module_id];
         for def in parsed.defs.iter().map(|(_, v)| v) {
-            match def {
+            match &def.data {
                 DefData::FunDef(proto, body) => {
                     
-                }
+                },
+                _ => unimplemented!()
             }
         }
+        unimplemented!()
     }
     
     /// Lower AST types to type IDs
-    pub fn lower_ast(&self, module: ModId, ast: &Ast) -> Ast<TypeId> {
+    pub fn lower_ast(&mut self, module: ModId, ast: &Ast) -> Ast<TypeId> {
         Ast {
             span: ast.span,
             node: match &ast.node {
@@ -53,7 +55,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 ),
                 AstNode::VarDeclaration { name, ty, mutable } => AstNode::VarDeclaration {
                     name: name.clone(),
-                    ty: ty.map(|ty| self.lower_type(module, Some(ast.span), &ty)),
+                    ty: ty.as_ref().map(|ty| self.lower_type(module, Some(ast.span), ty)),
                     mutable: *mutable,
                 },
                 AstNode::Assignment { lhs, rhs } => AstNode::Assignment {
@@ -69,7 +71,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 AstNode::TupleLiteral(elems) => AstNode::TupleLiteral(
                     elems.iter().map(|elem| self.lower_ast(module, elem)).collect()
                 ),
-                AstNode::UnitLiteral => AstNode::UnitLiteral,
+                //AstNode:: => AstNode::UnitLiteral,
                 AstNode::Continue => AstNode::Continue,
                 AstNode::Break => AstNode::Break,
                 AstNode::BinExpr(lhs, op, rhs) => AstNode::BinExpr(
@@ -97,26 +99,43 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     matched: Box::new(self.lower_ast(module, matched)),
                     cases: cases.iter().map(|(constant, case)| (self.lower_ast(module, constant), self.lower_ast(module, case))).collect()
                 },
-                AstNode::IFExpr(if_expr) => AstNode::IfExpr(self.lower_if_ast(module, if_expr)),
+                AstNode::IfExpr(if_expr) => AstNode::IfExpr(self.lower_if_ast(module, if_expr)),
             }
         }
     }
 
     /// Lower a parsed if expression's types to TypeIds
-    fn lower_if_ast(&self, module: ModId, if_expr: IfExpr<UnresolvedType>) -> IfExpr<TypeId> {
+    fn lower_if_ast(&mut self, module: ModId, if_expr: &IfExpr<UnresolvedType>) -> IfExpr<TypeId> {
+        let cond = Box::new(self.lower_ast(module, &if_expr.cond));
+        let body = if_expr.body.iter().map(|expr| self.lower_ast(module, expr)).collect();
+        let else_expr = match &if_expr.else_expr {
+            Some(ElseExpr::ElseIf(else_if_expr)) => Some(ElseExpr::ElseIf(
+                    Box::new(self.lower_if_ast(module, else_if_expr))
+            )),
+            Some(ElseExpr::Else(body)) => Some(ElseExpr::Else(
+                body.iter().map(|expr| self.lower_ast(module, expr)).collect()
+            )),
+            None => None
+        };
         IfExpr {
-            cond: Box::new(self.lower_ast(module, if_expr.cond)),
-            body: if_expr.body.iter().map(|expr| self.lower_ast(module, expr)).collect(),
-            else_expr: match if_expr.else_expr {
-                Some(ElseExpr::ElseIf(else_if_expr)) => Some(ElseExpr::ElseIf(self.lower_if_ast(module, else_if_expr))),
-                Some(ElseExpr::Else(body)) => Some(ElseExpr::Else(body.iter().map(|expr| self.lower_ast(module, expr)).collect())),
-                None => None
-            },
+            cond,
+            body,
+            else_expr,
         }
     }
     
     /// Lower a single function prototype to a function with no body
-    fn lower_funproto(&mut self, proto: &FunProto<UnresolvedType>) -> FunId {
+    fn lower_funproto(&mut self, module: ModId, span: Span, proto: &FunProto<UnresolvedType>) -> FunId {
+        let fun_ty = FunctionType {
+            return_ty: self.lower_type(module, Some(span), &proto.return_ty),
+            args: proto.args.iter().map(|(_, ty)| self.lower_type(module, Some(span), ty)).collect(),
+        };
+
+        self.ctx.new_fun(
+            proto.name,
+            fun_ty,
+            proto.args.iter().map(|(name, _)| Some(name.clone())).collect()
+        )
     }
     
     /// Lower a type either by resolving the path to the type or 
@@ -143,21 +162,34 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             },
             UnresolvedType::Unit => SparkCtx::UNIT,
             UnresolvedType::Bool => SparkCtx::BOOL,
-            UnresolvedType::Fun(ty) => self.ctx.new_type(TypeData::Function(FunctionType {
-                return_ty: self.lower_type(module, span, &ty.return_ty),
-                args: ty.arg_tys.iter().map(|ty| self.lower_type(module, span, ty)).collect()
-            })),
-            UnresolvedType::Pointer(ty) => self.ctx.new_type(TypeData::Pointer(self.lower_type(module, span, ty))),
-            UnresolvedType::Array { elements, len } => self.ctx.new_type(TypeData::Array {
-                element: self.lower_type(module, span, elements),
-                len: *len,
-            }),
-            UnresolvedType::Tuple { elements } => self.ctx.new_type(TypeData::Tuple(elements.iter().map(|ty| self.lower_type(module, span, ty)).collect())),
+            UnresolvedType::Fun(ty) => {
+                let return_ty = self.lower_type(module, span, &ty.return_ty);
+                let args = ty.arg_tys.iter().map(|ty| self.lower_type(module, span, ty)).collect();
+                self.ctx.new_type(TypeData::Function(FunctionType {
+                    return_ty,
+                    args,
+                }))
+            },
+            UnresolvedType::Pointer(ty) => {
+                let pointee = self.lower_type(module, span, ty);
+                self.ctx.new_type(TypeData::Pointer(pointee))
+            },
+            UnresolvedType::Array { elements, len } => {
+                let element = self.lower_type(module, span, elements);
+                self.ctx.new_type(TypeData::Array {
+                    element,
+                    len: *len,
+                })
+            },
+            UnresolvedType::Tuple { elements } => {
+                let elements = elements.iter().map(|ty| self.lower_type(module, span, ty)).collect();
+                self.ctx.new_type(TypeData::Tuple(elements))
+            }
             UnresolvedType::UserDefined { name } => match self.ctx.get_def(module, name) {
                 Ok(SparkDef::TypeDef(type_id)) => type_id,
                 _ => {
                     self.diags.emit({
-                        let mut diag = Diagnostic::error(format!("type {} not found", name), self.ctx[module].file);
+                        let diag = Diagnostic::error(format!("type {} not found", name), self.ctx[module].file);
                         if let Some(span) = span {
                             diag.with_span(span)
                         } else {

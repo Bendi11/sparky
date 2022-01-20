@@ -233,7 +233,7 @@ where T: Clone + Hash + Eq {
         //The expression being matched
         matched: Box<Ast<T>>,
         //The possible cases being tested for
-        cases: HashMap<Ast<T>, Ast<T>>,
+        cases: Vec<(Ast<T>, Ast<T>)>,
     }
 }
 
