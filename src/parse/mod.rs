@@ -286,7 +286,10 @@ impl<'src> Parser<'src> {
                 let typedef = match after_name.data {
                     TokenData::OpenBracket(BracketType::Curly) => {
                         const EXPECTING_FOR_STRUCT: &[TokenData<'static>] = &[
-                            TokenData::Ident("field type"), TokenData::CloseBracket(BracketType::Curly)
+                            TokenData::Ident("field type"),
+                            TokenData::CloseBracket(BracketType::Curly),
+                            TokenData::OpenBracket(BracketType::Square),
+                            TokenData::Op(Op::Star),
                         ];
 
                         self.toks.next();
@@ -295,17 +298,19 @@ impl<'src> Parser<'src> {
                         loop {
                             let peeked = self.peek_tok(EXPECTING_FOR_STRUCT)?.clone();
                             match peeked.data {
-                                TokenData::Ident(_) => {
+                                TokenData::CloseBracket(BracketType::Curly) => {
+                                    self.toks.next();
+                                    break
+                                },
+                                TokenData::Ident(_) |
+                                    TokenData::OpenBracket(BracketType::Square) |
+                                    TokenData::Op(Op::Star) => {
                                    self.trace.push("struct type field".into());
                                    let field_typename = self.parse_typename()?;
 
                                    let field_name = self.expect_next_ident(&[TokenData::Ident("struct field name")])?;
                                    self.trace.pop();
                                    fields.insert(self.symbol(field_name), field_typename);
-                                },
-                                TokenData::CloseBracket(BracketType::Curly) => {
-                                    self.toks.next();
-                                    break
                                 },
                                 _ => return Err(ParseError {
                                     highlighted_span: Some((next.span.from, peeked.span.to).into()),

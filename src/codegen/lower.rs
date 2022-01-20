@@ -1,8 +1,4 @@
-use crate::{
-    ast::{Ast, AstNode, Def, DefData, FunProto, IfExpr, ElseExpr, IntegerWidth, ParsedModule, UnresolvedType}, 
-    error::{DiagnosticManager, Diagnostic}, 
-    util::{files::Files, loc::Span}
-};
+use crate::{ast::{Ast, AstNode, Def, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule, SymbolPath, UnresolvedType}, error::{DiagnosticManager, Diagnostic}, util::{files::Files, loc::Span}};
 
 use super::ir::{SparkCtx, ModId, FunId, TypeId, FunctionType, TypeData, SparkDef};
 
@@ -20,21 +16,100 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             diags: DiagnosticManager::new(files),
         }
     }
-    
-    /// Lower a parsed module's definitions and return an ID for the lowered
-    /// module
+
     pub fn lower_module(&mut self, parsed: &ParsedModule) -> ModId {
-        let module_id = self.ctx.new_module(parsed.name, parsed.file);
-        let module = &mut self.ctx[module_id];
+        let id = self.gen_forward_decls(parsed);
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
                 DefData::FunDef(proto, body) => {
-                    
+                    let fun = if let SparkDef::FunDef(id) = self.ctx[id].defs.get(&proto.name).unwrap() {
+                            *id
+                        } else { unreachable!() };
+
+                    let body = body.iter().map(|expr| self.lower_ast(id, expr)).collect();
+                    self.ctx[fun].body = Some(body);
                 },
-                _ => unimplemented!()
+                DefData::StructDef { name, fields } => {
+                    let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
+                        *id
+                    } else { unreachable!() };
+                    let fields = fields.iter().map(|(name, ty)| (self.lower_type(id, Some(def.span), ty), name.clone())).collect();
+                    self.ctx[ty].data = TypeData::Struct {
+                        name: Some(name.clone()),
+                        fields,
+                    };
+                },
+                DefData::EnumDef { name, variants } => {
+                    let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
+                        *id
+                    } else { unreachable!() };
+                    let variants = variants.iter().map(|ty| self.lower_type(id, Some(def.span), ty)).collect();
+                    self.ctx[ty].data = TypeData::Enum {
+                        name: Some(name.clone()),
+                        parts: variants,
+                    }
+                },
+                DefData::AliasDef { name, aliased } => {
+                    let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
+                        *id
+                    } else { unreachable!() };
+                    let aliased = self.lower_type(id, Some(def.span), aliased);
+                    self.ctx[ty].data = TypeData::Alias(aliased);
+                },
+                _ => continue,
             }
         }
-        unimplemented!()
+
+        id
+    }
+    
+    /// Lower a parsed module's definitions and return an ID for the lowered
+    /// module
+    fn gen_forward_decls(&mut self, parsed: &ParsedModule) -> ModId {
+        let module_id = self.ctx.new_module(parsed.name, parsed.file);
+        //let module = &mut self.ctx[module_id];
+        for def in parsed.defs.iter().map(|(_, v)| v) {
+            match &def.data {
+                DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
+                    let fun_id = self.lower_funproto(module_id, def.span, proto);
+                    self.ctx[module_id].defs.define(proto.name, SparkDef::FunDef(fun_id));
+                },
+                DefData::StructDef { name, ..} |
+                    DefData::EnumDef { name, .. } |
+                    DefData::AliasDef { name, .. } => {
+                    let ty = self.ctx.new_empty_type();
+                    self.ctx[module_id].defs.define(name.clone(), SparkDef::TypeDef(ty));
+                }
+                _ => continue,
+            }
+        }
+
+        for def in parsed.defs.iter().map(|(_, v)| v) {
+            if let DefData::ImportDef { name } = &def.data {
+                let imported = match self.ctx.get_def(module_id, name) {
+                    Ok(id) => id,
+                    Err(name) => {
+
+                        self.diags.emit(Diagnostic::error(
+                                format!("Imported item {} not found ", name),
+                                parsed.file
+                            )
+                            .with_span(def.span)
+                        );
+                        panic!()
+                    }
+                };
+                self.ctx[module_id].defs.define(name.last(), imported);
+
+            }
+        }
+
+        for child in parsed.children.iter().map(|(_, c)| c) {
+            let child_id = self.gen_forward_decls(child);
+            self.ctx[module_id].defs.define(child.name.clone(), SparkDef::ModDef(child_id));
+        }
+
+        module_id
     }
     
     /// Lower AST types to type IDs

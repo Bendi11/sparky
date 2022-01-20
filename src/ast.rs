@@ -168,7 +168,7 @@ pub struct FunProto<T: Clone + Hash + Eq> {
 
 
 /// A node in an Abstract Syntax Tree
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq,)]
 pub enum AstNode<T = UnresolvedType> 
 where T: Clone + Hash + Eq {
     /// A variable / enum / constant / function access by name
@@ -249,7 +249,7 @@ impl<T: Clone + Hash + Eq> AstNode<T> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq,)]
 pub struct IfExpr<T: Clone + Hash + Eq> {
     /// Conditional expression
     pub cond: Box<Ast<T>>,
@@ -260,7 +260,7 @@ pub struct IfExpr<T: Clone + Hash + Eq> {
 }
 
 /// Enum representing what can come after an if expression's body
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq,)]
 pub enum ElseExpr<T: Clone + Hash + Eq> {
     ElseIf(Box<IfExpr<T>>),
     Else(Vec<Ast<T>>)
@@ -269,7 +269,7 @@ pub enum ElseExpr<T: Clone + Hash + Eq> {
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ast<T = UnresolvedType>
 where T: Clone + Hash + Eq {
     /// The AST node's data
@@ -366,10 +366,13 @@ impl ParsedModule {
 
 /// A number literal holding either a big integer or
 /// floating point value
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum NumberLiteral {
     Integer(BigInt, Option<NumberLiteralAnnotation>),
     Float(f64, Option<NumberLiteralAnnotation>),
+}
+
+impl std::cmp::Eq for NumberLiteral { 
 }
 
 impl NumberLiteral {
@@ -382,7 +385,7 @@ impl NumberLiteral {
 }
 
 /// The type added to the end of a number literal
-#[derive(Clone, Copy, Debug, )]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum NumberLiteralAnnotation {
     F32,
     F64,

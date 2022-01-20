@@ -6,17 +6,20 @@ fn main() {
 
 use std::io::Write;
 
-use spark::{parse::Parser, util::files::{CompiledFile, Files}, ast::DefData};
+use spark::{ast::DefData, codegen::{ir::SparkCtx, lower::Lowerer}, parse::Parser, util::files::{CompiledFile, Files}};
 
 const SOURCE: &str = 
 r#"
 type test_ty i32 | bool
 type test_struct {
-    i32 field
+    test_ty field
+    [15]*u8 other_field
 }
 
 fun test_fn i32 a -> () {
-    mut(i64) bb := { phi test_fn }:((*($*[56]test_struct 0b00000010))[5].field)
+    let(test_struct) a := 0
+    a.field := 1000
+    a.other_field[1] := 0xFFFF
 }
 
 "#;
@@ -38,6 +41,14 @@ pub fn test_parse() {
     });
 
     let mut stdout = std::io::stdout();
+
+    let mut ctx = SparkCtx::new(file);
+    let mut lowerer = Lowerer::new(&mut ctx, &files);
+    
+    lowerer.lower_module(&module);
+    drop(lowerer);
+    println!("{:#?}", ctx);
+
     for (_, def) in module.defs.iter() {
         if let DefData::FunDef(_, body) = &def.data {
             for expr in body {

@@ -2,7 +2,7 @@ use std::ops;
 
 use quickscope::ScopeMap;
 
-use crate::{Symbol, arena::{Index, Interner, Arena}, ast::{IntegerWidth, SymbolPath, PathIter}, util::files::FileId};
+use crate::{Symbol, arena::{Index, Interner, Arena}, ast::{Ast, IntegerWidth, PathIter, SymbolPath}, util::files::FileId};
 
 pub type TypeId = Index<Type>;
 pub type FunId = Index<Function>;
@@ -11,7 +11,7 @@ pub type DefId = Index<SparkDef>;
 
 /// Structure containing arenas holding all function definitions, 
 /// types, etc.
-#[derive(Clone,)]
+#[derive(Clone, Debug)]
 pub struct SparkCtx {
     types: Interner<Type>,
     modules: Arena<SparkModule>,
@@ -19,7 +19,10 @@ pub struct SparkCtx {
     root_module: ModId,
 }
 
+static mut COUNT: usize = 0;
+
 impl SparkCtx {
+    
     /// Create a new module with the given name and return an ID for the created
     /// module
     pub fn new_module(&mut self, name: Symbol, file: FileId) -> ModId {
@@ -42,6 +45,14 @@ impl SparkCtx {
         })
     }
     
+    /// Create a new invalid type with a unique type ID for forward references
+    pub fn new_empty_type(&mut self) -> TypeId {
+        unsafe { 
+            COUNT += 1;
+            self.new_type(TypeData::Invalid(COUNT)) 
+        }
+    }
+    
     /// Create a new function and return the ID of the created function
     pub fn new_fun(&mut self, name: Symbol, ty: FunctionType, arg_names: Vec<Option<Symbol>>) -> FunId {
         self.funs.insert_with(|id| Function {
@@ -49,6 +60,7 @@ impl SparkCtx {
             name,
             ty,
             arg_names,
+            body: None,
         })
     }
     
@@ -63,16 +75,17 @@ impl SparkCtx {
     
     /// Get a definition by path from the given module, returns the symbol that is unresolved if
     /// error occurs
-    pub fn get_def(&self, module: ModId, path: &SymbolPath) -> Result<SparkDef, (SparkDef, Symbol)> {
+    pub fn get_def(&self, module: ModId, path: &SymbolPath) -> Result<SparkDef, Symbol> {
         let parts = path.iter();
         self.get_def_impl(module, parts)
     }
 
-    fn get_def_impl(&self, module: ModId, mut parts: PathIter<'_>) -> Result<SparkDef, (SparkDef, Symbol)> {
-        if parts.is_final() {
+    fn get_def_impl(&self, module: ModId, mut parts: PathIter<'_>) -> Result<SparkDef, Symbol> {
+        if parts.len() == 1 {
+            println!("get_def_impl works!");
             let name = parts.next().unwrap();
             let def = self.modules[module].defs.get(&name);
-            def.copied().ok_or((SparkDef::ModDef(module), name))
+            def.copied().ok_or(name)
         } else {
             let name = parts.next().expect("invariant in get_def_impl");
             let def = self[module].defs.get(&name);
@@ -85,9 +98,9 @@ impl SparkCtx {
                     }
                 }
 
-                Err((SparkDef::ModDef(module), name))
+                Err(name)
             } else {
-                Err((SparkDef::ModDef(module), name))
+                Err(name)
             }
             
         }
@@ -107,7 +120,6 @@ impl SparkCtx {
     pub const F64:  TypeId = unsafe { TypeId::from_raw(9) };
     pub const BOOL: TypeId = unsafe { TypeId::from_raw(10) };
     pub const UNIT: TypeId = unsafe { TypeId::from_raw(11) };
-    pub const INVALID: TypeId = unsafe { TypeId::from_raw(12) };
 
     pub fn new(root_file: FileId) -> Self {
         let mut types = Interner::new();
@@ -128,7 +140,6 @@ impl SparkCtx {
         types.insert_with(|id| Type { id, data: TypeData::Float { doublewide: true }});
         types.insert_with(|id| Type { id, data: TypeData::Bool });
         types.insert_with(|id| Type { id, data: TypeData::Unit });
-        types.insert_with(|id| Type { id, data: TypeData::Invalid });
 
         Self {
             types,
@@ -141,23 +152,24 @@ impl SparkCtx {
 
 /// Structure containing type data plus a type ID that can be used to refer to the
 /// type
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Type {
     pub data: TypeData,
     pub id: TypeId,
 }
 
 /// Function containing an entry basic block and argument data
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
     pub id: FunId,
     pub name: Symbol,
     pub ty: FunctionType,
     pub arg_names: Vec<Option<Symbol>>,
+    pub body: Option<Vec<Ast<TypeId>>>,
 }
 
 /// A single type, either user-defined or predefined
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TypeData {
     Integer {
         signed: bool,
@@ -177,7 +189,7 @@ pub enum TypeData {
     Struct {
         //Prevents interning from seeing two structure types as different
         name: Option<Symbol>,
-        fields: Vec<(TypeId, Option<Symbol>)>,
+        fields: Vec<(TypeId, Symbol)>,
     },
     Enum {
         name: Option<Symbol>,
@@ -186,11 +198,11 @@ pub enum TypeData {
     Alias(TypeId),
     Function(FunctionType),
     /// For internal compiler use only
-    Invalid,
+    Invalid(usize),
 }
 
 /// A function's type including argument types, return type, and flags
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FunctionType {
     pub return_ty: TypeId,
     pub args: Vec<TypeId>,
@@ -198,7 +210,7 @@ pub struct FunctionType {
 
 
 /// Structure holding all definitions contained in a single module
-#[derive(Clone)]
+#[derive(Clone,)]
 pub struct SparkModule {
     pub id: ModId,
     pub file: FileId,
@@ -206,8 +218,21 @@ pub struct SparkModule {
     pub defs: ScopeMap<Symbol, SparkDef>,
 }
 
+impl std::fmt::Debug for SparkModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("SparkModule");
+        s.field("id", &self.id);
+        s.field("file", &self.file);
+        s.field("name", &self.name.to_string());
+        for (name, def) in self.defs.iter() {
+            s.field(name.as_str(), &def);
+        }
+        s.finish()
+    }
+}
+
 /// A single definition in the 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum SparkDef {
     TypeDef(TypeId),
     FunDef(FunId),
