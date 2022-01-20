@@ -1,9 +1,8 @@
-use std::{rc::Rc, cell::RefCell};
+use std::ops;
 
-use hashbrown::HashMap;
 use quickscope::ScopeMap;
 
-use crate::{Symbol, arena::{Index, Interner, Arena}, ast::IntegerWidth};
+use crate::{Symbol, arena::{Index, Interner, Arena}, ast::{IntegerWidth, SymbolPath, PathIter}, util::files::FileId};
 
 pub type TypeId = Index<Type>;
 pub type FunId = Index<Function>;
@@ -16,11 +15,84 @@ pub type DefId = Index<SparkDef>;
 pub struct SparkCtx {
     types: Interner<Type>,
     modules: Arena<SparkModule>,
-    defs: Arena<SparkDef>,
+    funs: Arena<Function>,
     root_module: ModId,
 }
 
 impl SparkCtx {
+    /// Create a new module with the given name and return an ID for the created
+    /// module
+    pub fn new_module(&mut self, name: Symbol, file: FileId) -> ModId {
+        self.modules.insert_with(|id| SparkModule {
+            id,
+            file,
+            name,
+            defs: ScopeMap::new(),
+        })
+    }
+    
+    /// Create a type using the given type data and return the ID of the created
+    /// type
+    pub fn new_type(&mut self, data: TypeData) -> TypeId {
+        self.types.insert_with(|id| {
+            Type {
+                id,
+                data,
+            }
+        })
+    }
+    
+    /// Create a new function and return the ID of the created function
+    pub fn new_fun(&mut self, name: Symbol, ty: FunctionType, arg_names: Vec<Option<Symbol>>) -> FunId {
+        self.funs.insert_with(|id| Function {
+            id,
+            name,
+            ty,
+            arg_names,
+        })
+    }
+    
+    /// Get the name of a definition
+    pub fn get_def_name(&self, def: SparkDef) -> Symbol {
+        match def {
+            SparkDef::TypeDef(ty) => unimplemented!(),
+            SparkDef::FunDef(fun) => self.funs[fun].name,
+            SparkDef::ModDef(module) => self.modules[module].name,
+        }
+    }
+    
+    /// Get a definition by path from the given module, returns the symbol that is unresolved if
+    /// error occurs
+    pub fn get_def(&self, module: ModId, path: &SymbolPath) -> Result<SparkDef, (SparkDef, Symbol)> {
+        let parts = path.iter();
+        self.get_def_impl(module, parts)
+    }
+
+    fn get_def_impl(&self, module: ModId, mut parts: PathIter<'_>) -> Result<SparkDef, (SparkDef, Symbol)> {
+        if parts.is_final() {
+            let name = parts.next().unwrap();
+            let def = self.modules[module].defs.get(&name);
+            def.copied().ok_or((SparkDef::ModDef(module), name))
+        } else {
+            let name = parts.next().expect("invariant in get_def_impl");
+            let def = self[module].defs.get(&name);
+            if let Some(def) = def {
+                if let SparkDef::ModDef(mod_id) = def {
+                    return self.get_def_impl(*mod_id, parts);
+                } else if parts.is_final() {
+                    if let SparkDef::TypeDef(ty) = def {
+                        unimplemented!("Functions associated with types not implemented");
+                    }
+                }
+
+                Err((SparkDef::ModDef(module), name))
+            } else {
+                Err((SparkDef::ModDef(module), name))
+            }
+            
+        }
+    }
+
     pub const I8:  TypeId = unsafe { TypeId::from_raw(0) };
     pub const I16: TypeId = unsafe { TypeId::from_raw(1) };
     pub const I32: TypeId = unsafe { TypeId::from_raw(2) };
@@ -37,17 +109,32 @@ impl SparkCtx {
     pub const UNIT: TypeId = unsafe { TypeId::from_raw(11) };
     pub const INVALID: TypeId = unsafe { TypeId::from_raw(12) };
 
-    pub fn new() -> Self {
+    pub fn new(root_file: FileId) -> Self {
         let mut types = Interner::new();
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: true}});
         let mut modules = Arena::new();
-        let root_module = modules.insert_with(|id| SparkModule { id, name: Symbol::from("root"), defs: ScopeMap::new()});
+        let root_module = modules.insert_with(|id| SparkModule { id, file: root_file, name: Symbol::from("root"), defs: ScopeMap::new()});
+
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: true}});
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Sixteen, signed: true}});
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::ThirtyTwo, signed: true}});
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::SixtyFour, signed: true}});
+ 
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: false}});
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Sixteen, signed: false}});
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::ThirtyTwo, signed: false}});
+        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::SixtyFour, signed: false}});
+ 
+        types.insert_with(|id| Type { id, data: TypeData::Float { doublewide: false }});
+        types.insert_with(|id| Type { id, data: TypeData::Float { doublewide: true }});
+        types.insert_with(|id| Type { id, data: TypeData::Bool });
+        types.insert_with(|id| Type { id, data: TypeData::Unit });
+        types.insert_with(|id| Type { id, data: TypeData::Invalid });
 
         Self {
             types,
             modules,
-            defs: Arena::new(),
             root_module,
+            funs: Arena::new(),
         }
     }
 }
@@ -56,15 +143,17 @@ impl SparkCtx {
 /// type
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Type {
-    data: TypeData,
-    id: TypeId,
+    pub data: TypeData,
+    pub id: TypeId,
 }
 
 /// Function containing an entry basic block and argument data
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Function {
-    id: FunId,
-    name: Symbol,
+    pub id: FunId,
+    pub name: Symbol,
+    pub ty: FunctionType,
+    pub arg_names: Vec<Option<Symbol>>,
 }
 
 /// A single type, either user-defined or predefined
@@ -96,34 +185,65 @@ pub enum TypeData {
     },
     Alias(TypeId),
     Function(FunctionType),
+    /// For internal compiler use only
+    Invalid,
 }
 
 /// A function's type including argument types, return type, and flags
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct FunctionType {
-    return_ty: TypeId,
-    args: Vec<TypeId>,
+    pub return_ty: TypeId,
+    pub args: Vec<TypeId>,
 }
 
 
 /// Structure holding all definitions contained in a single module
 #[derive(Clone)]
 pub struct SparkModule {
-    id: ModId,
+    pub id: ModId,
+    pub file: FileId,
     pub name: Symbol,
-    pub defs: ScopeMap<Symbol, DefId>,
-}
-
-/// Class containing a single definition in a module
-#[derive(Clone)]
-pub struct SparkDef {
-    id: DefId,
+    pub defs: ScopeMap<Symbol, SparkDef>,
 }
 
 /// A single definition in the 
 #[derive(Clone, Copy)]
-pub enum DefData {
+pub enum SparkDef {
     TypeDef(TypeId),
     FunDef(FunId),
-    Import(DefId),
+    ModDef(ModId),
+}
+
+impl ops::Index<TypeId> for SparkCtx {
+    type Output = Type;
+    fn index(&self, index: TypeId) -> &Self::Output {
+        self.types.get(index)
+    }
+}
+impl ops::IndexMut<TypeId> for SparkCtx {
+    fn index_mut(&mut self, index: TypeId) -> &mut Self::Output {
+        self.types.get_mut(index)
+    }
+}
+impl ops::Index<ModId> for SparkCtx {
+    type Output = SparkModule;
+    fn index(&self, index: ModId) -> &Self::Output {
+        self.modules.get(index)
+    }
+}
+impl ops::IndexMut<ModId> for SparkCtx {
+    fn index_mut(&mut self, index: ModId) -> &mut Self::Output {
+        self.modules.get_mut(index)
+    }
+}
+impl ops::Index<FunId> for SparkCtx {
+    type Output = Function;
+    fn index(&self, index: FunId) -> &Self::Output {
+        self.funs.get(index)
+    }
+}
+impl ops::IndexMut<FunId> for SparkCtx {
+    fn index_mut(&mut self, index: FunId) -> &mut Self::Output {
+        self.funs.get_mut(index)
+    }
 }

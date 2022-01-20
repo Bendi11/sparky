@@ -50,6 +50,17 @@ pub enum PathIter<'a> {
     Multiple(std::slice::Iter<'a, Symbol>)
 }
 
+impl PathIter<'_> {
+    /// Return `true` if a call to next() will consume the last element of the path
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::Single(s) if !s.len() == 1 => true,
+            Self::Multiple(iter) if iter.len() == 1 => true,
+            _ => false,
+        }
+    }
+}
+
 impl Iterator for PathIter<'_> {
     type Item = Symbol;
     fn next(&mut self) -> Option<Self::Item> {
