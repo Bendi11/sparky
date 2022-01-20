@@ -1,4 +1,8 @@
-use crate::{error::{DiagnosticManager, Diagnostic}, util::{files::Files, loc::Span}, ast::{ParsedModule, Def, DefData, FunProto, UnresolvedType, IntegerWidth}};
+use crate::{
+    ast::{Ast, AstNode, Def, DefData, FunProto, IntegerWidth, ParsedModule, UnresolvedType}, 
+    error::{DiagnosticManager, Diagnostic}, 
+    util::{files::Files, loc::Span}
+};
 
 use super::ir::{SparkCtx, ModId, FunId, TypeId, FunctionType, TypeData, SparkDef};
 
@@ -27,6 +31,57 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 DefData::FunDef(proto, body) => {
                     
                 }
+            }
+        }
+    }
+    
+    /// Lower AST types to type IDs
+    pub fn lower_ast(&self, module: ModId, ast: &Ast) -> Ast<TypeId> {
+        Ast {
+            span: ast.span,
+            node: match &ast.node {
+                AstNode::Access(path) => AstNode::Access(path.clone()),
+                AstNode::MemberAccess(accessing, name) => 
+                    AstNode::MemberAccess(Box::new(self.lower_ast(module, accessing)), name.clone()),
+                AstNode::Index { object, index } => AstNode::Index {
+                    object: Box::new(self.lower_ast(module, object)),
+                    index: Box::new(self.lower_ast(module, index)),
+                },
+                AstNode::FunCall(called, args) => AstNode::FunCall(
+                    Box::new(self.lower_ast(module, called)),
+                    args.iter().map(|arg| self.lower_ast(module, arg)).collect()
+                ),
+                AstNode::VarDeclaration { name, ty, mutable } => AstNode::VarDeclaration {
+                    name: name.clone(),
+                    ty: ty.map(|ty| self.lower_type(module, Some(ast.span), &ty)),
+                    mutable: *mutable,
+                },
+                AstNode::Assignment { lhs, rhs } => AstNode::Assignment {
+                    lhs: Box::new(self.lower_ast(module, lhs)),
+                    rhs: Box::new(self.lower_ast(module, rhs)),
+                },
+                AstNode::ArrayLiteral(elems) => AstNode::ArrayLiteral(
+                    elems.iter().map(|elem| self.lower_ast(module, elem)).collect()    
+                ),
+                AstNode::StringLiteral(s) => AstNode::StringLiteral(s.clone()),
+                AstNode::NumberLiteral(num) => AstNode::NumberLiteral(num.clone()),
+                AstNode::BooleanLiteral(b) => AstNode::BooleanLiteral(*b),
+                AstNode::TupleLiteral(elems) => AstNode::TupleLiteral(
+                    elems.iter().map(|elem| self.lower_ast(module, elem)).collect()
+                ),
+                AstNode::BinExpr(lhs, op, rhs) => AstNode::BinExpr(
+                    Box::new(self.lower_ast(module, lhs)),
+                    *op,
+                    Box::new(self.lower_ast(module, rhs)),
+                ),
+                AstNode::UnaryExpr(op, rhs) => AstNode::UnaryExpr(
+                    *op,
+                    Box::new(self.lower_ast(module, rhs))
+                ),
+                AstNode::CastExpr(ty, rhs) => AstNode::CastExpr(
+                    self.lower_type(module, Some(ast.span), ty),
+                    Box::new(self.lower_ast(module, rhs)),
+                ),
             }
         }
     }
@@ -83,7 +138,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     });
                     panic!()
                 }
-            }
+            },
         }
     }
 }
