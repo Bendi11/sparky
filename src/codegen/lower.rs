@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Ast, AstNode, Def, DefData, FunProto, IntegerWidth, ParsedModule, UnresolvedType}, 
+    ast::{Ast, AstNode, Def, DefData, FunProto, IfExpr, ElseExpr, IntegerWidth, ParsedModule, UnresolvedType}, 
     error::{DiagnosticManager, Diagnostic}, 
     util::{files::Files, loc::Span}
 };
@@ -69,6 +69,9 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 AstNode::TupleLiteral(elems) => AstNode::TupleLiteral(
                     elems.iter().map(|elem| self.lower_ast(module, elem)).collect()
                 ),
+                AstNode::UnitLiteral => AstNode::UnitLiteral,
+                AstNode::Continue => AstNode::Continue,
+                AstNode::Break => AstNode::Break,
                 AstNode::BinExpr(lhs, op, rhs) => AstNode::BinExpr(
                     Box::new(self.lower_ast(module, lhs)),
                     *op,
@@ -82,13 +85,38 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     self.lower_type(module, Some(ast.span), ty),
                     Box::new(self.lower_ast(module, rhs)),
                 ),
+                AstNode::PhiExpr(expr) => AstNode::PhiExpr(
+                    Box::new(self.lower_ast(module, expr))
+                ),
+                AstNode::Return(expr) => AstNode::Return(
+                    Box::new(self.lower_ast(module, expr))
+                ),
+                AstNode::Loop(body) => AstNode::Loop(body.iter().map(|expr| self.lower_ast(module, expr)).collect()),
+                AstNode::Block(body) => AstNode::Block(body.iter().map(|expr| self.lower_ast(module, expr)).collect()),
+                AstNode::Match { matched, cases } => AstNode::Match {
+                    matched: Box::new(self.lower_ast(module, matched)),
+                    cases: cases.iter().map(|(constant, case)| (self.lower_ast(module, constant), self.lower_ast(module, case))).collect()
+                },
+                AstNode::IFExpr(if_expr) => AstNode::IfExpr(self.lower_if_ast(module, if_expr)),
             }
+        }
+    }
+
+    /// Lower a parsed if expression's types to TypeIds
+    fn lower_if_ast(&self, module: ModId, if_expr: IfExpr<UnresolvedType>) -> IfExpr<TypeId> {
+        IfExpr {
+            cond: Box::new(self.lower_ast(module, if_expr.cond)),
+            body: if_expr.body.iter().map(|expr| self.lower_ast(module, expr)).collect(),
+            else_expr: match if_expr.else_expr {
+                Some(ElseExpr::ElseIf(else_if_expr)) => Some(ElseExpr::ElseIf(self.lower_if_ast(module, else_if_expr))),
+                Some(ElseExpr::Else(body)) => Some(ElseExpr::Else(body.iter().map(|expr| self.lower_ast(module, expr)).collect())),
+                None => None
+            },
         }
     }
     
     /// Lower a single function prototype to a function with no body
     fn lower_funproto(&mut self, proto: &FunProto<UnresolvedType>) -> FunId {
-
     }
     
     /// Lower a type either by resolving the path to the type or 
