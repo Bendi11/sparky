@@ -333,6 +333,7 @@ impl DefData {
 pub struct Def {
     pub data: DefData,
     pub span: Span,
+    pub file: FileId,
 }
 
 /// Structure representing a fully parsed module with easy access 
@@ -345,19 +346,16 @@ pub struct ParsedModule {
     pub imports: Vec<Symbol>,
     /// The name of the module
     pub name: Symbol,
-    /// The file that this module was parsed from
-    pub file: FileId,
     /// All children of this module
     pub children: HashMap<Symbol, ParsedModule>,
 }
 
 impl ParsedModule {
     /// Create a new empty module
-    pub fn new(name: Symbol, file: FileId) -> Self {
+    pub fn new(name: Symbol) -> Self {
         Self {
             defs: HashMap::new(),
             name,
-            file,
             children: HashMap::new(),
             imports: vec![],
         }

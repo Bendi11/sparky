@@ -20,8 +20,9 @@ internment = "0.5" # String and type interning
 num-bigint = "0.4" # Big integers for number literals
 quickscope = "0.1" # ScopeMap
 hashbrown = "0.11" # Non-secure fast hashmap
+clap = "3.0"
 
-# inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] }
 
 
 [profile.release]

@@ -22,10 +22,6 @@ pub struct Parser<'src> {
     toks: Lexer<'src>,
     /// The current parse trace used for error and debug backtraces
     trace: SmallVec<[Cow<'static, str> ; 24]>,
-    /// Name of the currently parsed module
-    modulename: Symbol,
-    /// The ID of the currently parsed file
-    file_id: FileId,
 }
 
 pub type ParseResult<'src, T> = Result<T, ParseError<'src>>;
@@ -46,28 +42,35 @@ impl<'src> Parser<'src> {
     ];
     
     /// Parse the input source code into a full AST
-    pub fn parse(&mut self) -> ParseResult<'src, ParsedModule> {
-        let mut module = ParsedModule::new(self.modulename, self.file_id);
-        let modulename = self.modulename.as_str(); 
-        self.trace.push(format!("module {}", modulename).into());
+    pub fn parse(&mut self, name: Symbol, file: FileId) -> ParseResult<'src, ParsedModule> {
+        let mut module = ParsedModule::new(name);
 
-        while self.toks.peek().is_some() {
-            let def = self.parse_decl()?;
-            module.defs.insert(def.data.name(), def); 
-        }
+        self.parse_to(&mut module, file)?; 
 
-        self.trace.pop();
 
         Ok(module)
     }
+    
+    /// Set the parsed text
+    pub fn set_text(&mut self, src: &'src str) {
+        self.toks = Lexer::new(src);
+    }
+    
+    /// Parse and add items to a module
+    pub fn parse_to(&mut self, to: &mut ParsedModule, file: FileId) -> ParseResult<'src, ()> {
+        while self.toks.peek().is_some() {
+            let def = self.parse_decl(file)?;
+            to.defs.insert(def.data.name(), def);
+        }
+
+        Ok(())
+    }
 
     /// Create a new `Parser` from the given source string
-    pub fn new(src: &'src str, filename: &str, file_id: FileId) -> Self {
+    pub fn new(src: &'src str) -> Self {
         Self {
             toks: Lexer::new(src),
             trace: SmallVec::new(),
-            modulename: Symbol::from(filename),
-            file_id,
         }
     }
 
@@ -171,7 +174,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a top-level declaration from the token stream
-    fn parse_decl(&mut self) -> ParseResult<'src, Def> {
+    fn parse_decl(&mut self, file: FileId) -> ParseResult<'src, Def> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
             TokenData::Ident("fun"),
             TokenData::Ident("type"),
@@ -187,6 +190,7 @@ impl<'src> Parser<'src> {
                 self.trace.pop();
 
                 Ok(Def {
+                    file,
                     span: next.span,
                     data: DefData::ImportDef {
                         name: imported
@@ -263,11 +267,13 @@ impl<'src> Parser<'src> {
                     self.trace.pop();
 
                     Ok(Def {
+                        file,
                         span: next.span,
                         data: DefData::FunDef(proto, body)
                     })
                 } else {
                     Ok(Def {
+                        file,
                         span: next.span,
                         data: DefData::FunDec(proto)
                     })
@@ -323,6 +329,7 @@ impl<'src> Parser<'src> {
                             }
                         }
                         Def {
+                            file,
                             span: (next.span.from, after_name.span.to).into(),
                             data: DefData::StructDef {
                                 name: self.symbol(name),
@@ -350,6 +357,7 @@ impl<'src> Parser<'src> {
                             }
 
                             Def {
+                                file,
                                 span: next.span,
                                 data: DefData::EnumDef {
                                     name: self.symbol(name),
@@ -358,11 +366,12 @@ impl<'src> Parser<'src> {
                             }
                         } else {
                             Def {
-                               span: next.span,
-                               data: DefData::AliasDef {
-                                   name: self.symbol(name),
-                                   aliased: first_type
-                               }
+                                file,
+                                span: next.span,
+                                data: DefData::AliasDef {
+                                    name: self.symbol(name),
+                                    aliased: first_type
+                                }
                             }
                         }
                     },

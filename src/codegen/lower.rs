@@ -1,4 +1,4 @@
-use crate::{ast::{Ast, AstNode, Def, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule, SymbolPath, UnresolvedType}, error::{DiagnosticManager, Diagnostic}, util::{files::Files, loc::Span}};
+use crate::{ast::{Ast, AstNode, Def, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule, SymbolPath, UnresolvedType}, error::{DiagnosticManager, Diagnostic}, util::{files::{Files, FileId}, loc::Span}};
 
 use super::ir::{SparkCtx, ModId, FunId, TypeId, FunctionType, TypeData, SparkDef};
 
@@ -26,14 +26,14 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                             *id
                         } else { unreachable!() };
 
-                    let body = body.iter().map(|expr| self.lower_ast(id, expr)).collect();
+                    let body = body.iter().map(|expr| self.lower_ast(id, expr, def.file)).collect();
                     self.ctx[fun].body = Some(body);
                 },
                 DefData::StructDef { name, fields } => {
                     let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
                         *id
                     } else { unreachable!() };
-                    let fields = fields.iter().map(|(name, ty)| (self.lower_type(id, Some(def.span), ty), name.clone())).collect();
+                    let fields = fields.iter().map(|(name, ty)| (self.lower_type(id, Some(def.span), ty, def.file), name.clone())).collect();
                     self.ctx[ty].data = TypeData::Struct {
                         name: Some(name.clone()),
                         fields,
@@ -43,7 +43,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
                         *id
                     } else { unreachable!() };
-                    let variants = variants.iter().map(|ty| self.lower_type(id, Some(def.span), ty)).collect();
+                    let variants = variants.iter().map(|ty| self.lower_type(id, Some(def.span), ty, def.file)).collect();
                     self.ctx[ty].data = TypeData::Enum {
                         name: Some(name.clone()),
                         parts: variants,
@@ -53,7 +53,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
                         *id
                     } else { unreachable!() };
-                    let aliased = self.lower_type(id, Some(def.span), aliased);
+                    let aliased = self.lower_type(id, Some(def.span), aliased, def.file);
                     self.ctx[ty].data = TypeData::Alias(aliased);
                 },
                 _ => continue,
@@ -66,12 +66,12 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     /// Lower a parsed module's definitions and return an ID for the lowered
     /// module
     fn gen_forward_decls(&mut self, parsed: &ParsedModule) -> ModId {
-        let module_id = self.ctx.new_module(parsed.name, parsed.file);
+        let module_id = self.ctx.new_module(parsed.name);
         //let module = &mut self.ctx[module_id];
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
                 DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
-                    let fun_id = self.lower_funproto(module_id, def.span, proto);
+                    let fun_id = self.lower_funproto(module_id, def.span, proto, def.file);
                     self.ctx[module_id].defs.define(proto.name, SparkDef::FunDef(fun_id));
                 },
                 DefData::StructDef { name, ..} |
@@ -92,7 +92,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
 
                         self.diags.emit(Diagnostic::error(
                                 format!("Imported item {} not found ", name),
-                                parsed.file
+                                def.file
                             )
                             .with_span(def.span)
                         );
@@ -113,82 +113,82 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     }
     
     /// Lower AST types to type IDs
-    pub fn lower_ast(&mut self, module: ModId, ast: &Ast) -> Ast<TypeId> {
+    pub fn lower_ast(&mut self, module: ModId, ast: &Ast, file: FileId) -> Ast<TypeId> {
         Ast {
             span: ast.span,
             node: match &ast.node {
                 AstNode::Access(path) => AstNode::Access(path.clone()),
                 AstNode::MemberAccess(accessing, name) => 
-                    AstNode::MemberAccess(Box::new(self.lower_ast(module, accessing)), name.clone()),
+                    AstNode::MemberAccess(Box::new(self.lower_ast(module, accessing, file)), name.clone()),
                 AstNode::Index { object, index } => AstNode::Index {
-                    object: Box::new(self.lower_ast(module, object)),
-                    index: Box::new(self.lower_ast(module, index)),
+                    object: Box::new(self.lower_ast(module, object, file)),
+                    index: Box::new(self.lower_ast(module, index, file)),
                 },
                 AstNode::FunCall(called, args) => AstNode::FunCall(
-                    Box::new(self.lower_ast(module, called)),
-                    args.iter().map(|arg| self.lower_ast(module, arg)).collect()
+                    Box::new(self.lower_ast(module, called, file)),
+                    args.iter().map(|arg| self.lower_ast(module, arg, file)).collect()
                 ),
                 AstNode::VarDeclaration { name, ty, mutable } => AstNode::VarDeclaration {
                     name: name.clone(),
-                    ty: ty.as_ref().map(|ty| self.lower_type(module, Some(ast.span), ty)),
+                    ty: ty.as_ref().map(|ty| self.lower_type(module, Some(ast.span), ty, file)),
                     mutable: *mutable,
                 },
                 AstNode::Assignment { lhs, rhs } => AstNode::Assignment {
-                    lhs: Box::new(self.lower_ast(module, lhs)),
-                    rhs: Box::new(self.lower_ast(module, rhs)),
+                    lhs: Box::new(self.lower_ast(module, lhs, file)),
+                    rhs: Box::new(self.lower_ast(module, rhs, file)),
                 },
                 AstNode::ArrayLiteral(elems) => AstNode::ArrayLiteral(
-                    elems.iter().map(|elem| self.lower_ast(module, elem)).collect()    
+                    elems.iter().map(|elem| self.lower_ast(module, elem, file)).collect()    
                 ),
                 AstNode::StringLiteral(s) => AstNode::StringLiteral(s.clone()),
                 AstNode::NumberLiteral(num) => AstNode::NumberLiteral(num.clone()),
                 AstNode::BooleanLiteral(b) => AstNode::BooleanLiteral(*b),
                 AstNode::TupleLiteral(elems) => AstNode::TupleLiteral(
-                    elems.iter().map(|elem| self.lower_ast(module, elem)).collect()
+                    elems.iter().map(|elem| self.lower_ast(module, elem, file)).collect()
                 ),
                 //AstNode:: => AstNode::UnitLiteral,
                 AstNode::Continue => AstNode::Continue,
                 AstNode::Break => AstNode::Break,
                 AstNode::BinExpr(lhs, op, rhs) => AstNode::BinExpr(
-                    Box::new(self.lower_ast(module, lhs)),
+                    Box::new(self.lower_ast(module, lhs, file)),
                     *op,
-                    Box::new(self.lower_ast(module, rhs)),
+                    Box::new(self.lower_ast(module, rhs, file)),
                 ),
                 AstNode::UnaryExpr(op, rhs) => AstNode::UnaryExpr(
                     *op,
-                    Box::new(self.lower_ast(module, rhs))
+                    Box::new(self.lower_ast(module, rhs, file))
                 ),
                 AstNode::CastExpr(ty, rhs) => AstNode::CastExpr(
-                    self.lower_type(module, Some(ast.span), ty),
-                    Box::new(self.lower_ast(module, rhs)),
+                    self.lower_type(module, Some(ast.span), ty, file),
+                    Box::new(self.lower_ast(module, rhs, file)),
                 ),
                 AstNode::PhiExpr(expr) => AstNode::PhiExpr(
-                    Box::new(self.lower_ast(module, expr))
+                    Box::new(self.lower_ast(module, expr, file))
                 ),
                 AstNode::Return(expr) => AstNode::Return(
-                    Box::new(self.lower_ast(module, expr))
+                    Box::new(self.lower_ast(module, expr, file))
                 ),
-                AstNode::Loop(body) => AstNode::Loop(body.iter().map(|expr| self.lower_ast(module, expr)).collect()),
-                AstNode::Block(body) => AstNode::Block(body.iter().map(|expr| self.lower_ast(module, expr)).collect()),
+                AstNode::Loop(body) => AstNode::Loop(body.iter().map(|expr| self.lower_ast(module, expr, file)).collect()),
+                AstNode::Block(body) => AstNode::Block(body.iter().map(|expr| self.lower_ast(module, expr, file)).collect()),
                 AstNode::Match { matched, cases } => AstNode::Match {
-                    matched: Box::new(self.lower_ast(module, matched)),
-                    cases: cases.iter().map(|(constant, case)| (self.lower_ast(module, constant), self.lower_ast(module, case))).collect()
+                    matched: Box::new(self.lower_ast(module, matched, file)),
+                    cases: cases.iter().map(|(constant, case)| (self.lower_ast(module, constant, file), self.lower_ast(module, case, file))).collect()
                 },
-                AstNode::IfExpr(if_expr) => AstNode::IfExpr(self.lower_if_ast(module, if_expr)),
+                AstNode::IfExpr(if_expr) => AstNode::IfExpr(self.lower_if_ast(module, if_expr, file)),
             }
         }
     }
 
     /// Lower a parsed if expression's types to TypeIds
-    fn lower_if_ast(&mut self, module: ModId, if_expr: &IfExpr<UnresolvedType>) -> IfExpr<TypeId> {
-        let cond = Box::new(self.lower_ast(module, &if_expr.cond));
-        let body = if_expr.body.iter().map(|expr| self.lower_ast(module, expr)).collect();
+    fn lower_if_ast(&mut self, module: ModId, if_expr: &IfExpr<UnresolvedType>, file: FileId) -> IfExpr<TypeId> {
+        let cond = Box::new(self.lower_ast(module, &if_expr.cond, file));
+        let body = if_expr.body.iter().map(|expr| self.lower_ast(module, expr, file)).collect();
         let else_expr = match &if_expr.else_expr {
             Some(ElseExpr::ElseIf(else_if_expr)) => Some(ElseExpr::ElseIf(
-                    Box::new(self.lower_if_ast(module, else_if_expr))
+                    Box::new(self.lower_if_ast(module, else_if_expr, file))
             )),
             Some(ElseExpr::Else(body)) => Some(ElseExpr::Else(
-                body.iter().map(|expr| self.lower_ast(module, expr)).collect()
+                body.iter().map(|expr| self.lower_ast(module, expr, file)).collect()
             )),
             None => None
         };
@@ -200,10 +200,10 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     }
     
     /// Lower a single function prototype to a function with no body
-    fn lower_funproto(&mut self, module: ModId, span: Span, proto: &FunProto<UnresolvedType>) -> FunId {
+    fn lower_funproto(&mut self, module: ModId, span: Span, proto: &FunProto<UnresolvedType>, file: FileId) -> FunId {
         let fun_ty = FunctionType {
-            return_ty: self.lower_type(module, Some(span), &proto.return_ty),
-            args: proto.args.iter().map(|(_, ty)| self.lower_type(module, Some(span), ty)).collect(),
+            return_ty: self.lower_type(module, Some(span), &proto.return_ty, file),
+            args: proto.args.iter().map(|(_, ty)| self.lower_type(module, Some(span), ty, file)).collect(),
         };
 
         self.ctx.new_fun(
@@ -215,7 +215,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     
     /// Lower a type either by resolving the path to the type or 
     /// converting an integral type
-    fn lower_type(&mut self, module: ModId, span: Option<Span>, ty: &UnresolvedType) -> TypeId {
+    fn lower_type(&mut self, module: ModId, span: Option<Span>, ty: &UnresolvedType, file: FileId) -> TypeId {
         match ty {
             UnresolvedType::Integer { width, signed } => match signed {
                 true => match width {
@@ -238,33 +238,33 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             UnresolvedType::Unit => SparkCtx::UNIT,
             UnresolvedType::Bool => SparkCtx::BOOL,
             UnresolvedType::Fun(ty) => {
-                let return_ty = self.lower_type(module, span, &ty.return_ty);
-                let args = ty.arg_tys.iter().map(|ty| self.lower_type(module, span, ty)).collect();
+                let return_ty = self.lower_type(module, span, &ty.return_ty, file);
+                let args = ty.arg_tys.iter().map(|ty| self.lower_type(module, span, ty, file)).collect();
                 self.ctx.new_type(TypeData::Function(FunctionType {
                     return_ty,
                     args,
                 }))
             },
             UnresolvedType::Pointer(ty) => {
-                let pointee = self.lower_type(module, span, ty);
+                let pointee = self.lower_type(module, span, ty, file);
                 self.ctx.new_type(TypeData::Pointer(pointee))
             },
             UnresolvedType::Array { elements, len } => {
-                let element = self.lower_type(module, span, elements);
+                let element = self.lower_type(module, span, elements, file);
                 self.ctx.new_type(TypeData::Array {
                     element,
                     len: *len,
                 })
             },
             UnresolvedType::Tuple { elements } => {
-                let elements = elements.iter().map(|ty| self.lower_type(module, span, ty)).collect();
+                let elements = elements.iter().map(|ty| self.lower_type(module, span, ty, file)).collect();
                 self.ctx.new_type(TypeData::Tuple(elements))
             }
             UnresolvedType::UserDefined { name } => match self.ctx.get_def(module, name) {
                 Ok(SparkDef::TypeDef(type_id)) => type_id,
                 _ => {
                     self.diags.emit({
-                        let diag = Diagnostic::error(format!("type {} not found", name), self.ctx[module].file);
+                        let diag = Diagnostic::error(format!("type {} not found", name), file);
                         if let Some(span) = span {
                             diag.with_span(span)
                         } else {

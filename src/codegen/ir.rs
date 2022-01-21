@@ -16,7 +16,6 @@ pub struct SparkCtx {
     types: Interner<Type>,
     modules: Arena<SparkModule>,
     funs: Arena<Function>,
-    root_module: ModId,
 }
 
 static mut COUNT: usize = 0;
@@ -25,10 +24,9 @@ impl SparkCtx {
     
     /// Create a new module with the given name and return an ID for the created
     /// module
-    pub fn new_module(&mut self, name: Symbol, file: FileId) -> ModId {
+    pub fn new_module(&mut self, name: Symbol) -> ModId {
         self.modules.insert_with(|id| SparkModule {
             id,
-            file,
             name,
             defs: ScopeMap::new(),
         })
@@ -121,10 +119,9 @@ impl SparkCtx {
     pub const BOOL: TypeId = unsafe { TypeId::from_raw(10) };
     pub const UNIT: TypeId = unsafe { TypeId::from_raw(11) };
 
-    pub fn new(root_file: FileId) -> Self {
+    pub fn new() -> Self {
         let mut types = Interner::new();
         let mut modules = Arena::new();
-        let root_module = modules.insert_with(|id| SparkModule { id, file: root_file, name: Symbol::from("root"), defs: ScopeMap::new()});
 
         types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: true}});
         types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Sixteen, signed: true}});
@@ -144,7 +141,6 @@ impl SparkCtx {
         Self {
             types,
             modules,
-            root_module,
             funs: Arena::new(),
         }
     }
@@ -213,7 +209,6 @@ pub struct FunctionType {
 #[derive(Clone,)]
 pub struct SparkModule {
     pub id: ModId,
-    pub file: FileId,
     pub name: Symbol,
     pub defs: ScopeMap<Symbol, SparkDef>,
 }
@@ -222,7 +217,6 @@ impl std::fmt::Debug for SparkModule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("SparkModule");
         s.field("id", &self.id);
-        s.field("file", &self.file);
         s.field("name", &self.name.to_string());
         for (name, def) in self.defs.iter() {
             s.field(name.as_str(), &def);
