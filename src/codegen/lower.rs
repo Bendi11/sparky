@@ -35,7 +35,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     } else { unreachable!() };
                     let fields = fields.iter().map(|(name, ty)| (self.lower_type(id, Some(def.span), ty, def.file), name.clone())).collect();
                     self.ctx[ty].data = TypeData::Struct {
-                        name: Some(name.clone()),
                         fields,
                     };
                 },
@@ -45,7 +44,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     } else { unreachable!() };
                     let variants = variants.iter().map(|ty| self.lower_type(id, Some(def.span), ty, def.file)).collect();
                     self.ctx[ty].data = TypeData::Enum {
-                        name: Some(name.clone()),
                         parts: variants,
                     }
                 },

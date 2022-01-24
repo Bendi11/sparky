@@ -187,12 +187,9 @@ pub enum TypeData {
     },
     Tuple(Vec<TypeId>),
     Struct {
-        //Prevents interning from seeing two structure types as different
-        name: Option<Symbol>,
         fields: Vec<(TypeId, Symbol)>,
     },
     Enum {
-        name: Option<Symbol>,
         parts: Vec<TypeId>,
     },
     Alias(TypeId),
