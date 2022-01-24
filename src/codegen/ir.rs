@@ -2,7 +2,11 @@ use std::ops;
 
 use quickscope::ScopeMap;
 
-use crate::{Symbol, arena::{Index, Interner, Arena}, ast::{Ast, IntegerWidth, PathIter, SymbolPath}, util::files::FileId};
+use crate::{
+    Symbol,
+    arena::{Index, Interner, Arena},
+    ast::{Ast, IntegerWidth, PathIter, SymbolPath},
+};
 
 pub type TypeId = Index<Type>;
 pub type FunId = Index<Function>;
@@ -17,8 +21,6 @@ pub struct SparkCtx {
     modules: Arena<SparkModule>,
     funs: Arena<Function>,
 }
-
-static mut COUNT: usize = 0;
 
 impl SparkCtx {
     
@@ -45,10 +47,12 @@ impl SparkCtx {
     
     /// Create a new invalid type with a unique type ID for forward references
     pub fn new_empty_type(&mut self) -> TypeId {
-        unsafe { 
-            COUNT += 1;
-            self.new_type(TypeData::Invalid(COUNT)) 
-        }
+        self.types.insert_with_nointern(|id| {
+            Type {
+                id,
+                data: TypeData::Invalid,
+            }
+        })
     }
     
     /// Create a new function and return the ID of the created function
@@ -194,7 +198,7 @@ pub enum TypeData {
     Alias(TypeId),
     Function(FunctionType),
     /// For internal compiler use only
-    Invalid(usize),
+    Invalid,
 }
 
 /// A function's type including argument types, return type, and flags

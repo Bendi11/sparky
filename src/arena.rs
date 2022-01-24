@@ -55,6 +55,13 @@ pub struct Interner<T: Hash + Eq> {
     arena: Arena<T>,
 }
 
+/// A secondary interner created from an [Interner] that maps
+/// IDs from one interner to another
+#[derive(Debug, Clone)]
+pub struct SecondaryInterner<T: Hash + Eq> {
+    interner: Interner<Option<T>>,
+}
+
 impl<T: Hash + Eq + Clone> Interner<T> {
     /// Create a new empty interner
     pub fn new() -> Self {
@@ -78,6 +85,19 @@ impl<T: Hash + Eq + Clone> Interner<T> {
         }
     }
     
+    /// Insert the value into the internal arena and gurantee that it's index
+    /// won't be returned by another insert() call
+    pub fn insert_nointern(&mut self, val: T) -> Index<T> {
+        self.arena.insert_with(|id| {
+            val
+        })
+    }
+
+    pub fn insert_with_nointern<F: FnOnce(Index<T>) -> T>(&mut self, f: F) -> Index<T> {
+        let t = f(Index::new(self.arena.data.len()));
+        self.insert_nointern(t)
+    }
+    
     /// Insert the element created from a closure that takes an ID, used for 
     /// types that contain an ID as a field
     pub fn insert_with<F: FnOnce(Index<T>) -> T>(&mut self, f: F) -> Index<T> {
@@ -90,15 +110,15 @@ impl<T: Hash + Eq + Clone> Interner<T> {
     pub fn get(&self, idx: Index<T>) -> &T {
         self.arena.get(idx)
     }
-    /// Get a mutable reference to the item at a specified index
-    #[inline]
+    
+    /// # WARNING if used with an index that is interned, this will break interning
     pub fn get_mut(&mut self, idx: Index<T>) -> &mut T {
         self.arena.get_mut(idx)
     }
     
     /// Set the item at the specified index to the specified value
     pub fn set(&mut self, idx: Index<T>, val: T) {
-        *self.get_mut(idx) = val;
+
     }
 }
 
@@ -192,11 +212,6 @@ impl<T: Hash + Eq + Clone> ops::Index<Index<T>> for Interner<T> {
     type Output = T;
     fn index(&self, index: Index<T>) -> &Self::Output {
         self.get(index)
-    }
-}
-impl<T: Hash + Eq + Clone> ops::IndexMut<Index<T>> for Interner<T> {
-    fn index_mut(&mut self, index: Index<T>) -> &mut Self::Output {
-        self.get_mut(index)
     }
 }
 
