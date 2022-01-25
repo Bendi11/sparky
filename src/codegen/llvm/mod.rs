@@ -11,7 +11,7 @@ use inkwell::{
     context::Context,
     module::{Module, Linkage},
     targets::{TargetData, TargetMachine, Target, InitializationConfig, RelocMode, CodeModel},
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType},
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType, PointerType},
     values::{FunctionValue, BasicValueEnum}, OptimizationLevel
 };
 use quickscope::ScopeMap;
@@ -129,11 +129,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 self.ctx.struct_type(&fields, false).into()
             },
             TypeData::Alias(id) => self.llvm_ty(id),
-            TypeData::Pointer(id) => 
-                BasicTypeEnum::try_from(self.llvm_ty(id))
-                    .unwrap()
-                    .ptr_type(AddressSpace::Generic)
-                    .into(),
+            TypeData::Pointer(id) => {
+                let pointee = self.llvm_ty(id);
+
+                match BasicTypeEnum::try_from(pointee) {
+                    Ok(b) => b
+                        .ptr_type(AddressSpace::Generic)
+                        .into(),
+                    Err(_) => unimplemented!() 
+                }
+            },
             TypeData::Array { element, len } => 
                 BasicTypeEnum::try_from(self.llvm_ty(element))
                     .unwrap()
@@ -145,7 +150,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 true => self.ctx.f64_type().into(),
                 false => self.ctx.f32_type().into(),
             },
-            TypeData::Function(ty) => self.gen_fun_ty(&ty).into(),
+            TypeData::Function(ty) => self.gen_fun_ty(&ty).ptr_type(AddressSpace::Generic).into(),
             TypeData::Enum { parts } => {
                 let parts = parts
                     .iter()

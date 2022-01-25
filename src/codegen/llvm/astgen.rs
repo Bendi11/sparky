@@ -1,8 +1,9 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::values::AnyValueEnum;
 
 use crate::{
     ast::{Ast, AstNode, NumberLiteralAnnotation},
-    parse::token::Op,
+    parse::token::Op, util::files::FileId,
 };
 
 use super::*;
@@ -18,10 +19,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
     
     /// Generate code for a single AST expression
-    fn gen_expr(&mut self, ast: &Ast<TypeId>) -> AnyValueEnum<'ctx> {
+    fn gen_expr(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<AnyValueEnum<'ctx>, Diagnostic<FileId>> {
         match &ast.node {
             AstNode::Return(returned) => {
-                
+                let returned_ty = self.ast_type(module, returned).ok_or_else(|| Diagnostic::error()
+                    .with_message("Failed to infer type of returned value")
+                    .with_labels(vec![Label::primary(file, returned.span)])
+                );
             },
             _ => ()
         }
@@ -123,8 +127,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 AstNode::Continue => {
                     return None
                 }
-            AstNode::VarDeclaration { name, ty, mutable } => return None,
-            AstNode::Assignment { lhs, rhs } => return None,
+            AstNode::VarDeclaration { name: _, ty: _, mutable: _ } => return None,
+            AstNode::Assignment { lhs: _, rhs: _ } => return None,
             AstNode::PhiExpr(_) => return None,
             AstNode::Loop(body) | AstNode::Block(body) => {
                 let phi_node = Self::phi_node(&body)?;

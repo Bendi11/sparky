@@ -2,6 +2,8 @@ type test_ty {
     i32 a
 }
 
-fun main test_ty argc -> i32 {
+type testing_type fun(i32) -> f32
 
+fun main test_ty argc, testing_type a -> i32 {
+    
 }

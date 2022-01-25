@@ -25,12 +25,7 @@ impl CompiledFile {
         let mut file = File::open(&path)?;
         let mut source = String::with_capacity(10_000);
         file.read_to_string(&mut source)?;
-        let mut lines = vec![0];
-        lines.extend(
-            source
-                .char_indices()
-                .filter_map(|(idx, c)| if c == '\n' { Some(idx) } else { None }),
-        );
+        let lines = codespan_reporting::files::line_starts(&source).collect();
 
         Ok(Self {
             path: path.as_ref().to_path_buf(),

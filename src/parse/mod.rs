@@ -281,7 +281,8 @@ impl<'src> Parser<'src> {
             },
             TokenData::Ident("type") => {
                 const EXPECTING_AFTER_TYPE: &[TokenData<'static>] = &[
-                    TokenData::Ident("enum / aliased type variant"), TokenData::OpenBracket(BracketType::Curly)
+                    TokenData::Ident("enum / aliased type variant"), TokenData::OpenBracket(BracketType::Curly),
+                    TokenData::Op(Op::Star), TokenData::OpenBracket(BracketType::Smooth), TokenData::OpenBracket(BracketType::Square)
                 ];
 
                 let name = self.expect_next_ident(&[TokenData::Ident("type name")])?;
@@ -337,7 +338,10 @@ impl<'src> Parser<'src> {
                             }
                         }
                     },
-                    TokenData::Ident(_) => {
+                    TokenData::Ident(_) |
+                        TokenData::OpenBracket(BracketType::Smooth) |
+                        TokenData::OpenBracket(BracketType::Square) |
+                        TokenData::Op(Op::Star) => {
                         self.trace.push("enum / aliased typename".into());
                         let first_type = self.parse_typename()?;
                         self.trace.pop();
@@ -987,6 +991,7 @@ impl<'src> Parser<'src> {
             TokenData::Ident("type name"),
             TokenData::OpenBracket(BracketType::Smooth),
             TokenData::OpenBracket(BracketType::Square),
+            TokenData::Op(Op::Star),
         ];
 
         const EXPECTING_INTEGER: &[TokenData<'static>] = &[
