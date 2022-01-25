@@ -61,27 +61,56 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         id
     }
     
-    /// Lower a parsed module's definitions and return an ID for the lowered
-    /// module
-    fn gen_forward_decls(&mut self, parsed: &ParsedModule) -> ModId {
-        let module_id = self.ctx.new_module(parsed.name);
-        //let module = &mut self.ctx[module_id];
+    /// Generate forward declarations for all function definitions and declarations
+    fn gen_forward_funs(&mut self, parsed: &ParsedModule, module_id: ModId) {
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
                 DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
                     let fun_id = self.lower_funproto(module_id, def.span, proto, def.file);
                     self.ctx[module_id].defs.define(proto.name, SparkDef::FunDef(fun_id));
                 },
+                _ => (),
+            }
+        }
+
+        for child in parsed.children.iter().map(|(_, c)| c) {
+            let child_def = self.ctx[module_id].defs.get(&child.name).unwrap();
+            if let SparkDef::ModDef(child_id) = child_def {
+                let child_id = *child_id;
+                drop(child_def);
+                self.gen_forward_funs(child, child_id);
+            } else {
+                unreachable!()
+            }
+        }
+    }
+    
+    /// Generate forward declarations for all type definitions
+    fn gen_forward_types(&mut self, parsed: &ParsedModule) -> ModId {
+        let module_id = self.ctx.new_module(parsed.name);
+
+        for def in parsed.defs.iter().map(|(_, v)| v) {
+            match &def.data { 
                 DefData::StructDef { name, ..} |
                     DefData::EnumDef { name, .. } |
                     DefData::AliasDef { name, .. } => {
                     let ty = self.ctx.new_empty_type();
                     self.ctx[module_id].defs.define(name.clone(), SparkDef::TypeDef(ty));
-                }
+                },
                 _ => continue,
             }
         }
 
+        for child in parsed.children.iter().map(|(_, c)| c) {
+            let child_id = self.gen_forward_types(child);
+            self.ctx[module_id].defs.define(child.name.clone(), SparkDef::ModDef(child_id));
+        }
+
+        module_id
+    }
+    
+    /// Resolve all imports of a module
+    fn gen_imports(&mut self, parsed: &ParsedModule, module_id: ModId) {
         for def in parsed.defs.iter().map(|(_, v)| v) {
             if let DefData::ImportDef { name } = &def.data {
                 let imported = match self.ctx.get_def(module_id, name) {
@@ -89,7 +118,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     Err(name) => {
 
                         self.diags.emit(Diagnostic::error(
-                                format!("Imported item {} not found ", name),
+                                format!("Imported item {} not found", name),
                                 def.file
                             )
                             .with_span(def.span)
@@ -98,14 +127,27 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     }
                 };
                 self.ctx[module_id].defs.define(name.last(), imported);
-
             }
         }
 
         for child in parsed.children.iter().map(|(_, c)| c) {
-            let child_id = self.gen_forward_decls(child);
-            self.ctx[module_id].defs.define(child.name.clone(), SparkDef::ModDef(child_id));
+            let child_def = self.ctx[module_id].defs.get(&child.name).unwrap();
+            if let SparkDef::ModDef(child_id) = child_def {
+                let child_id = *child_id;
+                drop(child_def);
+                self.gen_imports(child, child_id);
+            } else {
+                unreachable!()
+            }
         }
+    }
+    
+    /// Lower a parsed module's definitions and return an ID for the lowered
+    /// module
+    fn gen_forward_decls(&mut self, parsed: &ParsedModule) -> ModId {
+        let module_id = self.gen_forward_types(parsed); 
+        self.gen_forward_funs(parsed, module_id);
+        self.gen_imports(parsed, module_id);
 
         module_id
     }
@@ -260,16 +302,27 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             }
             UnresolvedType::UserDefined { name } => match self.ctx.get_def(module, name) {
                 Ok(SparkDef::TypeDef(type_id)) => type_id,
-                _ => {
+                Ok(..) => {
                     self.diags.emit({
-                        let diag = Diagnostic::error(format!("type {} not found", name), file);
+                        let diag = Diagnostic::error(format!("definition '{}' found but is not a type", name), file);
                         if let Some(span) = span {
                             diag.with_span(span)
                         } else {
                             diag
                         }
                     });
-                    panic!()
+                    std::process::exit(-1);
+                }
+                Err(_) => {
+                    self.diags.emit({
+                        let diag = Diagnostic::error(format!("type '{}' not found", name), file);
+                        if let Some(span) = span {
+                            diag.with_span(span)
+                        } else {
+                            diag
+                        }
+                    });
+                    std::process::exit(-1);
                 }
             },
         }

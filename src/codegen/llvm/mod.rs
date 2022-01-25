@@ -1,12 +1,22 @@
 //! Generating LLVM IR from a parsed and type lowered AST
 
+pub mod gen_ast;
+
 use std::convert::TryFrom;
 
 use hashbrown::HashMap;
-use inkwell::{AddressSpace, builder::Builder, context::Context, module::Module, targets::{TargetData, TargetMachine}, types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum}};
+use inkwell::{
+    AddressSpace, 
+    builder::Builder,
+    context::Context,
+    module::{Module, Linkage},
+    targets::{TargetData, TargetMachine, Target, InitializationConfig, RelocMode, CodeModel},
+    types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType},
+    values::{IntValue, FunctionValue}, OptimizationLevel
+};
 
-use super::{
-    ir::{ModId, SparkCtx, TypeId, SparkDef, TypeData},
+use crate::{
+    codegen::ir::{ModId, SparkCtx, TypeId, SparkDef, TypeData, FunctionType, FunId},
     ast::IntegerWidth,
 };
 
@@ -17,45 +27,112 @@ pub struct LlvmCodeGenerator<'ctx> {
     pub builder: Builder<'ctx>,
     pub spark: SparkCtx,
     llvm_types: HashMap<TypeId, AnyTypeEnum<'ctx>>,
+    llvm_funs: HashMap<FunId, FunctionValue<'ctx>>,
     target: TargetData,
 }
 
 impl<'ctx> LlvmCodeGenerator<'ctx> {
     /// Create a new code generator from an LLVM context
     pub fn new(spark: SparkCtx, ctx: &'ctx Context) -> Self {
+        Target::initialize_native(&InitializationConfig::default()).expect("LLVM: failed to initialize native compilation target");
+
         Self {
             builder: ctx.create_builder(),
             ctx,
             spark,
             llvm_types: HashMap::new(),
-            target: TargetData::create(TargetMachine::get_default_triple().as_str())
+            llvm_funs: HashMap::new(),
+            target: Target::from_triple(&TargetMachine::get_default_triple()).unwrap().create_target_machine(
+                &TargetMachine::get_default_triple(),
+                TargetMachine::get_host_cpu_name().to_str().unwrap(),
+                TargetMachine::get_host_cpu_features().to_str().unwrap(),
+                OptimizationLevel::Default,
+                RelocMode::Default,
+                CodeModel::Medium
+            ).unwrap().get_target_data(),
         }
     }
     
-    /// Lower a type-lowered module to LLVM IR 
+    /// Codegen LLVM IR from a type-lowered module
     pub fn codegen_module(&mut self, module: ModId) -> Module<'ctx> {
         let mut llvm_mod = self.ctx.create_module(self.spark[module].name.as_str());
+
+        //self.forward_types(module);
+        //self.gen_type_defs(module);
+        self.forward_funs(&mut llvm_mod, module);
+
+        for (name, def) in self.spark[module].defs.iter() {
+            if let SparkDef::FunDef(fun) = def {
+                if let Some(body) = self.spark[*fun].body.as_ref() {
+                    
+                }
+            }
+        }
+
+        llvm_mod
     }
     
     /// Generate forward type declarations for a module
-    fn forward_types(&mut self, llvm: ModId, module: ModId) {
-        for def in self.spark[module].defs.iter().map(|(_, v)| v) {
+    fn forward_types(&mut self, module: ModId) {
+        /*let defs = self.spark[module].defs.clone();
+        for (name, def) in defs.iter() {
             match def {
-                SparkDef::TypeDef(id) => match &self.spark[*id].data {
-    
+                SparkDef::TypeDef(id) => {
+                    let ty: AnyTypeEnum<'ctx> = match self.spark[*id].data {
+                        TypeData::Struct {..} | 
+                            TypeData::Array { .. } | 
+                            TypeData::Pointer(..) | 
+                            TypeData::Tuple(..) |
+                            TypeData::Enum {..} | 
+                            TypeData::Function(..) |
+                            TypeData::Alias(..) => self.ctx.opaque_struct_type("$INVALID").into(),
+                        _ => self.llvm_ty(*id),
+                    };
+                    self.llvm_types.insert(*id, ty);
                 },
+                SparkDef::ModDef(module) => self.forward_types(*module),
                 _ => continue,
             }
+        }*/
+    }
+    
+    /// Generate code for all function prototypes
+    fn forward_funs(&mut self, llvm: &mut Module<'ctx>, module: ModId) {
+        let defs = self.spark[module].defs.clone();
+
+        for fun_id in defs
+            .iter()
+            .filter_map(|(_, def)| if let SparkDef::FunDef(id) = def { Some(*id) } else { None }) {
+            let fun = self.spark[fun_id].clone();
+            let llvm_fun_ty = self.gen_fun_ty(&fun.ty);
+            let llvm_fun = llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External));
+            self.llvm_funs.insert(fun_id, llvm_fun);
         }
     }
     
+    /// Generate llvm IR types for all type definitions
+    fn gen_type_defs(&mut self, module: ModId) {
+        /*let defs = self.spark[module].defs.clone();
+        for def in defs.iter().map(|(_, v)| *v) {
+            match def {
+                SparkDef::TypeDef(id) => {
+                    let ty = self.llvm_ty(id);
+                    let llvm_ty = self.llvm_types.get(&id).unwrap();
+
+                    if let AnyTypeEnum::StructType(s) = llvm_ty {
+                        s.set_body(&[BasicTypeEnum::try_from(ty).unwrap().into()], false);
+                    } else { unreachable!() }
+                    //self.llvm_types.insert(id, ty);
+                },
+                SparkDef::ModDef(submod) => self.gen_type_defs(submod),
+                _ => ()
+            }
+        }*/
+    }
+
     /// Create an LLVM type from a type ID
     fn llvm_ty(&mut self, id: TypeId) -> AnyTypeEnum<'ctx> {
-        if let Some(ty) = self.llvm_types.get(&id) {
-            return *ty;
-        }
-
-        match &self.spark[id].data {
+        match self.spark[id].data.clone() {
             TypeData::Integer { signed: _, width } => match width {
                 IntegerWidth::Eight => self.ctx.i8_type().into(),
                 IntegerWidth::Sixteen => self.ctx.i16_type().into(),
@@ -77,16 +154,16 @@ impl<'ctx> LlvmCodeGenerator<'ctx> {
                     .collect::<Vec<_>>();
                 self.ctx.struct_type(&fields, false).into()
             },
-            TypeData::Alias(id) => self.llvm_ty(*id),
+            TypeData::Alias(id) => self.llvm_ty(id),
             TypeData::Pointer(id) => 
-                BasicTypeEnum::try_from(self.llvm_ty(*id))
+                BasicTypeEnum::try_from(self.llvm_ty(id))
                     .unwrap()
                     .ptr_type(AddressSpace::Generic)
                     .into(),
             TypeData::Array { element, len } => 
-                BasicTypeEnum::try_from(self.llvm_ty(*element))
+                BasicTypeEnum::try_from(self.llvm_ty(element))
                     .unwrap()
-                    .array_type(*len as u32)
+                    .array_type(len as u32)
                     .into(),
             TypeData::Unit => self.ctx.void_type().into(),
             TypeData::Invalid => unreachable!(),
@@ -94,30 +171,44 @@ impl<'ctx> LlvmCodeGenerator<'ctx> {
                 true => self.ctx.f64_type().into(),
                 false => self.ctx.f32_type().into(),
             },
-            TypeData::Function(ty) => {
-                let return_ty = self.llvm_ty(ty.return_ty);
-                let args = ty
-                    .args
-                    .iter()
-                    .map(|ty| BasicTypeEnum::try_from(self.llvm_ty(*ty)).unwrap().into())
-                    .collect::<Vec<_>>();
-                match return_ty {
-                    AnyTypeEnum::VoidType(return_ty) => 
-                        return_ty.fn_type(&args, false),
-                    _ => BasicTypeEnum::try_from(return_ty)
-                        .unwrap()
-                        .fn_type(&args, false)
-                }.into()
-            },
+            TypeData::Function(ty) => self.gen_fun_ty(&ty).into(),
             TypeData::Enum { parts } => {
                 let parts = parts
                     .iter()
                     .map(|ty| self.llvm_ty(*ty))
                     .collect::<Vec<_>>();
-                let max_size = parts.iter().max_by_key(|ty| {
-                    BasicTypeEnum::try_from(ty)
-                })
+                let max_size = parts.iter().map(|ty| {
+                        if let Ok(ty) = BasicTypeEnum::try_from(*ty) {
+                            ty.size_of().map(|i| i.get_zero_extended_constant().unwrap() as u32).unwrap_or(0)
+                        } else {
+                            0
+                        }
+                    })
+                    .max()
+                    .unwrap();
+
+                let field_types = &[self.ctx.i8_type().into(), self.ctx.i8_type().array_type(max_size).into()];
+
+                self.ctx.struct_type(field_types, true).into() 
             }
+        }
+
+    }
+    
+    /// Create an LLVM function type from a spark IR function type
+    fn gen_fun_ty(&mut self, ty: &FunctionType) -> InkwellFunctionType<'ctx> {
+        let return_ty = self.llvm_ty(ty.return_ty);
+        let args = ty
+            .args
+            .iter()
+            .map(|ty| BasicTypeEnum::try_from(self.llvm_ty(*ty)).unwrap().into())
+            .collect::<Vec<_>>();
+        match return_ty {
+            AnyTypeEnum::VoidType(return_ty) => 
+                return_ty.fn_type(&args, false),
+            _ => BasicTypeEnum::try_from(return_ty)
+                .unwrap()
+                .fn_type(&args, false)
         }
 
     }

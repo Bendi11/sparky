@@ -1,0 +1,7 @@
+type test_ty {
+    i32 a
+}
+
+fun main test_ty argc -> i32 {
+
+}

@@ -84,7 +84,6 @@ impl SparkCtx {
 
     fn get_def_impl(&self, module: ModId, mut parts: PathIter<'_>) -> Result<SparkDef, Symbol> {
         if parts.len() == 1 {
-            println!("get_def_impl works!");
             let name = parts.next().unwrap();
             let def = self.modules[module].defs.get(&name);
             def.copied().ok_or(name)

@@ -1,7 +1,8 @@
 use std::{io::Write, path::Path};
 
 use clap::{App, Arg};
-use spark::{ast::{DefData, ParsedModule}, codegen::{ir::SparkCtx, lower::Lowerer}, parse::Parser, util::files::{CompiledFile, Files, FileId}, Symbol};
+use inkwell::context::Context;
+use spark::{ast::{DefData, ParsedModule}, codegen::{ir::SparkCtx, lower::Lowerer, llvm::LlvmCodeGenerator}, parse::{Parser, ParseError}, util::files::{CompiledFile, Files, FileId}, Symbol, error::Diagnostic};
 
 
 enum InputItem {
@@ -25,7 +26,7 @@ fn main() {
         );
 
     let args = app.get_matches();
-    let input = Path::new(args.value_of_os("input").unwrap());
+    let input = Path::new(args.value_of("input").unwrap());
     let mut files = Files::new();
     let input = collect_files(input, &mut files);
 
@@ -33,25 +34,14 @@ fn main() {
         InputItem::File(f) => {
             let src = files.get(f).text.as_str();
             let mut parser = Parser::new(src);
-            let module = parser.parse(Symbol::from("root"), f).unwrap_or_else(|e| {
-                for name in e.backtrace {
-                    eprintln!("in {}", name)
-                }
-
-                eprintln!("{}", e.error);
-                if let Some(span) = e.highlighted_span {
-                    span.display(&files.get(f)).unwrap();
-                }
-                panic!()
-            });
+            let module = handle_parse_error(parser.parse(Symbol::from("root"), f), files.get(f));
             drop(parser);
             drop(src);
             module
         }
         InputItem::Dir(name, items) => {
             let main = items.iter().find_map(|item| if let InputItem::File(id) = item {
-                if files.get(*id).path.extension().map(|s| s.to_str()).flatten() == Some("sprk") &&
-                    files.get(*id).path.file_name().map(|s| s.to_str()).flatten() == Some("main") {
+                if files.get(*id).path.file_name().map(|s| s.to_str()).flatten() == Some("main.sprk") {
                         Some(*id)
                     } else {
                         None
@@ -62,7 +52,7 @@ fn main() {
             ).expect("main.sprk does not exist in root directory");
             let mut root = ParsedModule::new(Symbol::from("root"));
             let mut parser = Parser::new(files.get(main).text.as_str());
-            parser.parse_to(&mut root, main);
+            handle_parse_error(parser.parse_to(&mut root, main), files.get(main));
 
             for item in items {
                 match item {
@@ -70,17 +60,7 @@ fn main() {
                     InputItem::File(f) => {
                         let src = files.get(f).text.as_str();
                         parser.set_text(src);
-                        parser.parse_to(&mut root, f).unwrap_or_else(|e| {
-                            for name in e.backtrace {
-                                eprintln!("in {}", name)
-                            }
-
-                            eprintln!("{}", e.error);
-                            if let Some(span) = e.highlighted_span {
-                                span.display(&files.get(f)).unwrap();
-                            }
-                            panic!()
-                        });
+                        handle_parse_error(parser.parse_to(&mut root, f), files.get(f));
                     },
                     InputItem::Dir(name, items) => {
                         let child = parse_dir(name.clone(), items, &files, &mut parser);
@@ -95,7 +75,30 @@ fn main() {
     let mut ctx = SparkCtx::new();
     let mut lowerer = Lowerer::new(&mut ctx, &files);
     
-    lowerer.lower_module(&root_module);
+    let root_id = lowerer.lower_module(&root_module);
+
+    let mut llvm_ctx = Context::create();
+    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx);
+    let llvm_root = generator.codegen_module(root_id);
+    llvm_root.print_to_stderr();
+}
+
+fn handle_parse_error<T>(res: Result<T, ParseError>, file: &CompiledFile) -> T {
+    res.unwrap_or_else(|e| {
+        for name in e.backtrace {
+            eprintln!("in {}", name)
+        }
+
+        eprintln!("{}", e.error);
+        if let Some(span) = e.highlighted_span {
+            span.display(&file).unwrap();
+        }
+
+        eprintln!();
+        
+        std::process::exit(-1);
+    })
+
 }
 
 fn parse_dir<'src>(name: String, items: Vec<InputItem>, files: &'src Files, parser: &mut Parser<'src>) -> ParsedModule {
@@ -106,17 +109,7 @@ fn parse_dir<'src>(name: String, items: Vec<InputItem>, files: &'src Files, pars
             InputItem::File(f) => {
                 let src = files.get(f).text.as_str();
                 parser.set_text(src);
-                parser.parse_to(&mut root, f).unwrap_or_else(|e| {
-                    for name in e.backtrace {
-                        eprintln!("in {}", name)
-                    }
-
-                    eprintln!("{}", e.error);
-                    if let Some(span) = e.highlighted_span {
-                        span.display(&files.get(f)).unwrap();
-                    }
-                    panic!()
-                });
+                handle_parse_error(parser.parse_to(&mut root, f), files.get(f));
             },
             InputItem::Dir(name, items) => {
                 let child = parse_dir(name.clone(), items, files, parser);

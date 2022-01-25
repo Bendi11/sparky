@@ -6,8 +6,19 @@ use std::{marker::PhantomData, fmt, ops, hash::Hash};
 use hashbrown::HashMap;
 
 /// An index into an [Arena] structure
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash,)]
+#[derive(Eq, PartialOrd, Ord,)]
 pub struct Index<T>(usize, PhantomData<T>);
+
+impl<T> std::hash::Hash for Index<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
+impl<T> std::cmp::PartialEq<Index<T>> for Index<T> {
+    fn eq(&self, other: &Index<T>) -> bool {
+        self.0.eq(&other.0)
+    }
+}
 
 impl<T> Clone for Index<T> {
     fn clone(&self) -> Self {
@@ -53,13 +64,6 @@ pub struct Interner<T: Hash + Eq> {
     ids: HashMap<T, Index<T>>,
     /// The arena holding instances of `T`
     arena: Arena<T>,
-}
-
-/// A secondary interner created from an [Interner] that maps
-/// IDs from one interner to another
-#[derive(Debug, Clone)]
-pub struct SecondaryInterner<T: Hash + Eq> {
-    interner: Interner<Option<T>>,
 }
 
 impl<T: Hash + Eq + Clone> Interner<T> {

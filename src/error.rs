@@ -86,5 +86,6 @@ impl<'files> DiagnosticManager<'files> {
         for span in diag.spans.iter() {
             span.display(file);
         }
+        println!("\n");
     }
 }
