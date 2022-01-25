@@ -1,8 +1,9 @@
 use std::{io::Write, path::Path};
 
 use clap::{App, Arg};
-use inkwell::context::Context;
-use spark::{ast::{DefData, ParsedModule}, codegen::{ir::SparkCtx, lower::Lowerer, llvm::LlvmCodeGenerator}, parse::{Parser, ParseError}, util::files::{CompiledFile, Files, FileId}, Symbol, error::Diagnostic};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use inkwell::context::Context;
+use spark::{ast::{DefData, ParsedModule}, codegen::{ir::SparkCtx, lower::Lowerer, llvm::LlvmCodeGenerator}, parse::{Parser, ParseError}, util::files::{CompiledFile, Files, FileId}, Symbol, error::DiagnosticManager};
 
 
 enum InputItem {
@@ -34,7 +35,7 @@ fn main() {
         InputItem::File(f) => {
             let src = files.get(f).text.as_str();
             let mut parser = Parser::new(src);
-            let module = handle_parse_error(parser.parse(Symbol::from("root"), f), files.get(f));
+            let module = handle_parse_error(parser.parse(Symbol::from("root"), f), &files, f);
             drop(parser);
             drop(src);
             module
@@ -52,7 +53,7 @@ fn main() {
             ).expect("main.sprk does not exist in root directory");
             let mut root = ParsedModule::new(Symbol::from("root"));
             let mut parser = Parser::new(files.get(main).text.as_str());
-            handle_parse_error(parser.parse_to(&mut root, main), files.get(main));
+            handle_parse_error(parser.parse_to(&mut root, main), &files, main);
 
             for item in items {
                 match item {
@@ -60,7 +61,7 @@ fn main() {
                     InputItem::File(f) => {
                         let src = files.get(f).text.as_str();
                         parser.set_text(src);
-                        handle_parse_error(parser.parse_to(&mut root, f), files.get(f));
+                        handle_parse_error(parser.parse_to(&mut root, f), &files, f);
                     },
                     InputItem::Dir(name, items) => {
                         let child = parse_dir(name.clone(), items, &files, &mut parser);
@@ -83,22 +84,20 @@ fn main() {
     llvm_root.print_to_stderr();
 }
 
-fn handle_parse_error<T>(res: Result<T, ParseError>, file: &CompiledFile) -> T {
+fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {
     res.unwrap_or_else(|e| {
-        for name in e.backtrace {
-            eprintln!("in {}", name)
-        }
-
-        eprintln!("{}", e.error);
-        if let Some(span) = e.highlighted_span {
-            span.display(&file).unwrap();
-        }
-
-        eprintln!();
+        let mut diags = DiagnosticManager::new(files);
+        let diag = Diagnostic::error()
+            .with_message(e.error.to_string())
+            .with_notes(e.backtrace.iter().map(|trace| format!("in {}", trace)).collect());
+        
+        diags.emit(if let Some(span) = e.highlighted_span {
+                diag.with_labels(vec![Label::primary(file, span)])
+            } else { diag }
+        );
         
         std::process::exit(-1);
     })
-
 }
 
 fn parse_dir<'src>(name: String, items: Vec<InputItem>, files: &'src Files, parser: &mut Parser<'src>) -> ParsedModule {
@@ -109,7 +108,7 @@ fn parse_dir<'src>(name: String, items: Vec<InputItem>, files: &'src Files, pars
             InputItem::File(f) => {
                 let src = files.get(f).text.as_str();
                 parser.set_text(src);
-                handle_parse_error(parser.parse_to(&mut root, f), files.get(f));
+                handle_parse_error(parser.parse_to(&mut root, f), &files, f);
             },
             InputItem::Dir(name, items) => {
                 let child = parse_dir(name.clone(), items, files, parser);

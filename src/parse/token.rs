@@ -21,37 +21,6 @@ impl<'src> Token<'src> {
         }
     }
 
-    /// Display this token data using a source file
-    pub fn display(&self, file: &CompiledFile) -> std::io::Result<()> {
-        let start_line = *file
-            .lines
-            .get(self.span.from.line.get() as usize - 1)
-            .expect("Invalid span line when displaying token");
-        let startpos = start_line + self.span.from.col as usize;
-
-        let end_line = *file
-            .lines
-            .get(self.span.to.line.get() as usize - 1)
-            .expect("Invalid span line when displaying token");
-        let endpos = end_line + self.span.to.col as usize;
-
-        let mut stdout = std::io::stdout();
-        let mut line = self.span.from.line.get();
-        let mut buf = [0u8; 4];
-
-        stdout.write_fmt(format_args!("{}: ", line))?;
-        for character in file.text[startpos..=endpos].chars() {
-            character.encode_utf8(&mut buf);
-            stdout.write(&buf[..character.len_utf8()])?;
-
-            if character == '\n' {
-                line += 1;
-                stdout.write_fmt(format_args!("{}: ", line))?;
-            }
-        }
-
-        stdout.flush()
-    }
 }
 
 /// All possible tokens lexed from a source string

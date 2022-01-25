@@ -1,6 +1,7 @@
 use std::{iter::Peekable, str::CharIndices};
 
-use crate::util::loc::Loc;
+
+use crate::util::loc::Span;
 
 use super::token::{BracketType, Op, Token, TokenData};
 
@@ -11,10 +12,6 @@ pub struct Lexer<'src> {
     src: &'src str,
     /// An iterator over the UTF-8 codepoints and their indices in the source string
     chars: Peekable<CharIndices<'src>>,
-    /// The current line of the lexer
-    line: u16,
-    /// Current column number of the lexer's cursor
-    col: u16,
     /// The next token to be returned when `next` or `peek` is called
     current: Option<Token<'src>>,
     /// The token after `current`, returned with `peek2`
@@ -27,8 +24,6 @@ impl<'src> Lexer<'src> {
         let mut this = Self {
             chars: src.char_indices().peekable(),
             src,
-            line: 1,
-            col: 0,
             current: None,
             peek2: None,
         };
@@ -41,11 +36,6 @@ impl<'src> Lexer<'src> {
     /// incrementing line numbers if the character is a newline
     fn next_char(&mut self) -> Option<(usize, char)> {
         let next = self.chars.next();
-        self.col += 1;
-        if let Some((_, '\n')) = next {
-            self.line += 1;
-            self.col = 0;
-        }
         next
     }
 
@@ -62,7 +52,8 @@ impl<'src> Lexer<'src> {
         }
 
         let (startpos, next) = self.next_char()?;
-        let start_loc = (self.line, self.col).into();
+        let start_loc = Span::single(startpos);
+
         Some(match next {
             '+' => Token::new(start_loc, TokenData::Op(Op::Add)),
 
@@ -85,40 +76,40 @@ impl<'src> Lexer<'src> {
                     ('>', Some('=')) => {
                         self.next_char();
                         Token::new(
-                            (start_loc, (self.line, self.col).into()),
+                            startpos..startpos+1,
                             TokenData::Op(Op::GreaterEq),
                         )
                     }
                     ('<', Some('=')) => {
                         self.next_char();
                         Token::new(
-                            (start_loc, (self.line, self.col).into()),
+                            startpos..startpos+1,
                             TokenData::Op(Op::LessEq),
                         )
                     }
                     ('&', Some('&')) => {
                         self.next_char();
                         Token::new(
-                            (start_loc, (self.line, self.col).into()),
+                            startpos..startpos+1,
                             TokenData::Op(Op::LogicalAnd),
                         )
                     }
                     ('|', Some('|')) => {
                         self.next_char();
                         Token::new(
-                            (start_loc, (self.line, self.col).into()),
+                            startpos..startpos+1,
                             TokenData::Op(Op::LogicalOr),
                         )
                     }
 
                     ('-', Some('>')) => {
                         self.next_char();
-                        Token::new((start_loc, (self.line, self.col).into()), TokenData::Arrow)
+                        Token::new(startpos..startpos+1, TokenData::Arrow)
                     }
 
                     (':', Some('=')) => {
                         self.next_char();
-                        Token::new((start_loc, (self.line, self.col).into()), TokenData::Assign)
+                        Token::new(startpos..startpos+1, TokenData::Assign)
                     }
                     (':', _) => Token::new(start_loc, TokenData::Colon),
 
@@ -166,11 +157,11 @@ impl<'src> Lexer<'src> {
 
                 if let (end, '\'') = self.next_char()? {
                     Token::new(
-                        (start_loc, (self.line, self.col).into()),
+                        startpos..end,
                         TokenData::Char(&self.src[firstpos..end - 1]),
                     )
                 } else {
-                    panic!("")
+                    return None
                 }
             }
 
@@ -186,7 +177,7 @@ impl<'src> Lexer<'src> {
                     }
                 };
                 Token::new(
-                    (start_loc, (self.line, self.col).into()),
+                    startpos..endpos,
                     TokenData::String(&self.src[startpos + 1..endpos]),
                 )
             }
@@ -245,7 +236,7 @@ impl<'src> Lexer<'src> {
                 }
 
                 Token::new(
-                    (start_loc, (self.line, self.col).into()),
+                    startpos..endpos,
                     TokenData::Number(&self.src[startpos..endpos]),
                 )
             }
@@ -264,18 +255,13 @@ impl<'src> Lexer<'src> {
                 }
 
                 Token::new(
-                    (start_loc, (self.line, self.col).into()),
+                    startpos..endpos,
                     TokenData::Ident(&self.src[startpos..=endpos]),
                 )
             }
 
             _ => self.token()?,
         })
-    }
-
-    /// Return the current position of the lexer in the source file
-    pub fn pos(&self) -> Loc {
-        (self.line, self.col).into()
     }
     
     /// Peek the current token 
@@ -312,34 +298,3 @@ impl<'src> Iterator for Lexer<'src> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::io::Write;
-
-    use crate::util::files::CompiledFile;
-
-    use super::*;
-
-    const TEST_SRC: &str = r#"
-
-fun main i32 argc, []*char argv -> i32 {
-    let name := argv[0b0011010102]
-}
-
-"#;
-
-    #[test]
-    pub fn test_lex() {
-        let file = CompiledFile::in_memory(TEST_SRC.to_owned());
-        let toks = Lexer::new(TEST_SRC);
-        for tok in toks {
-            std::io::stdout()
-                .write_fmt(format_args!("TOKEN: {:?}\n", tok))
-                .unwrap();
-            tok.display(&file).unwrap();
-            std::io::stdout()
-                .write_fmt(format_args!("\n----------\n"))
-                .unwrap();
-        }
-    }
-}

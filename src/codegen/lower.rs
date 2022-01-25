@@ -1,4 +1,6 @@
-use crate::{ast::{Ast, AstNode, Def, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule, SymbolPath, UnresolvedType}, error::{DiagnosticManager, Diagnostic}, util::{files::{Files, FileId}, loc::Span}};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+
+use crate::{ast::{Ast, AstNode, Def, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule, SymbolPath, UnresolvedType}, error::DiagnosticManager, util::{files::{Files, FileId}, loc::Span}};
 
 use super::ir::{SparkCtx, ModId, FunId, TypeId, FunctionType, TypeData, SparkDef};
 
@@ -117,11 +119,9 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     Ok(id) => id,
                     Err(name) => {
 
-                        self.diags.emit(Diagnostic::error(
-                                format!("Imported item {} not found", name),
-                                def.file
-                            )
-                            .with_span(def.span)
+                        self.diags.emit(Diagnostic::error()
+                                .with_message("Imported item '{}' not found")
+                                .with_labels(vec![Label::primary(def.file, def.span)])
                         );
                         panic!()
                     }
@@ -215,6 +215,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     cases: cases.iter().map(|(constant, case)| (self.lower_ast(module, constant, file), self.lower_ast(module, case, file))).collect()
                 },
                 AstNode::IfExpr(if_expr) => AstNode::IfExpr(self.lower_if_ast(module, if_expr, file)),
+                AstNode::UnitLiteral => AstNode::UnitLiteral,
             }
         }
     }
@@ -304,9 +305,12 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 Ok(SparkDef::TypeDef(type_id)) => type_id,
                 Ok(..) => {
                     self.diags.emit({
-                        let diag = Diagnostic::error(format!("definition '{}' found but is not a type", name), file);
+                        let diag = Diagnostic::error()
+                            .with_message(format!("definition '{}' found but is not a type", name));
                         if let Some(span) = span {
-                            diag.with_span(span)
+                            diag.with_labels(vec![
+                                Label::primary(file, span)
+                            ])
                         } else {
                             diag
                         }
@@ -315,9 +319,12 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 }
                 Err(_) => {
                     self.diags.emit({
-                        let diag = Diagnostic::error(format!("type '{}' not found", name), file);
+                        let diag = Diagnostic::error()
+                            .with_message(format!("type '{}' not found", name));
                         if let Some(span) = span {
-                            diag.with_span(span)
+                            diag.with_labels(vec![
+                                Label::primary(file, span)
+                            ])
                         } else {
                             diag
                         }

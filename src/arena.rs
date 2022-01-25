@@ -6,7 +6,7 @@ use std::{marker::PhantomData, fmt, ops, hash::Hash};
 use hashbrown::HashMap;
 
 /// An index into an [Arena] structure
-#[derive(Eq, PartialOrd, Ord,)]
+#[derive(PartialOrd, Ord,)]
 pub struct Index<T>(usize, PhantomData<T>);
 
 impl<T> std::hash::Hash for Index<T> {
@@ -18,6 +18,9 @@ impl<T> std::cmp::PartialEq<Index<T>> for Index<T> {
     fn eq(&self, other: &Index<T>) -> bool {
         self.0.eq(&other.0)
     }
+}
+impl<T> std::cmp::Eq for Index<T> {
+
 }
 
 impl<T> Clone for Index<T> {
@@ -226,9 +229,19 @@ impl<T: fmt::Debug> fmt::Debug for Arena<T> {
             .finish()
     }
 }
+impl<T> Default for Arena<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<T> fmt::Debug for Index<T> {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Index({})",self.0)
+    }
+}
+impl<T> fmt::Display for Index<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        std::fmt::UpperHex::fmt(&self.0, f)
     }
 }

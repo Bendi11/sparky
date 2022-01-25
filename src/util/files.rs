@@ -6,6 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::arena::{Arena, Index};
+
 /// A structure containing all data from a compiled spark source file needed by the compiler
 /// for location information
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,12 +63,11 @@ impl CompiledFile {
 #[derive(Clone, Debug, Default)]
 pub struct Files {
     /// A dynamic array of all files that are being compiled
-    files: Vec<CompiledFile>,
+    files: Arena<CompiledFile>,
 }
 
 /// An identifier for a certain [CompiledFile] in a [Files] structure
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FileId(u16);
+pub type FileId = Index<CompiledFile>;
 
 impl Files {
     #[inline]
@@ -76,14 +77,57 @@ impl Files {
 
     /// Add a new file info structure and return the ID of the inserted file
     pub fn add(&mut self, data: CompiledFile) -> FileId {
-        self.files.push(data);
-        FileId((self.files.len() - 1) as u16)
+        self.files.insert(data)
     }
 
     /// Get a reference to the file information for the given ID, panics if the ID is invalid
     pub fn get(&self, id: FileId) -> &CompiledFile {
         self.files
-            .get(id.0 as usize)
-            .expect("Attempting to get file from Files using invalid ID")
+            .get(id)
+    }
+}
+
+impl<'a> codespan_reporting::files::Files<'a> for Files {
+    type FileId = FileId;
+    type Name = String;
+    type Source = &'a str;
+
+    fn name(&'a self, id: Self::FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
+        Ok(self.get(id).path.to_string_lossy().into_owned())
+    }
+
+    fn source(&'a self, id: Self::FileId) -> Result<Self::Source, codespan_reporting::files::Error> {
+        Ok(self.get(id).text.as_str())
+    }
+
+    fn line_index(&'a self, id: Self::FileId, byte_index: usize) -> Result<usize, codespan_reporting::files::Error> {
+        let file = self.get(id);
+
+        if byte_index >= file.text.len() {
+            return Ok(file.lines.len())
+        }
+
+        let mut lowest_line = 0;
+        for (line, line_idx) in file.lines.iter().enumerate() {
+            if *line_idx <= byte_index {
+                lowest_line = line; 
+            } else {
+                break
+            }
+        }
+        
+        Ok(lowest_line)
+    }
+
+    fn line_range(&'a self, id: Self::FileId, line_index: usize) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
+        let file = self.get(id);
+
+        let line = file.lines[line_index];
+        if line == file.lines.len() - 1 {
+            Ok(line..file.text.len())
+        } else {
+            let next_line = file.lines[line_index + 1];
+            Ok(line..next_line)
+        }
     }
 }

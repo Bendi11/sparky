@@ -11,8 +11,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Generate code for a single AST statement
     fn gen_stmt(&mut self, ast: &Ast<TypeId>) {
         match &ast.node {
-            AstNode::Assignment { lhs, rhs } => {}
+            AstNode::Assignment { lhs, rhs } => {},
+            _ => (),
         }
+        todo!()
     }
     
     /// Generate code for a single AST expression
@@ -20,8 +22,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         match &ast.node {
             AstNode::Return(returned) => {
                 
-            }
+            },
+            _ => ()
         }
+        todo!()
     }
     
     /// Get the type of an AST expression
@@ -59,17 +63,17 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     len: parts.len() as u64
                 })
             },
-            AstNode::CastExpr(ty, ..) => ty,
+            AstNode::CastExpr(ty, ..) => *ty,
             AstNode::FunCall(called, ..) => {
                 let called_ty = self.ast_type(module, called)?;
-                if let TypeData::Function(f_ty) = self.spark(called_ty) {
+                if let TypeData::Function(f_ty) = &self.spark[called_ty].data {
                     f_ty.return_ty
                 } else {
                     return None
                 }
             },
             AstNode::Access(path) => {
-                let def = self.spark.get_def(module, path)?;
+                let def = self.spark.get_def(module, path).ok()?;
                 match def {
                     SparkDef::FunDef(f) => self.spark[f].ty.return_ty,
                     _ => return None
@@ -77,10 +81,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             },
             AstNode::MemberAccess(lhs, name) => {
                 let lhs_ty = self.ast_type(module, lhs)?;
-                if let TypeData::Struct { fields } = self.spark[lhs_ty] {
+                if let TypeData::Struct { fields } = &self.spark[lhs_ty].data {
                     fields.iter().find_map(|(ty, field_name)| if name == field_name {
                         Some(*ty)
-                    } else { None })
+                    } else { None })?
                 } else {
                     return None
                 }
@@ -88,8 +92,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             AstNode::Index { object, index } => {
                 let object_ty = self.ast_type(module, object)?;
                 if let AstNode::NumberLiteral(_) = &index.node {
-                    if let TypeData::Array { element, len: _ } = object_ty {
+                    if let TypeData::Array { element, len: _ } = self.spark[object_ty].data {
                         element
+                    } else {
+                        return None
                     }
                 } else {
                     return None
@@ -99,7 +105,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             AstNode::UnaryExpr(op, rhs) => {
                 let rhs_ty = self.ast_type(module, rhs)?;
                 match op {
-                    Op::Star => if let TypeData::Pointer(pointee) = self.spark[rhs_ty] {
+                    Op::Star => if let TypeData::Pointer(pointee) = self.spark[rhs_ty].data {
                         pointee
                     } else { return None },
                     Op::AND => self.spark.new_type(TypeData::Pointer(rhs_ty)),

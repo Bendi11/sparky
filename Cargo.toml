@@ -22,6 +22,8 @@ quickscope = "0.1" # ScopeMap
 hashbrown = "0.11" # Non-secure fast hashmap
 clap = "3.0"
 
+codespan-reporting = "0.11"
+
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] }
 
 
