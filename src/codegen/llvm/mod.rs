@@ -1,6 +1,6 @@
 //! Generating LLVM IR from a parsed and type lowered AST
 
-pub mod gen_ast;
+pub mod astgen;
 
 use std::convert::TryFrom;
 
@@ -11,36 +11,46 @@ use inkwell::{
     context::Context,
     module::{Module, Linkage},
     targets::{TargetData, TargetMachine, Target, InitializationConfig, RelocMode, CodeModel},
-    types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType},
-    values::{IntValue, FunctionValue}, OptimizationLevel
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType},
+    values::{FunctionValue, BasicValueEnum}, OptimizationLevel
 };
+use quickscope::ScopeMap;
 
 use crate::{
     codegen::ir::{ModId, SparkCtx, TypeId, SparkDef, TypeData, FunctionType, FunId},
-    ast::IntegerWidth,
+    ast::IntegerWidth, error::DiagnosticManager, util::files::Files, Symbol,
 };
+
+/// A type representing all types that can be defined in the global scope 
+/// map of the code generator
+enum ScopeDef<'ctx> {
+    Value(BasicValueEnum<'ctx>),
+    Def(SparkDef),
+}
 
 /// Structure that generates LLVM IR modules from a parsed and 
 /// type lowered AST module
-pub struct LlvmCodeGenerator<'ctx> {
+pub struct LlvmCodeGenerator<'ctx, 'files> {
     pub ctx: &'ctx Context,
     pub builder: Builder<'ctx>,
     pub spark: SparkCtx,
-    llvm_types: HashMap<TypeId, AnyTypeEnum<'ctx>>,
+    pub diags: DiagnosticManager<'files>,
     llvm_funs: HashMap<FunId, FunctionValue<'ctx>>,
     target: TargetData,
+    current_scope: ScopeMap<Symbol, ScopeDef<'ctx>>,
 }
 
-impl<'ctx> LlvmCodeGenerator<'ctx> {
+impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Create a new code generator from an LLVM context
-    pub fn new(spark: SparkCtx, ctx: &'ctx Context) -> Self {
+    pub fn new(spark: SparkCtx, ctx: &'ctx Context, files: &'files Files) -> Self {
         Target::initialize_native(&InitializationConfig::default()).expect("LLVM: failed to initialize native compilation target");
 
         Self {
+            current_scope: ScopeMap::new(),
             builder: ctx.create_builder(),
             ctx,
             spark,
-            llvm_types: HashMap::new(),
+            diags: DiagnosticManager::new(files),
             llvm_funs: HashMap::new(),
             target: Target::from_triple(&TargetMachine::get_default_triple()).unwrap().create_target_machine(
                 &TargetMachine::get_default_triple(),
@@ -57,9 +67,15 @@ impl<'ctx> LlvmCodeGenerator<'ctx> {
     pub fn codegen_module(&mut self, module: ModId) -> Module<'ctx> {
         let mut llvm_mod = self.ctx.create_module(self.spark[module].name.as_str());
 
-        //self.forward_types(module);
-        //self.gen_type_defs(module);
         self.forward_funs(&mut llvm_mod, module);
+        
+        let defs = self.spark[module].defs.clone();
+
+        self.current_scope.push_layer();
+
+        for (name, def) in defs.iter() {
+            self.current_scope.define(name.clone(), ScopeDef::Def(*def));
+        }
 
         for (name, def) in self.spark[module].defs.iter() {
             if let SparkDef::FunDef(fun) = def {
@@ -69,31 +85,9 @@ impl<'ctx> LlvmCodeGenerator<'ctx> {
             }
         }
 
+        self.current_scope.pop_layer();
+
         llvm_mod
-    }
-    
-    /// Generate forward type declarations for a module
-    fn forward_types(&mut self, module: ModId) {
-        /*let defs = self.spark[module].defs.clone();
-        for (name, def) in defs.iter() {
-            match def {
-                SparkDef::TypeDef(id) => {
-                    let ty: AnyTypeEnum<'ctx> = match self.spark[*id].data {
-                        TypeData::Struct {..} | 
-                            TypeData::Array { .. } | 
-                            TypeData::Pointer(..) | 
-                            TypeData::Tuple(..) |
-                            TypeData::Enum {..} | 
-                            TypeData::Function(..) |
-                            TypeData::Alias(..) => self.ctx.opaque_struct_type("$INVALID").into(),
-                        _ => self.llvm_ty(*id),
-                    };
-                    self.llvm_types.insert(*id, ty);
-                },
-                SparkDef::ModDef(module) => self.forward_types(*module),
-                _ => continue,
-            }
-        }*/
     }
     
     /// Generate code for all function prototypes
@@ -108,26 +102,6 @@ impl<'ctx> LlvmCodeGenerator<'ctx> {
             let llvm_fun = llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External));
             self.llvm_funs.insert(fun_id, llvm_fun);
         }
-    }
-    
-    /// Generate llvm IR types for all type definitions
-    fn gen_type_defs(&mut self, module: ModId) {
-        /*let defs = self.spark[module].defs.clone();
-        for def in defs.iter().map(|(_, v)| *v) {
-            match def {
-                SparkDef::TypeDef(id) => {
-                    let ty = self.llvm_ty(id);
-                    let llvm_ty = self.llvm_types.get(&id).unwrap();
-
-                    if let AnyTypeEnum::StructType(s) = llvm_ty {
-                        s.set_body(&[BasicTypeEnum::try_from(ty).unwrap().into()], false);
-                    } else { unreachable!() }
-                    //self.llvm_types.insert(id, ty);
-                },
-                SparkDef::ModDef(submod) => self.gen_type_defs(submod),
-                _ => ()
-            }
-        }*/
     }
 
     /// Create an LLVM type from a type ID

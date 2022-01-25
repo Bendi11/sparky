@@ -78,7 +78,7 @@ fn main() {
     let root_id = lowerer.lower_module(&root_module);
 
     let mut llvm_ctx = Context::create();
-    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx);
+    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files);
     let llvm_root = generator.codegen_module(root_id);
     llvm_root.print_to_stderr();
 }

@@ -826,6 +826,14 @@ impl<'src> Parser<'src> {
             TokenData::OpenBracket(BracketType::Smooth) => {
                 self.toks.next(); //Consume the opening bracket
                 self.trace.push("expression in parentheses".into());
+                if let Some(TokenData::CloseBracket(BracketType::Smooth)) = self.toks.peek().map(|tok| &tok.data) {
+                    let close = self.toks.next().unwrap();
+                    return Ok(Ast {
+                        span: close.span,
+                        node: AstNode::UnitLiteral,
+                    })
+                }
+
                 let expr = self.parse_expr()?;
                 
                 //Check for a tuple literal

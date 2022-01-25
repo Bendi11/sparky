@@ -220,6 +220,7 @@ where T: Clone + Hash + Eq {
     TupleLiteral(Vec<Ast<T>>),
     /// An array literal with list of expressions for array elements
     ArrayLiteral(Vec<Ast<T>>),
+    UnitLiteral,
     /// Breaking out of a loop
     Break,
     /// Continuing in a loop
@@ -496,6 +497,7 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                 }
                 write!(w, " )")
             },
+            Self::UnitLiteral => write!(w, "UNIT LITERAL ()"),
             Self::Return(expr) => {
                 write!(w, "RETURN {:?}", expr.node)
             },
