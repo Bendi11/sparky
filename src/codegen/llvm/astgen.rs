@@ -1,6 +1,9 @@
 use inkwell::values::AnyValueEnum;
 
-use crate::ast::{Ast, AstNode, NumberLiteralAnnotation};
+use crate::{
+    ast::{Ast, AstNode, NumberLiteralAnnotation},
+    parse::token::Op,
+};
 
 use super::*;
 
@@ -22,7 +25,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
     
     /// Get the type of an AST expression
-    fn ast_type(&mut self, ast: &Ast<TypeId>) -> Option<TypeId> {
+    fn ast_type(&mut self, module: ModId, ast: &Ast<TypeId>) -> Option<TypeId> {
         Some(match &ast.node {
             AstNode::UnitLiteral => SparkCtx::UNIT,
             AstNode::NumberLiteral(num) => match num.annotation() {
@@ -43,12 +46,97 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             AstNode::StringLiteral(_) => self.spark.new_type(TypeData::Pointer(SparkCtx::U8)),
             AstNode::BooleanLiteral(_) => SparkCtx::BOOL,
             AstNode::TupleLiteral(parts) => {
-                let part_types = parts.iter().map(|part| self.ast_type(part)).collect::<Vec<_>>();
+                let part_types = parts
+                    .iter()
+                    .map(|part| self.ast_type(module, part))
+                    .collect::<Option<Vec<_>>>()?;
                 self.spark.new_type(TypeData::Tuple(part_types))
             },
             AstNode::ArrayLiteral(parts) => {
-                let first_type = 
-            }
+                let first_type = self.ast_type(module, parts.first()?)?;
+                self.spark.new_type(TypeData::Array {
+                    element: first_type,
+                    len: parts.len() as u64
+                })
+            },
+            AstNode::CastExpr(ty, ..) => ty,
+            AstNode::FunCall(called, ..) => {
+                let called_ty = self.ast_type(module, called)?;
+                if let TypeData::Function(f_ty) = self.spark(called_ty) {
+                    f_ty.return_ty
+                } else {
+                    return None
+                }
+            },
+            AstNode::Access(path) => {
+                let def = self.spark.get_def(module, path)?;
+                match def {
+                    SparkDef::FunDef(f) => self.spark[f].ty.return_ty,
+                    _ => return None
+                }
+            },
+            AstNode::MemberAccess(lhs, name) => {
+                let lhs_ty = self.ast_type(module, lhs)?;
+                if let TypeData::Struct { fields } = self.spark[lhs_ty] {
+                    fields.iter().find_map(|(ty, field_name)| if name == field_name {
+                        Some(*ty)
+                    } else { None })
+                } else {
+                    return None
+                }
+            },
+            AstNode::Index { object, index } => {
+                let object_ty = self.ast_type(module, object)?;
+                if let AstNode::NumberLiteral(_) = &index.node {
+                    if let TypeData::Array { element, len: _ } = object_ty {
+                        element
+                    }
+                } else {
+                    return None
+                }
+            },
+            AstNode::BinExpr(lhs, ..) => self.ast_type(module, lhs)?,
+            AstNode::UnaryExpr(op, rhs) => {
+                let rhs_ty = self.ast_type(module, rhs)?;
+                match op {
+                    Op::Star => if let TypeData::Pointer(pointee) = self.spark[rhs_ty] {
+                        pointee
+                    } else { return None },
+                    Op::AND => self.spark.new_type(TypeData::Pointer(rhs_ty)),
+                    _ => return None,
+                }
+            },
+            AstNode::IfExpr(if_expr) => {
+                let phi_node = Self::phi_node(&if_expr.body)?;
+                let phi_ty = self.ast_type(module, phi_node)?;
+                phi_ty
+            },
+            
+            AstNode::Return(..) |
+                AstNode::Break |
+                AstNode::Continue => {
+                    return None
+                }
+            AstNode::VarDeclaration { name, ty, mutable } => return None,
+            AstNode::Assignment { lhs, rhs } => return None,
+            AstNode::PhiExpr(_) => return None,
+            AstNode::Loop(body) | AstNode::Block(body) => {
+                let phi_node = Self::phi_node(&body)?;
+                self.ast_type(module, phi_node)?
+            },
+            AstNode::Match { matched: _, cases } => {
+                let case_1 = cases.first()?;
+                self.ast_type(module, &case_1.1)?
+            },
         })
+    }
+    
+    /// Get the phi node from a block of AST nodes
+    fn phi_node(body: &[Ast<TypeId>]) -> Option<&Ast<TypeId>> {
+        body
+            .iter()
+            .find_map(|stmt| if let AstNode::PhiExpr(_) = &stmt.node {
+                Some(stmt)
+            } else { None })
     }
 } 
