@@ -1,4 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
+use num_bigint::Sign;
 
 use crate::{
     ast::{Ast, AstNode, NumberLiteralAnnotation, NumberLiteral},
@@ -86,15 +87,73 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     
     /// Generate code for a single AST expression
     fn gen_expr(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
-        match &ast.node {
+        Ok(match &ast.node {
             AstNode::NumberLiteral(n) => match n {
                 NumberLiteral::Integer(num, annot) => match annot {
-                    NumberLiteralAnnotation::U8 => self.ctx.i8_type().const_int(num.to_u64_digits(), sign_extend)
-                }
-            }
-            _ => ()
-        }
-        todo!()
+                    Some(annot) => {
+                        let sign = num.to_u64_digits().0 == Sign::Plus;
+
+                        let n = match annot {
+                            NumberLiteralAnnotation::U8 | NumberLiteralAnnotation::I8 => self.ctx.i8_type(),
+                            NumberLiteralAnnotation::U16 | NumberLiteralAnnotation::I16 => self.ctx.i16_type(),
+                            NumberLiteralAnnotation::U32 | NumberLiteralAnnotation::I32 => self.ctx.i32_type(),
+                            NumberLiteralAnnotation::U64 | NumberLiteralAnnotation::I64 => self.ctx.i64_type(),
+                            NumberLiteralAnnotation::F32 | NumberLiteralAnnotation::F64 => self.ctx.i64_type(),
+                        }.const_int(num.to_u64_digits().1[0], sign);
+
+                        match annot {
+                            NumberLiteralAnnotation::F32 => if sign {
+                                self.builder.build_signed_int_to_float(n, self.ctx.f32_type(), "numliteral_cast").into()
+                            } else {
+                                self.builder.build_unsigned_int_to_float(n, self.ctx.f32_type(), "numliteral_cast").into()
+                            },
+                            NumberLiteralAnnotation::F64 => if sign {
+                                self.builder.build_signed_int_to_float(n, self.ctx.f64_type(), "numliteral_cast").into()
+                            } else {
+                                self.builder.build_unsigned_int_to_float(n, self.ctx.f64_type(), "numliteral_cast").into()
+                            },
+                            _ => n.into()
+                        }
+                    },
+                    None => self.ctx.i32_type().const_int(num.to_u64_digits().1[0], num.to_u64_digits().0 == Sign::Plus).into(),
+                },
+                NumberLiteral::Float(f, annot) => match annot {
+                    Some(annot) => {
+                        if let NumberLiteralAnnotation::F32 = annot {
+                            self.ctx.f32_type().const_float(*f).into()
+                        } else {
+                            let f = self.ctx.f64_type().const_float(*f);
+
+                            match annot {
+                                NumberLiteralAnnotation::U8 =>
+                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i8_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::U16 =>
+                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i16_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::U32 =>
+                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i32_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::U64 =>
+                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i64_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::I8 =>
+                                    self.builder.build_float_to_signed_int(f, self.ctx.i8_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::I16 =>
+                                    self.builder.build_float_to_signed_int(f, self.ctx.i16_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::I32 =>
+                                    self.builder.build_float_to_signed_int(f, self.ctx.i32_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::I64 =>
+                                    self.builder.build_float_to_signed_int(f, self.ctx.i64_type(), "numberliteral_cast").into(),
+                                NumberLiteralAnnotation::F64 => f.into(),
+                                NumberLiteralAnnotation::F32 => unreachable!()
+                            }
+                        }
+                    },
+                    None => self.ctx.f64_type().const_float(*f).into()
+                },
+            },
+            _ => return Err(Diagnostic::error()
+                .with_message("Expression not yet implemented")
+                .with_labels(vec![Label::primary(file, ast.span)])
+            )
+        })
     }
     
     /// Get the type of an AST expression
