@@ -1,6 +1,6 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
-use crate::{ast::{Ast, AstNode, Def, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule, SymbolPath, UnresolvedType}, error::DiagnosticManager, util::{files::{Files, FileId}, loc::Span}};
+use crate::{ast::{Ast, AstNode, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule, UnresolvedType}, error::DiagnosticManager, util::{files::{Files, FileId}, loc::Span}};
 
 use super::ir::{SparkCtx, ModId, FunId, TypeId, FunctionType, TypeData, SparkDef};
 
@@ -24,7 +24,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
                 DefData::FunDef(proto, body) => {
-                    let fun = if let SparkDef::FunDef(id) = self.ctx[id].defs.get(&proto.name).unwrap() {
+                    let fun = if let SparkDef::FunDef(_, id) = self.ctx[id].defs.get(&proto.name).unwrap() {
                             *id
                         } else { unreachable!() };
 
@@ -32,7 +32,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     self.ctx[fun].body = Some(body);
                 },
                 DefData::StructDef { name, fields } => {
-                    let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
+                    let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap() {
                         *id
                     } else { unreachable!() };
                     let fields = fields.iter().map(|(name, ty)| (self.lower_type(id, Some(def.span), ty, def.file), name.clone())).collect();
@@ -41,7 +41,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     };
                 },
                 DefData::EnumDef { name, variants } => {
-                    let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
+                    let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap() {
                         *id
                     } else { unreachable!() };
                     let variants = variants.iter().map(|ty| self.lower_type(id, Some(def.span), ty, def.file)).collect();
@@ -50,11 +50,11 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     }
                 },
                 DefData::AliasDef { name, aliased } => {
-                    let ty = if let SparkDef::TypeDef(id) = self.ctx[id].defs.get(name).unwrap() {
+                    let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap() {
                         *id
                     } else { unreachable!() };
                     let aliased = self.lower_type(id, Some(def.span), aliased, def.file);
-                    self.ctx[ty].data = TypeData::Alias(aliased);
+                    self.ctx[ty].data = TypeData::Alias(*name, aliased);
                 },
                 _ => continue,
             }
@@ -69,7 +69,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             match &def.data {
                 DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
                     let fun_id = self.lower_funproto(module_id, def.span, proto, def.file);
-                    self.ctx[module_id].defs.define(proto.name, SparkDef::FunDef(fun_id));
+                    self.ctx[module_id].defs.define(proto.name, SparkDef::FunDef(def.file, fun_id));
                 },
                 _ => (),
             }
@@ -97,7 +97,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     DefData::EnumDef { name, .. } |
                     DefData::AliasDef { name, .. } => {
                     let ty = self.ctx.new_empty_type();
-                    self.ctx[module_id].defs.define(name.clone(), SparkDef::TypeDef(ty));
+                    self.ctx[module_id].defs.define(name.clone(), SparkDef::TypeDef(def.file, ty));
                 },
                 _ => continue,
             }
@@ -302,7 +302,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 self.ctx.new_type(TypeData::Tuple(elements))
             }
             UnresolvedType::UserDefined { name } => match self.ctx.get_def(module, name) {
-                Ok(SparkDef::TypeDef(type_id)) => type_id,
+                Ok(SparkDef::TypeDef(_, type_id)) => type_id,
                 Ok(..) => {
                     self.diags.emit({
                         let diag = Diagnostic::error()

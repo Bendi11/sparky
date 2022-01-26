@@ -5,7 +5,7 @@ use quickscope::ScopeMap;
 use crate::{
     Symbol,
     arena::{Index, Interner, Arena},
-    ast::{Ast, IntegerWidth, PathIter, SymbolPath},
+    ast::{Ast, IntegerWidth, PathIter, SymbolPath}, util::files::FileId,
 };
 
 pub type TypeId = Index<Type>;
@@ -69,8 +69,8 @@ impl SparkCtx {
     /// Get the name of a definition
     pub fn get_def_name(&self, def: SparkDef) -> Symbol {
         match def {
-            SparkDef::TypeDef(ty) => self.get_type_name(ty),
-            SparkDef::FunDef(fun) => self.funs[fun].name,
+            SparkDef::TypeDef(_, ty) => self.get_type_name(ty),
+            SparkDef::FunDef(_, fun) => self.funs[fun].name,
             SparkDef::ModDef(module) => self.modules[module].name,
         }
     }
@@ -103,7 +103,7 @@ impl SparkCtx {
             TypeData::Enum { parts } => Symbol::from(&format!(
                     "( {} )",
                     parts.iter()
-                        .map(|ty| self.get_type_name(*ty).as_str())
+                        .map(|ty| self.get_type_name(*ty).to_string())
                         .collect::<Vec<_>>()
                         .join(" | ")
                 )
@@ -121,7 +121,7 @@ impl SparkCtx {
                     "( {} )",
                     parts
                         .iter()
-                        .map(|part| self.get_type_name(*part).as_str())
+                        .map(|part| self.get_type_name(*part).to_string())
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
@@ -136,7 +136,7 @@ impl SparkCtx {
                     "fun({})->{}",
                     f_ty.args
                         .iter()
-                        .map(|ty| self.get_type_name(*ty).as_str())
+                        .map(|ty| self.get_type_name(*ty).to_string())
                         .collect::<Vec<_>>()
                         .join(", "),
                     self.get_type_name(f_ty.return_ty),
@@ -165,7 +165,7 @@ impl SparkCtx {
                 if let SparkDef::ModDef(mod_id) = def {
                     return self.get_def_impl(*mod_id, parts);
                 } else if parts.is_final() {
-                    if let SparkDef::TypeDef(ty) = def {
+                    if let SparkDef::TypeDef(_, ty) = def {
                         unimplemented!("Functions associated with types not implemented");
                     }
                 }
@@ -299,8 +299,8 @@ impl std::fmt::Debug for SparkModule {
 /// A single definition in the 
 #[derive(Clone, Copy, Debug)]
 pub enum SparkDef {
-    TypeDef(TypeId),
-    FunDef(FunId),
+    TypeDef(FileId, TypeId),
+    FunDef(FileId, FunId),
     ModDef(ModId),
 }
 

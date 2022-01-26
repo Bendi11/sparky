@@ -43,12 +43,14 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
 }
 
 /// Data needed to use a phi / break / continue statement
+#[derive(Clone, Copy)]
 struct BreakData<'ctx> {
     pub return_to_bb: BasicBlock<'ctx>,
     pub phi_data: Option<PhiData<'ctx>>,
 }
 
 /// Data needed specifcally for a phi statement
+#[derive(Clone, Copy)]
 struct PhiData<'ctx> {
     pub alloca: PointerValue<'ctx>,
     pub phi_ty: TypeId,
@@ -92,11 +94,18 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         for (name, def) in defs.iter() {
             self.current_scope.define(name.clone(), ScopeDef::Def(*def));
         }
+        
+        let defs = self.spark[module].defs.clone();
+        for (name, def) in defs.iter() {
 
-        for (name, def) in self.spark[module].defs.iter() {
-            if let SparkDef::FunDef(fun) = def {
-                if let Some(body) = self.spark[*fun].body.as_ref() {
+            if let SparkDef::FunDef(file, fun) = def {
+                if let Some(ref body) = self.spark[*fun].body {
                     self.current_fun = Some((*self.llvm_funs.get(fun).unwrap(), *fun));
+                    for stmt in body.clone() {
+                        if let Err(e) = self.gen_stmt(*file, module, stmt) {
+                            self.diags.emit(e.with_notes(vec![format!("In function {}", name)]));
+                        }
+                    }
                 }
             }
         }
@@ -112,7 +121,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         for fun_id in defs
             .iter()
-            .filter_map(|(_, def)| if let SparkDef::FunDef(id) = def { Some(*id) } else { None }) {
+            .filter_map(|(_, def)| if let SparkDef::FunDef(_, id) = def { Some(*id) } else { None }) {
             let fun = self.spark[fun_id].clone();
             let llvm_fun_ty = self.gen_fun_ty(&fun.ty);
             let llvm_fun = llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External));

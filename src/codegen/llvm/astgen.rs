@@ -1,8 +1,7 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::values::AnyValueEnum;
 
 use crate::{
-    ast::{Ast, AstNode, NumberLiteralAnnotation},
+    ast::{Ast, AstNode, NumberLiteralAnnotation, NumberLiteral},
     parse::token::Op, util::files::FileId,
 };
 
@@ -10,7 +9,7 @@ use super::*;
 
 impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Generate code for a single AST statement
-    fn gen_stmt(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<(), Diagnostic<FileId>> {
+    pub fn gen_stmt(&mut self, file: FileId, module: ModId, ast: Ast<TypeId>) -> Result<(), Diagnostic<FileId>> {
         match &ast.node {
             AstNode::Assignment { lhs, rhs } => {
 
@@ -42,8 +41,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 }
             },
             AstNode::PhiExpr(phi) => {
-                if let Some(break_data) = &self.break_data {
-                    if let Some(phi_data) = &break_data.phi_data {
+                if let Some(break_data) = self.break_data {
+                    if let Some(phi_data) = break_data.phi_data {
                         let phid_ty = self.ast_type(file, module, phi)?;
                         
                         if phid_ty != phi_data.phi_ty {
@@ -55,6 +54,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                 ])
                             )
                         }
+                        
+                        let phi_val = self.gen_expr(file, module, phi)?;
+                        self.builder.build_store(phi_data.alloca, phi_val);
+                        self.builder.build_unconditional_branch(break_data.return_to_bb);
                     } else {
                         return Err(Diagnostic::error()
                             .with_message("Phi statement encountered but not used")
@@ -84,6 +87,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Generate code for a single AST expression
     fn gen_expr(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         match &ast.node {
+            AstNode::NumberLiteral(n) => match n {
+                NumberLiteral::Integer(num, annot) => match annot {
+                    NumberLiteralAnnotation::U8 => self.ctx.i8_type().const_int(num.to_u64_digits(), sign_extend)
+                }
+            }
             _ => ()
         }
         todo!()
@@ -151,7 +159,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 })?;
 
                 match def {
-                    SparkDef::FunDef(f) => self.spark[f].ty.return_ty,
+                    SparkDef::FunDef(_, f) => self.spark[f].ty.return_ty,
                     _ => return Err(Diagnostic::error()
                         .with_message("Cannot infer type of definition")
                         .with_labels(vec![Label::primary(file, ast.span)])
