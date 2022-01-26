@@ -12,7 +12,7 @@ use inkwell::{
     module::{Module, Linkage},
     targets::{TargetData, TargetMachine, Target, InitializationConfig, RelocMode, CodeModel},
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType, PointerType},
-    values::{FunctionValue, BasicValueEnum}, OptimizationLevel
+    values::{FunctionValue, BasicValueEnum, PointerValue}, OptimizationLevel, basic_block::BasicBlock
 };
 use quickscope::ScopeMap;
 
@@ -38,6 +38,20 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
     llvm_funs: HashMap<FunId, FunctionValue<'ctx>>,
     target: TargetData,
     current_scope: ScopeMap<Symbol, ScopeDef<'ctx>>,
+    current_fun: Option<(FunctionValue<'ctx>, FunId)>,
+    break_data: Option<BreakData<'ctx>>,
+}
+
+/// Data needed to use a phi / break / continue statement
+struct BreakData<'ctx> {
+    pub return_to_bb: BasicBlock<'ctx>,
+    pub phi_data: Option<PhiData<'ctx>>,
+}
+
+/// Data needed specifcally for a phi statement
+struct PhiData<'ctx> {
+    pub alloca: PointerValue<'ctx>,
+    pub phi_ty: TypeId,
 }
 
 impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
@@ -47,11 +61,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         Self {
             current_scope: ScopeMap::new(),
+            current_fun: None,
             builder: ctx.create_builder(),
             ctx,
             spark,
             diags: DiagnosticManager::new(files),
             llvm_funs: HashMap::new(),
+            break_data: None,
             target: Target::from_triple(&TargetMachine::get_default_triple()).unwrap().create_target_machine(
                 &TargetMachine::get_default_triple(),
                 TargetMachine::get_host_cpu_name().to_str().unwrap(),
@@ -80,7 +96,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         for (name, def) in self.spark[module].defs.iter() {
             if let SparkDef::FunDef(fun) = def {
                 if let Some(body) = self.spark[*fun].body.as_ref() {
-                    
+                    self.current_fun = Some((*self.llvm_funs.get(fun).unwrap(), *fun));
                 }
             }
         }
@@ -128,7 +144,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .collect::<Vec<_>>();
                 self.ctx.struct_type(&fields, false).into()
             },
-            TypeData::Alias(id) => self.llvm_ty(id),
+            TypeData::Alias(_, id) => self.llvm_ty(id),
             TypeData::Pointer(id) => {
                 let pointee = self.llvm_ty(id);
 
