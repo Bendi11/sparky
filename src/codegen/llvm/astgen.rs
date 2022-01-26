@@ -26,6 +26,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .with_message("Failed to infer type of returned value")
                     .with_labels(vec![Label::primary(file, returned.span)])
                 );
+                
             },
             _ => ()
         }

@@ -69,9 +69,80 @@ impl SparkCtx {
     /// Get the name of a definition
     pub fn get_def_name(&self, def: SparkDef) -> Symbol {
         match def {
-            SparkDef::TypeDef(ty) => unimplemented!(),
+            SparkDef::TypeDef(ty) => self.get_type_name(ty),
             SparkDef::FunDef(fun) => self.funs[fun].name,
             SparkDef::ModDef(module) => self.modules[module].name,
+        }
+    }
+    
+    /// Get the name of a type
+    pub fn get_type_name(&self, type_id: TypeId) -> Symbol {
+        match &self[type_id].data {
+            TypeData::Integer { signed, width } => Symbol::from(match signed {
+                true => match width {
+                    IntegerWidth::Eight => "i8",
+                    IntegerWidth::Sixteen => "i16",
+                    IntegerWidth::ThirtyTwo => "i32",
+                    IntegerWidth::SixtyFour => "i64",
+                },
+                false => match width {
+                    IntegerWidth::Eight => "u8",
+                    IntegerWidth::Sixteen => "u16",
+                    IntegerWidth::ThirtyTwo => "u32",
+                    IntegerWidth::SixtyFour => "u64",
+                },
+            }),
+            TypeData::Float { doublewide } => Symbol::from(match doublewide {
+                true => "f64",
+                false => "f32",
+            }),
+            TypeData::Alias(name, _) => name.clone(),
+            TypeData::Pointer(ty) => Symbol::from(&format!("*{}", self.get_type_name(*ty))),
+            TypeData::Unit => Symbol::from("()"),
+            TypeData::Bool => Symbol::from("bool"),
+            TypeData::Enum { parts } => Symbol::from(&format!(
+                    "( {} )",
+                    parts.iter()
+                        .map(|ty| self.get_type_name(*ty).as_str())
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                )
+            ),
+            TypeData::Struct { fields } => Symbol::from(&format!(
+                    "{{ {} }}",
+                    fields
+                        .iter()
+                        .map(|(field, name)| format!("{} {}", self.get_type_name(*field), name))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            ),
+            TypeData::Tuple(parts) => Symbol::from(&format!(
+                    "( {} )",
+                    parts
+                        .iter()
+                        .map(|part| self.get_type_name(*part).as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            ),
+            TypeData::Array { element, len } => Symbol::from(&format!(
+                    "[{}]{}",
+                    len,
+                    self.get_type_name(*element)
+                )
+            ),
+            TypeData::Function(f_ty) => Symbol::from(&format!(
+                    "fun({})->{}",
+                    f_ty.args
+                        .iter()
+                        .map(|ty| self.get_type_name(*ty).as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    self.get_type_name(f_ty.return_ty),
+                )
+            ),
+            TypeData::Invalid => unreachable!(),
         }
     }
     
@@ -191,7 +262,7 @@ pub enum TypeData {
     Enum {
         parts: Vec<TypeId>,
     },
-    Alias(TypeId),
+    Alias(Symbol, TypeId),
     Function(FunctionType),
     /// For internal compiler use only
     Invalid,
