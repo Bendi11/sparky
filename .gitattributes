@@ -1,1 +1,1 @@
-std/**/*.sprk linguist-language=Rust
+*.sprk linguist-language=Rust
