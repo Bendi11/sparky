@@ -5,5 +5,5 @@ type test_ty {
 type testing_type fun(i32) -> f32
 
 fun main test_ty argc, testing_type a -> i32 {
-    return 1 
+    return 2e-5i32
 }

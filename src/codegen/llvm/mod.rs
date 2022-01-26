@@ -100,7 +100,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
             if let SparkDef::FunDef(file, fun) = def {
                 if let Some(ref body) = self.spark[*fun].body {
-                    self.current_fun = Some((*self.llvm_funs.get(fun).unwrap(), *fun));
+                    let llvm_fun = *self.llvm_funs.get(fun).unwrap();
+                    let entry = self.ctx.append_basic_block(llvm_fun, "entry_bb");
+                    self.builder.position_at_end(entry);
+
+                    self.current_fun = Some((llvm_fun, *fun));
                     for stmt in body.clone() {
                         if let Err(e) = self.gen_stmt(*file, module, stmt) {
                             self.diags.emit(e.with_notes(vec![format!("In function {}", name)]));
