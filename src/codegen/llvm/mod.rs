@@ -4,6 +4,7 @@ pub mod astgen;
 
 use std::convert::TryFrom;
 
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 use inkwell::{
     AddressSpace, 
@@ -16,15 +17,13 @@ use inkwell::{
 };
 use quickscope::ScopeMap;
 
-use crate::{
-    codegen::ir::{ModId, SparkCtx, TypeId, SparkDef, TypeData, FunctionType, FunId},
-    ast::IntegerWidth, error::DiagnosticManager, util::files::Files, Symbol,
-};
+use crate::{Symbol, ast::{IntegerWidth, SymbolPath}, codegen::ir::{ModId, SparkCtx, TypeId, SparkDef, TypeData, FunctionType, FunId}, error::DiagnosticManager, util::{files::{FileId, Files}, loc::Span}};
 
 /// A type representing all types that can be defined in the global scope 
 /// map of the code generator
+#[derive(Clone, Copy)]
 enum ScopeDef<'ctx> {
-    Value(BasicValueEnum<'ctx>),
+    Value(TypeId, PointerValue<'ctx>),
     Def(SparkDef),
 }
 
@@ -78,6 +77,47 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 RelocMode::Default,
                 CodeModel::Medium
             ).unwrap().get_target_data(),
+        }
+    }
+    
+    /// Find a name in the current scope
+    fn find_in_scope(&self,
+        file: FileId, 
+        module: ModId, 
+        span: Span, 
+        path: &SymbolPath
+    ) -> Result<ScopeDef<'ctx>, Diagnostic<FileId>> {
+        let mut iter = path.iter();
+
+        let first = iter.next().unwrap();
+
+        match self.current_scope.get(&first) {
+            Some(def) => if iter.len() == 0 {
+                Ok(*def)
+            } else {
+                match *def {
+                    ScopeDef::Def(SparkDef::ModDef(submod)) => {
+                        self.spark.get_def_impl(submod, iter)
+                            .map(|d| ScopeDef::Def(d))
+                            .map_err(|name| Diagnostic::error()
+                                .with_message(format!("'{}' not found in current scope", name))
+                                .with_labels(vec![Label::primary(file, span)])
+                            )
+                    },
+                    _ => Err(Diagnostic::error()
+                        .with_message(format!(
+                                "Cannot access '{}' of non-module definition",
+                                iter.map(|s| s.as_str().to_owned()).collect::<Vec<_>>().join(":")
+                            )
+                        )
+                        .with_labels(vec![Label::primary(file, span)])
+                    )
+                } 
+            },
+            None => Err(Diagnostic::error()
+                .with_message(format!("Symbol '{}' not found in the current scope", first))
+                .with_labels(vec![Label::primary(file, span)])
+            )
         }
     }
     

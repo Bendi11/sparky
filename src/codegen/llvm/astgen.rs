@@ -1,4 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
+use inkwell::values::BasicValue;
 use num_bigint::Sign;
 
 use crate::{
@@ -14,6 +15,37 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         match &ast.node {
             AstNode::Assignment { lhs, rhs } => {
 
+            },
+            AstNode::VarDeclaration {
+                name,
+                ty,
+                mutable,
+            } => {
+                if let Some(ty) = ty {
+                    let llvm_ty = self.llvm_ty(*ty);
+                    if let Ok(llvm_ty) = BasicTypeEnum::try_from(llvm_ty) {
+                        let pv = self.builder.build_alloca(llvm_ty, name.as_str());
+                        self.current_scope.define(*name, ScopeDef::Value(*ty, pv.into()));
+                    } else {
+                        return Err(Diagnostic::error()
+                            .with_message("Cannot declare variable of unit type")
+                            .with_labels(vec![Label::primary(file, ast.span)])
+                        )
+                    }
+                } else {
+                    return Err(Diagnostic::error()
+                        .with_message("Must provide type of variable or assign a value")
+                        .with_labels(vec![
+                            Label::primary(file, ast.span)
+                                .with_message("In this variable declaration")
+                        ])
+                        .with_notes(vec![format!(
+                                "Provide an explicit type in parenthesis after the '{}' keyword",
+                                if *mutable { "mut" } else { "let "}
+                            )
+                        ])
+                    )
+                }
             },
             AstNode::Return(returned) => {
                 let returned_ty = self.ast_type(file, module, returned).map_err(|e| e.with_labels(vec![
@@ -88,6 +120,29 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Generate code for a single AST expression
     fn gen_expr(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
+            AstNode::Access(path) => {
+                let def = self.find_in_scope(file, module, ast.span, path)?;
+                match def {
+                    ScopeDef::Def(SparkDef::FunDef(_, fun)) => {
+                        let llvm_fun = self.llvm_funs[&fun];
+                        llvm_fun.as_global_value().as_pointer_value().as_basic_value_enum()
+                    },
+                    ScopeDef::Value(_, ptr) => self.builder.build_load(ptr, "var_access_load").into(),
+                    _ => return Err(Diagnostic::error()
+                        .with_message(format!(
+                                "Cannot use {} as an expression value",
+                                match def {
+                                    ScopeDef::Def(SparkDef::ModDef(submod)) => format!("module '{}'", self.spark[submod].name),
+                                    ScopeDef::Def(SparkDef::TypeDef(_, ty)) => format!("type '{}'", self.spark.get_type_name(ty)),
+                                    ScopeDef::Value(..) => unreachable!(),
+                                    ScopeDef::Def(SparkDef::FunDef(..)) => unreachable!(),
+                                }
+                            )
+                        )
+                        .with_labels(vec![Label::primary(file, ast.span)])
+                    )
+                }
+            }
             AstNode::NumberLiteral(n) => match n {
                 NumberLiteral::Integer(num, annot) => match annot {
                     Some(annot) => {
@@ -211,14 +266,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 }
             },
             AstNode::Access(path) => {
-                let def = self.spark.get_def(module, path).map_err(|_| {
-                    Diagnostic::error()
-                        .with_message(format!("Failed to find symbol '{}' in module {}", path, self.spark[module].name))
-                        .with_labels(vec![Label::primary(file, ast.span)])
-                })?;
+                let def = self.find_in_scope(file, module, ast.span, path)?;
 
                 match def {
-                    SparkDef::FunDef(_, f) => self.spark[f].ty.return_ty,
+                    ScopeDef::Def(SparkDef::FunDef(_, f)) => self.spark[f].ty.return_ty,
+                    ScopeDef::Value(ty, _) => ty,
                     _ => return Err(Diagnostic::error()
                         .with_message("Cannot infer type of definition")
                         .with_labels(vec![Label::primary(file, ast.span)])
