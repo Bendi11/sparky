@@ -21,7 +21,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     self.ast_type(file, module, lhs)?
                 };
-                                
                 if lhs_ty != rhs_ty {
                     return Err(
                         Diagnostic::error()
@@ -43,7 +42,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
 
                 let lhs = if let AstNode::VarDeclaration { name, ty: _, mutable: _ } = &lhs.node {
-                    let ty = lhs_ty;
                     let llvm_ty = self.llvm_ty(lhs_ty);
                     if let Ok(llvm_ty) = BasicTypeEnum::try_from(llvm_ty) {
                         let pv = self.builder.build_alloca(llvm_ty, "var_dec_aloca");
@@ -178,6 +176,35 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     access.into()
                 } else {
                     self.builder.build_load(access, "var_rval_load").into()
+                }
+            },
+            AstNode::UnaryExpr(op, rhs) => {
+                let rhs_ty = self.ast_type(file, module, rhs)?;
+                match op {
+                    Op::AND => {
+                        let lval = self.gen_lval(file, module, rhs)?;
+                        lval.into()
+                    },
+                    Op::Star => {
+                        if let TypeData::Pointer(_) = &self.spark[rhs_ty].data {
+                            let pv = self.gen_expr(file, module, rhs)?.into_pointer_value();
+                            let deref = self.builder.build_load(pv, "deref_load");
+                            deref
+                        } else {
+                            return Err(Diagnostic::error()
+                                .with_message(format!(
+                                        "Expression of type {} cannot be dereferenced",
+                                        self.spark.get_type_name(rhs_ty),
+                                    )
+                                )
+                                .with_labels(vec![Label::primary(file, ast.span)])
+                            )
+                        }
+                    },
+                    _ => return Err(Diagnostic::error()
+                        .with_message(format!("Invalid unary operand {}", op))
+                        .with_labels(vec![Label::primary(file, ast.span)])
+                    )
                 }
             },
             AstNode::NumberLiteral(n) => match n {
