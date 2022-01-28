@@ -5,6 +5,6 @@ type test_ty {
 type testing_type fun(i32) -> f32
 
 fun main test_ty argc, testing_type a -> i32 {
-    let(i32) return_val
-    return return_val
+    let(i16) return_val
+    return $i32 return_val
 }

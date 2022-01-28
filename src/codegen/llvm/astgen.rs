@@ -1,5 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::values::BasicValue;
+use inkwell::{types::IntType, values::BasicValue};
 use num_bigint::Sign;
 
 use crate::{
@@ -120,6 +120,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Generate code for a single AST expression
     fn gen_expr(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
+            AstNode::CastExpr(to, rhs) => self.gen_cast(file, module, *to, rhs)?,
             AstNode::Access(path) => {
                 let def = self.find_in_scope(file, module, ast.span, path)?;
                 match def {
@@ -142,7 +143,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         .with_labels(vec![Label::primary(file, ast.span)])
                     )
                 }
-            }
+            },
             AstNode::NumberLiteral(n) => match n {
                 NumberLiteral::Integer(num, annot) => match annot {
                     Some(annot) => {
@@ -210,7 +211,106 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             )
         })
     }
+   
+    fn gen_cast(
+        &mut self, 
+        file: FileId, 
+        module: ModId, 
+        to_ty: TypeId, 
+        rhs: &Ast<TypeId>
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+        let rhs_ty = self.ast_type(file, module, rhs)
+            .map_err(|d| d.with_notes(vec!["In cast expression".to_owned()]))?;
+
+        let to = self.spark[to_ty].clone().data;
+        let from = self.spark[rhs_ty].clone().data;
+
+        let llvm_rhs = self.gen_expr(file, module, rhs)?;
+
+        Ok(match (from, to) {
+            (
+                TypeData::Integer { width: from_width, signed: from_sign },
+                TypeData::Integer { signed: to_sign, width: to_width}
+            ) => {
+                let llvm_to = self.llvm_int_ty(to_width);
+
+                if let BasicValueEnum::IntValue(iv) = llvm_rhs {
+                    if from_width == to_width {
+                        iv.into()
+                    } else if from_width < to_width && !to_sign {
+                        self.builder.build_int_z_extend(iv, llvm_to, "zext_upcast").into()
+                    } else if from_width < to_width && to_sign {
+                        self.builder.build_int_s_extend(iv, llvm_to, "sext_upcast").into()
+                    } else {
+                        self.builder.build_int_truncate(iv, llvm_to, "itrunc_downcast").into()
+                    }
+                } else { unreachable!() }
+            },
+            (TypeData::Integer { .. }, TypeData::Pointer(_)) => {
+                let llvm_to = self.llvm_ty(to_ty).into_pointer_type();
+                if let BasicValueEnum::IntValue(iv) = llvm_rhs {
+                    self.builder.build_int_to_ptr(iv, llvm_to, "int_to_ptr").into()
+                } else { unreachable!() }
+            },
+            (TypeData::Integer {signed, ..}, TypeData::Float { .. }) => {
+                let llvm_to = self.llvm_ty(to_ty).into_float_type();
+                if let BasicValueEnum::IntValue(iv) = llvm_rhs {
+                    if signed {
+                        self.builder.build_signed_int_to_float(iv, llvm_to, "s_to_f").into()
+                    } else {
+                        self.builder.build_unsigned_int_to_float(iv, llvm_to, "u_to_f").into()
+                    }
+                } else { unreachable!() }
+            },
+            (TypeData::Float { .. }, TypeData::Integer { signed, width }) => {
+                let llvm_to = self.llvm_int_ty(width);
+                if let BasicValueEnum::FloatValue(fv) = llvm_rhs {
+                    if signed {
+                        self.builder.build_float_to_signed_int(fv, llvm_to, "f_to_s").into()
+                    } else {
+                        self.builder.build_float_to_unsigned_int(fv, llvm_to, "f_to_u").into()
+                    }
+                } else { unreachable!() }
+            },
+            (TypeData::Pointer(..), TypeData::Pointer(..)) => {
+                let llvm_to = self.llvm_ty(to_ty).into_pointer_type();
+                if let BasicValueEnum::PointerValue(pv) = llvm_rhs {
+                    self.builder.build_pointer_cast(pv, llvm_to, "ptr_to_ptr").into()
+                } else { unreachable!() }
+            },
+            (TypeData::Pointer(..), TypeData::Integer { signed, width }) => {
+                let llvm_to = self.llvm_int_ty(width);
+                if let BasicValueEnum::PointerValue(pv) = llvm_rhs {
+                    let int = self.builder.build_ptr_to_int(pv, llvm_to, "ptr_to_u");
+                    if signed {
+                        self.builder.build_int_s_extend_or_bit_cast(int, llvm_to, "ptr_to_u_to_i").into()
+                    } else {
+                        int.into()
+                    }
+                } else { unreachable!() }
+            },
+            _ => return Err(Diagnostic::error()
+                .with_message(format!(
+                        "Cannot cast value of type {} to {}",
+                        self.spark.get_type_name(rhs_ty),
+                        self.spark.get_type_name(to_ty)
+                    )
+                )
+                .with_labels(vec![Label::primary(file, rhs.span)])
+            )
+        })
+    }
     
+    /// Generate an LLVM integer type to match an IR integer type
+    fn llvm_int_ty(&self, width: IntegerWidth) -> IntType<'ctx> {
+        match width {
+            IntegerWidth::Eight => self.ctx.i8_type(),
+            IntegerWidth::Sixteen => self.ctx.i16_type(),
+            IntegerWidth::ThirtyTwo => self.ctx.i32_type(),
+            IntegerWidth::SixtyFour => self.ctx.i64_type(),
+        }
+    }
+
     /// Get the type of an AST expression
     fn ast_type(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match &ast.node {

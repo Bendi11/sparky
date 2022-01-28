@@ -446,12 +446,12 @@ pub enum UnresolvedType {
 
 /// Enumeration for all possible integer bit widths in the [UnresolvedType] enum
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntegerWidth {
-    Eight,
-    Sixteen,
-    ThirtyTwo,
-    SixtyFour,
+    Eight = 8,
+    Sixteen = 16,
+    ThirtyTwo = 32,
+    SixtyFour = 64,
 }
 
 impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
