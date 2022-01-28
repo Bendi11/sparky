@@ -14,7 +14,58 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     pub fn gen_stmt(&mut self, file: FileId, module: ModId, ast: Ast<TypeId>) -> Result<(), Diagnostic<FileId>> {
         match &ast.node {
             AstNode::Assignment { lhs, rhs } => {
+                let rhs_ty = self.ast_type(file, module, rhs)?;
 
+                let lhs_ty = if let AstNode::VarDeclaration { ty: None, ..} = &lhs.node {
+                    rhs_ty
+                } else {
+                    self.ast_type(file, module, lhs)?
+                };
+                                
+                if lhs_ty != rhs_ty {
+                    return Err(
+                        Diagnostic::error()
+                            .with_message(format!(
+                                    "Value of type {} cannot be assigned to type of {}",
+                                    self.spark.get_type_name(rhs_ty),
+                                    self.spark.get_type_name(lhs_ty),
+                                )
+                            )
+                            .with_labels(vec![
+                                Label::primary(file, ast.span)
+                                    .with_message("Assignee encountered here"),
+                                Label::secondary(file, ast.span)
+                                    .with_message("Assigned value encountered here")
+                            ])
+                    )
+                }
+
+
+
+                let lhs = if let AstNode::VarDeclaration { name, ty: _, mutable: _ } = &lhs.node {
+                    let ty = lhs_ty;
+                    let llvm_ty = self.llvm_ty(lhs_ty);
+                    if let Ok(llvm_ty) = BasicTypeEnum::try_from(llvm_ty) {
+                        let pv = self.builder.build_alloca(llvm_ty, "var_dec_aloca");
+                        self.current_scope.define(*name, ScopeDef::Value(lhs_ty, pv));
+                        pv
+                    } else {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                    "Cannot declare a variable of type {}",
+                                    self.spark.get_type_name(lhs_ty)
+                                )
+                            )
+                            .with_labels(vec![Label::primary(file, lhs.span)])
+                        )
+                    }
+                } else {
+                    self.gen_lval(file, module, lhs)?
+                };
+
+                let rhs = self.gen_expr(file, module, rhs)?;
+
+                self.builder.build_store(lhs, rhs);
             },
             AstNode::VarDeclaration {
                 name,
@@ -122,26 +173,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         Ok(match &ast.node {
             AstNode::CastExpr(to, rhs) => self.gen_cast(file, module, *to, rhs)?,
             AstNode::Access(path) => {
-                let def = self.find_in_scope(file, module, ast.span, path)?;
-                match def {
-                    ScopeDef::Def(SparkDef::FunDef(_, fun)) => {
-                        let llvm_fun = self.llvm_funs[&fun];
-                        llvm_fun.as_global_value().as_pointer_value().as_basic_value_enum()
-                    },
-                    ScopeDef::Value(_, ptr) => self.builder.build_load(ptr, "var_access_load").into(),
-                    _ => return Err(Diagnostic::error()
-                        .with_message(format!(
-                                "Cannot use {} as an expression value",
-                                match def {
-                                    ScopeDef::Def(SparkDef::ModDef(submod)) => format!("module '{}'", self.spark[submod].name),
-                                    ScopeDef::Def(SparkDef::TypeDef(_, ty)) => format!("type '{}'", self.spark.get_type_name(ty)),
-                                    ScopeDef::Value(..) => unreachable!(),
-                                    ScopeDef::Def(SparkDef::FunDef(..)) => unreachable!(),
-                                }
-                            )
-                        )
-                        .with_labels(vec![Label::primary(file, ast.span)])
-                    )
+                let access = self.gen_access(file, module, ast.span, path)?;
+                if access.get_type().get_element_type().is_function_type() {
+                    access.into()
+                } else {
+                    self.builder.build_load(access, "var_rval_load").into()
                 }
             },
             AstNode::NumberLiteral(n) => match n {
@@ -211,7 +247,45 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             )
         })
     }
-   
+    
+    /// Generate an lvalue expression, returning a [PointerValue] to the lval
+    fn gen_lval(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+        Ok(match &ast.node {
+            AstNode::Access(path) => return self.gen_access(file, module, ast.span, path),
+            _ => {
+                let expr = self.gen_expr(file, module, ast)?;
+                let alloca = self.builder.build_alloca(expr.get_type(), "lvalue_alloca");
+                alloca
+            }
+        })
+    }
+    
+    /// Generate LLVM IR for a single symbol access
+    fn gen_access(&mut self, file: FileId, module: ModId, span: Span, path: &SymbolPath) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+        let def = self.find_in_scope(file, module, span, path)?;
+        Ok(match def {
+            ScopeDef::Def(SparkDef::FunDef(_, fun)) => {
+                let llvm_fun = self.llvm_funs[&fun];
+                llvm_fun.as_global_value().as_pointer_value()
+            },
+            ScopeDef::Value(_, ptr) => ptr,
+            _ => return Err(Diagnostic::error()
+                .with_message(format!(
+                        "Cannot use {} as an expression value",
+                        match def {
+                            ScopeDef::Def(SparkDef::ModDef(submod)) => format!("module '{}'", self.spark[submod].name),
+                            ScopeDef::Def(SparkDef::TypeDef(_, ty)) => format!("type '{}'", self.spark.get_type_name(ty)),
+                            ScopeDef::Value(..) => unreachable!(),
+                            ScopeDef::Def(SparkDef::FunDef(..)) => unreachable!(),
+                        }
+                    )
+                )
+                .with_labels(vec![Label::primary(file, span)])
+            )
+        })
+
+    }
+
     fn gen_cast(
         &mut self, 
         file: FileId, 
@@ -300,7 +374,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             )
         })
     }
-    
+
     /// Generate an LLVM integer type to match an IR integer type
     fn llvm_int_ty(&self, width: IntegerWidth) -> IntType<'ctx> {
         match width {
@@ -462,7 +536,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 let phi_ty = self.ast_type(file, module, phi_node)?;
                 phi_ty
             },
-            
+
+            AstNode::VarDeclaration { ty: Some(ty), .. } => *ty,
             AstNode::Return(..) |
                 AstNode::Break |
                 AstNode::Continue |
