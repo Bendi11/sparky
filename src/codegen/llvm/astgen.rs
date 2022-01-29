@@ -209,7 +209,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             .with_labels(vec![Label::primary(file, ast.span)]))
                     }
                 }
-            }
+            },
+            AstNode::BinExpr(lhs, op, rhs) => return self.gen_bin_expr(file, module, lhs, *op, rhs),
             AstNode::BooleanLiteral(b) => match b {
                 true => self.ctx.bool_type().const_all_ones(),
                 false => self.ctx.bool_type().const_zero(),
@@ -671,6 +672,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             .into()
                     }
                 } else {
+                    println!("{:?}", llvm_rhs.get_type());
                     unreachable!()
                 }
             }
@@ -785,7 +787,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     NumberLiteralAnnotation::F32 => SparkCtx::F32,
                     NumberLiteralAnnotation::F64 => SparkCtx::F64,
                 },
-                None => SparkCtx::I32,
+                None => if let NumberLiteral::Float(..) = num {
+                    SparkCtx::F64
+                } else {
+                    SparkCtx::I32
+                },
             },
             AstNode::StringLiteral(_) => self.spark.new_type(TypeData::Pointer(SparkCtx::U8)),
             AstNode::BooleanLiteral(_) => SparkCtx::BOOL,
