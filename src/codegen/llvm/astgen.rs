@@ -1,5 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::{types::IntType, values::BasicValue};
+use inkwell::{types::IntType, values::BasicValue, IntPredicate};
 use num_bigint::Sign;
 
 use crate::{
@@ -207,6 +207,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     )
                 }
             },
+            AstNode::BooleanLiteral(b) => match b {
+                true => self.ctx.bool_type().const_all_ones(),
+                false => self.ctx.bool_type().const_zero(),
+            }.into(),
             AstNode::NumberLiteral(n) => match n {
                 NumberLiteral::Integer(num, annot) => match annot {
                     Some(annot) => {
@@ -275,6 +279,85 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         })
     }
     
+    /// Generate code for a single binary expression
+    fn gen_bin_expr(&mut self, file: FileId, module: ModId, lhs: &Ast<TypeId>, op: Op, rhs: &Ast<TypeId>) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+        let lhs_ty = self.ast_type(file, module, lhs)?;
+        let rhs_ty = self.ast_type(file, module, rhs)?;
+
+        let llvm_lhs = self.gen_expr(file, module, lhs)?;
+        let llvm_rhs = self.gen_expr(file, module, rhs)?;
+        
+        if lhs_ty == rhs_ty {
+            match (op, self.spark[lhs_ty].data.clone()) {
+                (Op::Star, TypeData::Integer {..}) => 
+                    return Ok(self.builder.build_int_mul(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "imul").into()),
+                (Op::Div, TypeData::Integer {signed: true, ..}) =>
+                    return Ok(self.builder.build_int_signed_div(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "sidiv").into()),
+                (Op::Div, TypeData::Integer {signed: false, ..}) =>
+                    return Ok(self.builder.build_int_unsigned_div(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "uidiv").into()),
+                (Op::Add, TypeData::Integer {..}) =>
+                    return Ok(self.builder.build_int_add(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "iadd").into()),
+                (Op::Sub, TypeData::Integer {..}) =>
+                    return Ok(self.builder.build_int_sub(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "isub").into()),
+                (Op::Mod, TypeData::Integer {signed: true, ..}) =>
+                    return Ok(self.builder.build_int_signed_rem(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "simod").into()),
+                (Op::Mod, TypeData::Integer {signed: false, ..}) =>
+                    return Ok(self.builder.build_int_unsigned_rem(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "uimod").into()),
+
+                (Op::Eq | Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq, TypeData::Integer {signed, ..}) =>  
+                    return Ok(self.builder.build_int_compare(match (op, signed) {
+                        (Op::Eq, _) => IntPredicate::EQ,
+                        (Op::Greater, true) => IntPredicate::SGT,
+                        (Op::Greater, false) => IntPredicate::UGT,
+                        (Op::GreaterEq, true) => IntPredicate::SGE,
+                        (Op::GreaterEq, false) => IntPredicate::UGE,
+                        (Op::Less, true) => IntPredicate::SLT,
+                        (Op::Less, false) => IntPredicate::ULT,
+                        (Op::LessEq, true) => IntPredicate::SLE,
+                        (Op::LessEq, false) => IntPredicate::ULE,
+                        _ => unreachable!()
+                    }, llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "icmp").into()),
+
+                (Op::Star, TypeData::Float {..}) =>
+                    return Ok(self.builder.build_float_mul(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fmul").into()),
+                (Op::Div, TypeData::Float {..}) =>
+                    return Ok(self.builder.build_float_div(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fdiv").into()),
+                (Op::Add, TypeData::Float {..}) => 
+                    return Ok(self.builder.build_float_add(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fadd").into()),
+                (Op::Sub, TypeData::Float {..}) =>
+                    return Ok(self.builder.build_float_sub(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fsub").into()),
+                (Op::Mod, TypeData::Float {..}) =>
+                    return Ok(self.builder.build_float_rem(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fmod").into()),
+                _ => ()            
+            }
+        }
+
+        Ok(match (self.spark[lhs_ty].data.clone(), op, self.spark[rhs_ty].data.clone()) {
+            (TypeData::Integer {..}, Op::ShLeft, TypeData::Integer {..}) =>
+                self.builder.build_left_shift(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "ishl").into(),
+            (TypeData::Integer {signed, ..}, Op::ShRight, TypeData::Integer {..}) =>
+                self.builder.build_right_shift(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), signed, "ishr").into(),
+
+            _ => return Err(Diagnostic::error()
+                .with_message(format!("Binary operator {} cannot be applied to the given types", op))
+                .with_labels(vec![
+                    Label::primary(file, lhs.span)
+                        .with_message(format!(
+                                "Left hand side is found to be of type {}",
+                                self.spark.get_type_name(lhs_ty)
+                            )
+                        ),
+                    Label::primary(file, rhs.span)
+                        .with_message(format!(
+                                "Right hand side is found to be of type {}",
+                                self.spark.get_type_name(rhs_ty)
+                            )
+                        )
+                ])
+            )
+        })
+    }
+
     /// Generate an lvalue expression, returning a [PointerValue] to the lval
     fn gen_lval(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
@@ -531,6 +614,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     )
                 }
             },
+            AstNode::BinExpr(_,
+                Op::Greater | Op::GreaterEq |
+                Op::Less | Op::LessEq |
+                Op::Eq,
+            _) => SparkCtx::BOOL,
             AstNode::BinExpr(lhs, ..) => self.ast_type(file, module, lhs)?,
             AstNode::UnaryExpr(op, rhs) => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
