@@ -1,6 +1,5 @@
 use std::{iter::Peekable, str::CharIndices};
 
-
 use crate::util::loc::Span;
 
 use super::token::{BracketType, Op, Token, TokenData};
@@ -75,41 +74,29 @@ impl<'src> Lexer<'src> {
                 match (next, peek) {
                     ('>', Some('=')) => {
                         self.next_char();
-                        Token::new(
-                            startpos..startpos+1,
-                            TokenData::Op(Op::GreaterEq),
-                        )
+                        Token::new(startpos..startpos + 1, TokenData::Op(Op::GreaterEq))
                     }
                     ('<', Some('=')) => {
                         self.next_char();
-                        Token::new(
-                            startpos..startpos+1,
-                            TokenData::Op(Op::LessEq),
-                        )
+                        Token::new(startpos..startpos + 1, TokenData::Op(Op::LessEq))
                     }
                     ('&', Some('&')) => {
                         self.next_char();
-                        Token::new(
-                            startpos..startpos+1,
-                            TokenData::Op(Op::LogicalAnd),
-                        )
+                        Token::new(startpos..startpos + 1, TokenData::Op(Op::LogicalAnd))
                     }
                     ('|', Some('|')) => {
                         self.next_char();
-                        Token::new(
-                            startpos..startpos+1,
-                            TokenData::Op(Op::LogicalOr),
-                        )
+                        Token::new(startpos..startpos + 1, TokenData::Op(Op::LogicalOr))
                     }
 
                     ('-', Some('>')) => {
                         self.next_char();
-                        Token::new(startpos..startpos+1, TokenData::Arrow)
+                        Token::new(startpos..startpos + 1, TokenData::Arrow)
                     }
 
                     (':', Some('=')) => {
                         self.next_char();
-                        Token::new(startpos..startpos+1, TokenData::Assign)
+                        Token::new(startpos..startpos + 1, TokenData::Assign)
                     }
                     (':', _) => Token::new(start_loc, TokenData::Colon),
 
@@ -156,12 +143,9 @@ impl<'src> Lexer<'src> {
                 }
 
                 if let (end, '\'') = self.next_char()? {
-                    Token::new(
-                        startpos..end,
-                        TokenData::Char(&self.src[firstpos..end - 1]),
-                    )
+                    Token::new(startpos..end, TokenData::Char(&self.src[firstpos..end - 1]))
                 } else {
-                    return None
+                    return None;
                 }
             }
 
@@ -216,13 +200,13 @@ impl<'src> Lexer<'src> {
                     match self.chars.peek() {
                         Some((_, digit)) if digit.is_digit(radix) || *digit == '.' => {
                             self.next_char();
-                        },
+                        }
                         Some((_, 'e')) => {
                             self.next_char();
                             self.next_char(); //Skip + / -
                             while match self.chars.peek() {
                                 Some((_, exp)) if exp.is_digit(10) => true,
-                                _ => false
+                                _ => false,
                             } {
                                 self.next_char();
                             }
@@ -263,12 +247,12 @@ impl<'src> Lexer<'src> {
             _ => self.token()?,
         })
     }
-    
-    /// Peek the current token 
+
+    /// Peek the current token
     pub fn peek(&self) -> Option<&Token<'src>> {
         self.current.as_ref()
     }
-    
+
     /// Peek the token two spots ahead
     pub fn peek2(&self) -> Option<&Token<'src>> {
         self.peek2.as_ref()
@@ -280,15 +264,12 @@ impl<'src> Iterator for Lexer<'src> {
     fn next(&mut self) -> Option<Self::Item> {
         use std::mem::replace;
         if self.current.is_none() {
-            return None
+            return None;
         }
 
         let next = if self.peek2.is_some() {
             let tok = self.token();
-            let next = replace(
-                &mut self.current,
-                replace(&mut self.peek2, tok)
-            );
+            let next = replace(&mut self.current, replace(&mut self.peek2, tok));
             next?
         } else {
             self.current.take()?
@@ -297,4 +278,3 @@ impl<'src> Iterator for Lexer<'src> {
         Some(next)
     }
 }
-

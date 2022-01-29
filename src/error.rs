@@ -1,10 +1,19 @@
-//! Module defining error structures and error handlers for displaying 
+//! Module defining error structures and error handlers for displaying
 //! error / warn messages as they occur
 
-use codespan_reporting::{diagnostic::Diagnostic, term::{termcolor::{StandardStream, ColorChoice}, DisplayStyle, Styles, Chars}};
+use codespan_reporting::{
+    diagnostic::Diagnostic,
+    term::{
+        termcolor::{ColorChoice, StandardStream},
+        Chars, DisplayStyle, Styles,
+    },
+};
 
-use crate::util::{files::{FileId, Files}, loc::Span};
-/// A structure that handles emitted diagnostics from the compiler, 
+use crate::util::{
+    files::{FileId, Files},
+    loc::Span,
+};
+/// A structure that handles emitted diagnostics from the compiler,
 /// respecting command line options for verbosity
 #[derive(Clone, Debug)]
 pub struct DiagnosticManager<'files> {
@@ -16,12 +25,10 @@ impl<'files> DiagnosticManager<'files> {
     /// Create a new diagnostic manager using a reference to all
     /// currently compiled files
     pub fn new(files: &'files Files) -> Self {
-        Self {
-            files,
-        }
+        Self { files }
     }
-    
-    /// Emit a diagnostic to the console 
+
+    /// Emit a diagnostic to the console
     pub fn emit(&mut self, diag: Diagnostic<FileId>) {
         codespan_reporting::term::emit(
             &mut StandardStream::stderr(ColorChoice::Auto),
@@ -33,7 +40,7 @@ impl<'files> DiagnosticManager<'files> {
                 ..Default::default()
             },
             self.files,
-            &diag
+            &diag,
         );
     }
 }

@@ -77,8 +77,7 @@ impl Files {
 
     /// Get a reference to the file information for the given ID, panics if the ID is invalid
     pub fn get(&self, id: FileId) -> &CompiledFile {
-        self.files
-            .get(id)
+        self.files.get(id)
     }
 }
 
@@ -91,30 +90,41 @@ impl<'a> codespan_reporting::files::Files<'a> for Files {
         Ok(self.get(id).path.to_string_lossy().into_owned())
     }
 
-    fn source(&'a self, id: Self::FileId) -> Result<Self::Source, codespan_reporting::files::Error> {
+    fn source(
+        &'a self,
+        id: Self::FileId,
+    ) -> Result<Self::Source, codespan_reporting::files::Error> {
         Ok(self.get(id).text.as_str())
     }
 
-    fn line_index(&'a self, id: Self::FileId, byte_index: usize) -> Result<usize, codespan_reporting::files::Error> {
+    fn line_index(
+        &'a self,
+        id: Self::FileId,
+        byte_index: usize,
+    ) -> Result<usize, codespan_reporting::files::Error> {
         let file = self.get(id);
 
         if byte_index >= file.text.len() {
-            return Ok(file.lines.len())
+            return Ok(file.lines.len());
         }
 
         let mut lowest_line = 0;
         for (line, line_idx) in file.lines.iter().enumerate() {
             if *line_idx <= byte_index {
-                lowest_line = line; 
+                lowest_line = line;
             } else {
-                break
+                break;
             }
         }
-        
+
         Ok(lowest_line)
     }
 
-    fn line_range(&'a self, id: Self::FileId, line_index: usize) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
+    fn line_range(
+        &'a self,
+        id: Self::FileId,
+        line_index: usize,
+    ) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
         let file = self.get(id);
 
         let line = file.lines[line_index];

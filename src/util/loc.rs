@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, num::NonZeroU16, fmt, io::Write};
+use std::{cmp::Ordering, fmt, io::Write, num::NonZeroU16};
 
 use super::files::CompiledFile;
 

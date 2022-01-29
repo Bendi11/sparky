@@ -3,59 +3,64 @@ use inkwell::{types::IntType, values::BasicValue, IntPredicate};
 use num_bigint::Sign;
 
 use crate::{
-    ast::{Ast, AstNode, NumberLiteralAnnotation, NumberLiteral},
-    parse::token::Op, util::files::FileId,
+    ast::{Ast, AstNode, NumberLiteral, NumberLiteralAnnotation},
+    parse::token::Op,
+    util::files::FileId,
 };
 
 use super::*;
 
 impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Generate code for a single AST statement
-    pub fn gen_stmt(&mut self, file: FileId, module: ModId, ast: Ast<TypeId>) -> Result<(), Diagnostic<FileId>> {
+    pub fn gen_stmt(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        ast: Ast<TypeId>,
+    ) -> Result<(), Diagnostic<FileId>> {
         match &ast.node {
             AstNode::Assignment { lhs, rhs } => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
 
-                let lhs_ty = if let AstNode::VarDeclaration { ty: None, ..} = &lhs.node {
+                let lhs_ty = if let AstNode::VarDeclaration { ty: None, .. } = &lhs.node {
                     rhs_ty
                 } else {
                     self.ast_type(file, module, lhs)?
                 };
                 if lhs_ty != rhs_ty {
-                    return Err(
-                        Diagnostic::error()
-                            .with_message(format!(
-                                    "Value of type {} cannot be assigned to type of {}",
-                                    self.spark.get_type_name(rhs_ty),
-                                    self.spark.get_type_name(lhs_ty),
-                                )
-                            )
-                            .with_labels(vec![
-                                Label::primary(file, ast.span)
-                                    .with_message("Assignee encountered here"),
-                                Label::secondary(file, ast.span)
-                                    .with_message("Assigned value encountered here")
-                            ])
-                    )
+                    return Err(Diagnostic::error()
+                        .with_message(format!(
+                            "Value of type {} cannot be assigned to type of {}",
+                            self.spark.get_type_name(rhs_ty),
+                            self.spark.get_type_name(lhs_ty),
+                        ))
+                        .with_labels(vec![
+                            Label::primary(file, ast.span)
+                                .with_message("Assignee encountered here"),
+                            Label::secondary(file, ast.span)
+                                .with_message("Assigned value encountered here"),
+                        ]));
                 }
 
-
-
-                let lhs = if let AstNode::VarDeclaration { name, ty: _, mutable: _ } = &lhs.node {
+                let lhs = if let AstNode::VarDeclaration {
+                    name,
+                    ty: _,
+                    mutable: _,
+                } = &lhs.node
+                {
                     let llvm_ty = self.llvm_ty(lhs_ty);
                     if let Ok(llvm_ty) = BasicTypeEnum::try_from(llvm_ty) {
                         let pv = self.builder.build_alloca(llvm_ty, "var_dec_aloca");
-                        self.current_scope.define(*name, ScopeDef::Value(lhs_ty, pv));
+                        self.current_scope
+                            .define(*name, ScopeDef::Value(lhs_ty, pv));
                         pv
                     } else {
                         return Err(Diagnostic::error()
                             .with_message(format!(
-                                    "Cannot declare a variable of type {}",
-                                    self.spark.get_type_name(lhs_ty)
-                                )
-                            )
-                            .with_labels(vec![Label::primary(file, lhs.span)])
-                        )
+                                "Cannot declare a variable of type {}",
+                                self.spark.get_type_name(lhs_ty)
+                            ))
+                            .with_labels(vec![Label::primary(file, lhs.span)]));
                     }
                 } else {
                     self.gen_lval(file, module, lhs)?
@@ -64,46 +69,39 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 let rhs = self.gen_expr(file, module, rhs)?;
 
                 self.builder.build_store(lhs, rhs);
-            },
-            AstNode::VarDeclaration {
-                name,
-                ty,
-                mutable,
-            } => {
+            }
+            AstNode::VarDeclaration { name, ty, mutable } => {
                 if let Some(ty) = ty {
                     let llvm_ty = self.llvm_ty(*ty);
                     if let Ok(llvm_ty) = BasicTypeEnum::try_from(llvm_ty) {
                         let pv = self.builder.build_alloca(llvm_ty, name.as_str());
-                        self.current_scope.define(*name, ScopeDef::Value(*ty, pv.into()));
+                        self.current_scope
+                            .define(*name, ScopeDef::Value(*ty, pv.into()));
                     } else {
                         return Err(Diagnostic::error()
                             .with_message("Cannot declare variable of unit type")
-                            .with_labels(vec![Label::primary(file, ast.span)])
-                        )
+                            .with_labels(vec![Label::primary(file, ast.span)]));
                     }
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Must provide type of variable or assign a value")
-                        .with_labels(vec![
-                            Label::primary(file, ast.span)
-                                .with_message("In this variable declaration")
-                        ])
+                        .with_labels(vec![Label::primary(file, ast.span)
+                            .with_message("In this variable declaration")])
                         .with_notes(vec![format!(
-                                "Provide an explicit type in parenthesis after the '{}' keyword",
-                                if *mutable { "mut" } else { "let "}
-                            )
-                        ])
-                    )
+                            "Provide an explicit type in parenthesis after the '{}' keyword",
+                            if *mutable { "mut" } else { "let " }
+                        )]));
                 }
-            },
+            }
             AstNode::Return(returned) => {
-                let returned_ty = self.ast_type(file, module, returned).map_err(|e| e.with_labels(vec![
-                    Label::secondary(file, ast.span)
-                        .with_message("In this return statement")
-                ]))?;
+                let returned_ty = self.ast_type(file, module, returned).map_err(|e| {
+                    e.with_labels(vec![
+                        Label::secondary(file, ast.span).with_message("In this return statement")
+                    ])
+                })?;
 
                 let current_fun = &self.spark[self.current_fun.unwrap().1];
-                
+
                 if returned_ty != current_fun.ty.return_ty {
                     return Err(Diagnostic::error()
                         .with_message(format!(
@@ -112,21 +110,21 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                 self.spark.get_type_name(current_fun.ty.return_ty),
                             )
                         )
-                    )
+                    );
                 }
-                
+
                 if current_fun.ty.return_ty != SparkCtx::UNIT {
                     let returned = self.gen_expr(file, module, returned)?;
-                    self.builder.build_return(Some(&returned)); 
+                    self.builder.build_return(Some(&returned));
                 } else {
                     self.builder.build_return(None);
                 }
-            },
+            }
             AstNode::PhiExpr(phi) => {
                 if let Some(break_data) = self.break_data {
                     if let Some(phi_data) = break_data.phi_data {
                         let phid_ty = self.ast_type(file, module, phi)?;
-                        
+
                         if phid_ty != phi_data.phi_ty {
                             return Err(Diagnostic::error()
                                 .with_message("Phi statement returns a value with type different to expected type")
@@ -134,40 +132,46 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                     Label::primary(file, phi.span)
                                         .with_message(format!("Phi statement of type '{}' encountered here", self.spark.get_type_name(phid_ty)))
                                 ])
-                            )
+                            );
                         }
-                        
+
                         let phi_val = self.gen_expr(file, module, phi)?;
                         self.builder.build_store(phi_data.alloca, phi_val);
-                        self.builder.build_unconditional_branch(break_data.return_to_bb);
+                        self.builder
+                            .build_unconditional_branch(break_data.return_to_bb);
                     } else {
                         return Err(Diagnostic::error()
                             .with_message("Phi statement encountered but not used")
-                            .with_labels(vec![
-                                Label::primary(file, ast.span)
-                                    .with_message("Phi statement encountered here")
-                            ])
-                            .with_notes(vec!["Replace with a break or continue statement if value is not used".to_owned()])
-                        )
+                            .with_labels(vec![Label::primary(file, ast.span)
+                                .with_message("Phi statement encountered here")])
+                            .with_notes(vec![
+                                "Replace with a break or continue statement if value is not used"
+                                    .to_owned(),
+                            ]));
                     }
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Phi statement not in a block")
-                        .with_labels(vec![Label::primary(file, ast.span)])
-                    )
+                        .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            },
-            other => return Err(Diagnostic::error()
+            }
+            other => {
+                return Err(Diagnostic::error()
                     .with_message(format!("Invalid statement: {:#?}", other))
-                    .with_labels(vec![Label::primary(file, ast.span)])
-                ),
+                    .with_labels(vec![Label::primary(file, ast.span)]))
+            }
         }
 
         Ok(())
     }
-    
+
     /// Generate code for a single AST expression
-    fn gen_expr(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+    fn gen_expr(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        ast: &Ast<TypeId>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
             AstNode::CastExpr(to, rhs) => self.gen_cast(file, module, *to, rhs)?,
             AstNode::Access(path) => {
@@ -177,14 +181,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     self.builder.build_load(access, "var_rval_load").into()
                 }
-            },
+            }
             AstNode::UnaryExpr(op, rhs) => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
                 match op {
                     Op::AND => {
                         let lval = self.gen_lval(file, module, rhs)?;
                         lval.into()
-                    },
+                    }
                     Op::Star => {
                         if let TypeData::Pointer(_) = &self.spark[rhs_ty].data {
                             let pv = self.gen_expr(file, module, rhs)?.into_pointer_value();
@@ -193,173 +197,391 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         } else {
                             return Err(Diagnostic::error()
                                 .with_message(format!(
-                                        "Expression of type {} cannot be dereferenced",
-                                        self.spark.get_type_name(rhs_ty),
-                                    )
-                                )
-                                .with_labels(vec![Label::primary(file, ast.span)])
-                            )
+                                    "Expression of type {} cannot be dereferenced",
+                                    self.spark.get_type_name(rhs_ty),
+                                ))
+                                .with_labels(vec![Label::primary(file, ast.span)]));
                         }
-                    },
-                    _ => return Err(Diagnostic::error()
-                        .with_message(format!("Invalid unary operand {}", op))
-                        .with_labels(vec![Label::primary(file, ast.span)])
-                    )
+                    }
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message(format!("Invalid unary operand {}", op))
+                            .with_labels(vec![Label::primary(file, ast.span)]))
+                    }
                 }
-            },
+            }
             AstNode::BooleanLiteral(b) => match b {
                 true => self.ctx.bool_type().const_all_ones(),
                 false => self.ctx.bool_type().const_zero(),
-            }.into(),
-            AstNode::NumberLiteral(n) => match n {
-                NumberLiteral::Integer(num, annot) => match annot {
-                    Some(annot) => {
-                        let sign = num.to_u64_digits().0 == Sign::Plus;
-
-                        let n = match annot {
-                            NumberLiteralAnnotation::U8 | NumberLiteralAnnotation::I8 => self.ctx.i8_type(),
-                            NumberLiteralAnnotation::U16 | NumberLiteralAnnotation::I16 => self.ctx.i16_type(),
-                            NumberLiteralAnnotation::U32 | NumberLiteralAnnotation::I32 => self.ctx.i32_type(),
-                            NumberLiteralAnnotation::U64 | NumberLiteralAnnotation::I64 => self.ctx.i64_type(),
-                            NumberLiteralAnnotation::F32 | NumberLiteralAnnotation::F64 => self.ctx.i64_type(),
-                        }.const_int(num.to_u64_digits().1[0], sign);
-
+            }
+            .into(),
+            AstNode::NumberLiteral(n) => {
+                match n {
+                    NumberLiteral::Integer(num, annot) => {
                         match annot {
-                            NumberLiteralAnnotation::F32 => if sign {
-                                self.builder.build_signed_int_to_float(n, self.ctx.f32_type(), "numliteral_cast").into()
-                            } else {
-                                self.builder.build_unsigned_int_to_float(n, self.ctx.f32_type(), "numliteral_cast").into()
-                            },
-                            NumberLiteralAnnotation::F64 => if sign {
-                                self.builder.build_signed_int_to_float(n, self.ctx.f64_type(), "numliteral_cast").into()
-                            } else {
-                                self.builder.build_unsigned_int_to_float(n, self.ctx.f64_type(), "numliteral_cast").into()
-                            },
-                            _ => n.into()
-                        }
-                    },
-                    None => self.ctx.i32_type().const_int(num.to_u64_digits().1[0], num.to_u64_digits().0 == Sign::Plus).into(),
-                },
-                NumberLiteral::Float(f, annot) => match annot {
-                    Some(annot) => {
-                        if let NumberLiteralAnnotation::F32 = annot {
-                            self.ctx.f32_type().const_float(*f).into()
-                        } else {
-                            let f = self.ctx.f64_type().const_float(*f);
+                            Some(annot) => {
+                                let sign = num.to_u64_digits().0 == Sign::Plus;
 
-                            match annot {
-                                NumberLiteralAnnotation::U8 =>
-                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i8_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::U16 =>
-                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i16_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::U32 =>
-                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i32_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::U64 =>
-                                    self.builder.build_float_to_unsigned_int(f, self.ctx.i64_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::I8 =>
-                                    self.builder.build_float_to_signed_int(f, self.ctx.i8_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::I16 =>
-                                    self.builder.build_float_to_signed_int(f, self.ctx.i16_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::I32 =>
-                                    self.builder.build_float_to_signed_int(f, self.ctx.i32_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::I64 =>
-                                    self.builder.build_float_to_signed_int(f, self.ctx.i64_type(), "numberliteral_cast").into(),
-                                NumberLiteralAnnotation::F64 => f.into(),
-                                NumberLiteralAnnotation::F32 => unreachable!()
+                                let n =
+                                    match annot {
+                                        NumberLiteralAnnotation::U8
+                                        | NumberLiteralAnnotation::I8 => self.ctx.i8_type(),
+                                        NumberLiteralAnnotation::U16
+                                        | NumberLiteralAnnotation::I16 => self.ctx.i16_type(),
+                                        NumberLiteralAnnotation::U32
+                                        | NumberLiteralAnnotation::I32 => self.ctx.i32_type(),
+                                        NumberLiteralAnnotation::U64
+                                        | NumberLiteralAnnotation::I64 => self.ctx.i64_type(),
+                                        NumberLiteralAnnotation::F32
+                                        | NumberLiteralAnnotation::F64 => self.ctx.i64_type(),
+                                    }
+                                    .const_int(num.to_u64_digits().1[0], sign);
+
+                                match annot {
+                                    NumberLiteralAnnotation::F32 => {
+                                        if sign {
+                                            self.builder
+                                                .build_signed_int_to_float(
+                                                    n,
+                                                    self.ctx.f32_type(),
+                                                    "numliteral_cast",
+                                                )
+                                                .into()
+                                        } else {
+                                            self.builder
+                                                .build_unsigned_int_to_float(
+                                                    n,
+                                                    self.ctx.f32_type(),
+                                                    "numliteral_cast",
+                                                )
+                                                .into()
+                                        }
+                                    }
+                                    NumberLiteralAnnotation::F64 => {
+                                        if sign {
+                                            self.builder
+                                                .build_signed_int_to_float(
+                                                    n,
+                                                    self.ctx.f64_type(),
+                                                    "numliteral_cast",
+                                                )
+                                                .into()
+                                        } else {
+                                            self.builder
+                                                .build_unsigned_int_to_float(
+                                                    n,
+                                                    self.ctx.f64_type(),
+                                                    "numliteral_cast",
+                                                )
+                                                .into()
+                                        }
+                                    }
+                                    _ => n.into(),
+                                }
+                            }
+                            None => self
+                                .ctx
+                                .i32_type()
+                                .const_int(
+                                    num.to_u64_digits().1[0],
+                                    num.to_u64_digits().0 == Sign::Plus,
+                                )
+                                .into(),
+                        }
+                    }
+                    NumberLiteral::Float(f, annot) => match annot {
+                        Some(annot) => {
+                            if let NumberLiteralAnnotation::F32 = annot {
+                                self.ctx.f32_type().const_float(*f).into()
+                            } else {
+                                let f = self.ctx.f64_type().const_float(*f);
+
+                                match annot {
+                                    NumberLiteralAnnotation::U8 => self
+                                        .builder
+                                        .build_float_to_unsigned_int(
+                                            f,
+                                            self.ctx.i8_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::U16 => self
+                                        .builder
+                                        .build_float_to_unsigned_int(
+                                            f,
+                                            self.ctx.i16_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::U32 => self
+                                        .builder
+                                        .build_float_to_unsigned_int(
+                                            f,
+                                            self.ctx.i32_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::U64 => self
+                                        .builder
+                                        .build_float_to_unsigned_int(
+                                            f,
+                                            self.ctx.i64_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::I8 => self
+                                        .builder
+                                        .build_float_to_signed_int(
+                                            f,
+                                            self.ctx.i8_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::I16 => self
+                                        .builder
+                                        .build_float_to_signed_int(
+                                            f,
+                                            self.ctx.i16_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::I32 => self
+                                        .builder
+                                        .build_float_to_signed_int(
+                                            f,
+                                            self.ctx.i32_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::I64 => self
+                                        .builder
+                                        .build_float_to_signed_int(
+                                            f,
+                                            self.ctx.i64_type(),
+                                            "numberliteral_cast",
+                                        )
+                                        .into(),
+                                    NumberLiteralAnnotation::F64 => f.into(),
+                                    NumberLiteralAnnotation::F32 => unreachable!(),
+                                }
                             }
                         }
+                        None => self.ctx.f64_type().const_float(*f).into(),
                     },
-                    None => self.ctx.f64_type().const_float(*f).into()
-                },
-            },
-            _ => return Err(Diagnostic::error()
-                .with_message("Expression not yet implemented")
-                .with_labels(vec![Label::primary(file, ast.span)])
-            )
+                }
+            }
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message("Expression not yet implemented")
+                    .with_labels(vec![Label::primary(file, ast.span)]))
+            }
         })
     }
-    
+
     /// Generate code for a single binary expression
-    fn gen_bin_expr(&mut self, file: FileId, module: ModId, lhs: &Ast<TypeId>, op: Op, rhs: &Ast<TypeId>) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+    fn gen_bin_expr(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        lhs: &Ast<TypeId>,
+        op: Op,
+        rhs: &Ast<TypeId>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         let lhs_ty = self.ast_type(file, module, lhs)?;
         let rhs_ty = self.ast_type(file, module, rhs)?;
 
         let llvm_lhs = self.gen_expr(file, module, lhs)?;
         let llvm_rhs = self.gen_expr(file, module, rhs)?;
-        
+
         if lhs_ty == rhs_ty {
             match (op, self.spark[lhs_ty].data.clone()) {
-                (Op::Star, TypeData::Integer {..}) => 
-                    return Ok(self.builder.build_int_mul(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "imul").into()),
-                (Op::Div, TypeData::Integer {signed: true, ..}) =>
-                    return Ok(self.builder.build_int_signed_div(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "sidiv").into()),
-                (Op::Div, TypeData::Integer {signed: false, ..}) =>
-                    return Ok(self.builder.build_int_unsigned_div(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "uidiv").into()),
-                (Op::Add, TypeData::Integer {..}) =>
-                    return Ok(self.builder.build_int_add(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "iadd").into()),
-                (Op::Sub, TypeData::Integer {..}) =>
-                    return Ok(self.builder.build_int_sub(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "isub").into()),
-                (Op::Mod, TypeData::Integer {signed: true, ..}) =>
-                    return Ok(self.builder.build_int_signed_rem(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "simod").into()),
-                (Op::Mod, TypeData::Integer {signed: false, ..}) =>
-                    return Ok(self.builder.build_int_unsigned_rem(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "uimod").into()),
+                (Op::Star, TypeData::Integer { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_int_mul(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "imul")
+                        .into())
+                }
+                (Op::Div, TypeData::Integer { signed: true, .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_int_signed_div(
+                            llvm_lhs.into_int_value(),
+                            llvm_rhs.into_int_value(),
+                            "sidiv",
+                        )
+                        .into())
+                }
+                (Op::Div, TypeData::Integer { signed: false, .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_int_unsigned_div(
+                            llvm_lhs.into_int_value(),
+                            llvm_rhs.into_int_value(),
+                            "uidiv",
+                        )
+                        .into())
+                }
+                (Op::Add, TypeData::Integer { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_int_add(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "iadd")
+                        .into())
+                }
+                (Op::Sub, TypeData::Integer { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_int_sub(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "isub")
+                        .into())
+                }
+                (Op::Mod, TypeData::Integer { signed: true, .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_int_signed_rem(
+                            llvm_lhs.into_int_value(),
+                            llvm_rhs.into_int_value(),
+                            "simod",
+                        )
+                        .into())
+                }
+                (Op::Mod, TypeData::Integer { signed: false, .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_int_unsigned_rem(
+                            llvm_lhs.into_int_value(),
+                            llvm_rhs.into_int_value(),
+                            "uimod",
+                        )
+                        .into())
+                }
 
-                (Op::Eq | Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq, TypeData::Integer {signed, ..}) =>  
-                    return Ok(self.builder.build_int_compare(match (op, signed) {
-                        (Op::Eq, _) => IntPredicate::EQ,
-                        (Op::Greater, true) => IntPredicate::SGT,
-                        (Op::Greater, false) => IntPredicate::UGT,
-                        (Op::GreaterEq, true) => IntPredicate::SGE,
-                        (Op::GreaterEq, false) => IntPredicate::UGE,
-                        (Op::Less, true) => IntPredicate::SLT,
-                        (Op::Less, false) => IntPredicate::ULT,
-                        (Op::LessEq, true) => IntPredicate::SLE,
-                        (Op::LessEq, false) => IntPredicate::ULE,
-                        _ => unreachable!()
-                    }, llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "icmp").into()),
+                (
+                    Op::Eq | Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq,
+                    TypeData::Integer { signed, .. },
+                ) => {
+                    return Ok(self
+                        .builder
+                        .build_int_compare(
+                            match (op, signed) {
+                                (Op::Eq, _) => IntPredicate::EQ,
+                                (Op::Greater, true) => IntPredicate::SGT,
+                                (Op::Greater, false) => IntPredicate::UGT,
+                                (Op::GreaterEq, true) => IntPredicate::SGE,
+                                (Op::GreaterEq, false) => IntPredicate::UGE,
+                                (Op::Less, true) => IntPredicate::SLT,
+                                (Op::Less, false) => IntPredicate::ULT,
+                                (Op::LessEq, true) => IntPredicate::SLE,
+                                (Op::LessEq, false) => IntPredicate::ULE,
+                                _ => unreachable!(),
+                            },
+                            llvm_lhs.into_int_value(),
+                            llvm_rhs.into_int_value(),
+                            "icmp",
+                        )
+                        .into())
+                }
 
-                (Op::Star, TypeData::Float {..}) =>
-                    return Ok(self.builder.build_float_mul(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fmul").into()),
-                (Op::Div, TypeData::Float {..}) =>
-                    return Ok(self.builder.build_float_div(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fdiv").into()),
-                (Op::Add, TypeData::Float {..}) => 
-                    return Ok(self.builder.build_float_add(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fadd").into()),
-                (Op::Sub, TypeData::Float {..}) =>
-                    return Ok(self.builder.build_float_sub(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fsub").into()),
-                (Op::Mod, TypeData::Float {..}) =>
-                    return Ok(self.builder.build_float_rem(llvm_lhs.into_float_value(), llvm_rhs.into_float_value(), "fmod").into()),
-                _ => ()            
+                (Op::Star, TypeData::Float { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_float_mul(
+                            llvm_lhs.into_float_value(),
+                            llvm_rhs.into_float_value(),
+                            "fmul",
+                        )
+                        .into())
+                }
+                (Op::Div, TypeData::Float { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_float_div(
+                            llvm_lhs.into_float_value(),
+                            llvm_rhs.into_float_value(),
+                            "fdiv",
+                        )
+                        .into())
+                }
+                (Op::Add, TypeData::Float { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_float_add(
+                            llvm_lhs.into_float_value(),
+                            llvm_rhs.into_float_value(),
+                            "fadd",
+                        )
+                        .into())
+                }
+                (Op::Sub, TypeData::Float { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_float_sub(
+                            llvm_lhs.into_float_value(),
+                            llvm_rhs.into_float_value(),
+                            "fsub",
+                        )
+                        .into())
+                }
+                (Op::Mod, TypeData::Float { .. }) => {
+                    return Ok(self
+                        .builder
+                        .build_float_rem(
+                            llvm_lhs.into_float_value(),
+                            llvm_rhs.into_float_value(),
+                            "fmod",
+                        )
+                        .into())
+                }
+                _ => (),
             }
         }
 
-        Ok(match (self.spark[lhs_ty].data.clone(), op, self.spark[rhs_ty].data.clone()) {
-            (TypeData::Integer {..}, Op::ShLeft, TypeData::Integer {..}) =>
-                self.builder.build_left_shift(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "ishl").into(),
-            (TypeData::Integer {signed, ..}, Op::ShRight, TypeData::Integer {..}) =>
-                self.builder.build_right_shift(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), signed, "ishr").into(),
+        Ok(
+            match (
+                self.spark[lhs_ty].data.clone(),
+                op,
+                self.spark[rhs_ty].data.clone(),
+            ) {
+                (TypeData::Integer { .. }, Op::ShLeft, TypeData::Integer { .. }) => self
+                    .builder
+                    .build_left_shift(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "ishl")
+                    .into(),
+                (TypeData::Integer { signed, .. }, Op::ShRight, TypeData::Integer { .. }) => self
+                    .builder
+                    .build_right_shift(
+                        llvm_lhs.into_int_value(),
+                        llvm_rhs.into_int_value(),
+                        signed,
+                        "ishr",
+                    )
+                    .into(),
 
-            _ => return Err(Diagnostic::error()
-                .with_message(format!("Binary operator {} cannot be applied to the given types", op))
-                .with_labels(vec![
-                    Label::primary(file, lhs.span)
+                _ => {
+                    return Err(Diagnostic::error()
                         .with_message(format!(
+                            "Binary operator {} cannot be applied to the given types",
+                            op
+                        ))
+                        .with_labels(vec![
+                            Label::primary(file, lhs.span).with_message(format!(
                                 "Left hand side is found to be of type {}",
                                 self.spark.get_type_name(lhs_ty)
-                            )
-                        ),
-                    Label::primary(file, rhs.span)
-                        .with_message(format!(
+                            )),
+                            Label::primary(file, rhs.span).with_message(format!(
                                 "Right hand side is found to be of type {}",
                                 self.spark.get_type_name(rhs_ty)
-                            )
-                        )
-                ])
-            )
-        })
+                            )),
+                        ]))
+                }
+            },
+        )
     }
 
     /// Generate an lvalue expression, returning a [PointerValue] to the lval
-    fn gen_lval(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+    fn gen_lval(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        ast: &Ast<TypeId>,
+    ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
             AstNode::Access(path) => return self.gen_access(file, module, ast.span, path),
             _ => {
@@ -369,41 +591,49 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         })
     }
-    
+
     /// Generate LLVM IR for a single symbol access
-    fn gen_access(&mut self, file: FileId, module: ModId, span: Span, path: &SymbolPath) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+    fn gen_access(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        span: Span,
+        path: &SymbolPath,
+    ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
         let def = self.find_in_scope(file, module, span, path)?;
         Ok(match def {
             ScopeDef::Def(SparkDef::FunDef(_, fun)) => {
                 let llvm_fun = self.llvm_funs[&fun];
                 llvm_fun.as_global_value().as_pointer_value()
-            },
+            }
             ScopeDef::Value(_, ptr) => ptr,
-            _ => return Err(Diagnostic::error()
-                .with_message(format!(
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
                         "Cannot use {} as an expression value",
                         match def {
-                            ScopeDef::Def(SparkDef::ModDef(submod)) => format!("module '{}'", self.spark[submod].name),
-                            ScopeDef::Def(SparkDef::TypeDef(_, ty)) => format!("type '{}'", self.spark.get_type_name(ty)),
+                            ScopeDef::Def(SparkDef::ModDef(submod)) =>
+                                format!("module '{}'", self.spark[submod].name),
+                            ScopeDef::Def(SparkDef::TypeDef(_, ty)) =>
+                                format!("type '{}'", self.spark.get_type_name(ty)),
                             ScopeDef::Value(..) => unreachable!(),
                             ScopeDef::Def(SparkDef::FunDef(..)) => unreachable!(),
                         }
-                    )
-                )
-                .with_labels(vec![Label::primary(file, span)])
-            )
+                    ))
+                    .with_labels(vec![Label::primary(file, span)]))
+            }
         })
-
     }
 
     fn gen_cast(
-        &mut self, 
-        file: FileId, 
-        module: ModId, 
-        to_ty: TypeId, 
-        rhs: &Ast<TypeId>
+        &mut self,
+        file: FileId,
+        module: ModId,
+        to_ty: TypeId,
+        rhs: &Ast<TypeId>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
-        let rhs_ty = self.ast_type(file, module, rhs)
+        let rhs_ty = self
+            .ast_type(file, module, rhs)
             .map_err(|d| d.with_notes(vec!["In cast expression".to_owned()]))?;
 
         let to = self.spark[to_ty].clone().data;
@@ -413,8 +643,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         Ok(match (from, to) {
             (
-                TypeData::Integer { width: from_width, signed: from_sign },
-                TypeData::Integer { signed: to_sign, width: to_width}
+                TypeData::Integer {
+                    width: from_width,
+                    signed: from_sign,
+                },
+                TypeData::Integer {
+                    signed: to_sign,
+                    width: to_width,
+                },
             ) => {
                 let llvm_to = self.llvm_int_ty(to_width);
 
@@ -422,66 +658,98 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     if from_width == to_width {
                         iv.into()
                     } else if from_width < to_width && !to_sign {
-                        self.builder.build_int_z_extend(iv, llvm_to, "zext_upcast").into()
+                        self.builder
+                            .build_int_z_extend(iv, llvm_to, "zext_upcast")
+                            .into()
                     } else if from_width < to_width && to_sign {
-                        self.builder.build_int_s_extend(iv, llvm_to, "sext_upcast").into()
+                        self.builder
+                            .build_int_s_extend(iv, llvm_to, "sext_upcast")
+                            .into()
                     } else {
-                        self.builder.build_int_truncate(iv, llvm_to, "itrunc_downcast").into()
+                        self.builder
+                            .build_int_truncate(iv, llvm_to, "itrunc_downcast")
+                            .into()
                     }
-                } else { unreachable!() }
-            },
+                } else {
+                    unreachable!()
+                }
+            }
             (TypeData::Integer { .. }, TypeData::Pointer(_)) => {
                 let llvm_to = self.llvm_ty(to_ty).into_pointer_type();
                 if let BasicValueEnum::IntValue(iv) = llvm_rhs {
-                    self.builder.build_int_to_ptr(iv, llvm_to, "int_to_ptr").into()
-                } else { unreachable!() }
-            },
-            (TypeData::Integer {signed, ..}, TypeData::Float { .. }) => {
+                    self.builder
+                        .build_int_to_ptr(iv, llvm_to, "int_to_ptr")
+                        .into()
+                } else {
+                    unreachable!()
+                }
+            }
+            (TypeData::Integer { signed, .. }, TypeData::Float { .. }) => {
                 let llvm_to = self.llvm_ty(to_ty).into_float_type();
                 if let BasicValueEnum::IntValue(iv) = llvm_rhs {
                     if signed {
-                        self.builder.build_signed_int_to_float(iv, llvm_to, "s_to_f").into()
+                        self.builder
+                            .build_signed_int_to_float(iv, llvm_to, "s_to_f")
+                            .into()
                     } else {
-                        self.builder.build_unsigned_int_to_float(iv, llvm_to, "u_to_f").into()
+                        self.builder
+                            .build_unsigned_int_to_float(iv, llvm_to, "u_to_f")
+                            .into()
                     }
-                } else { unreachable!() }
-            },
+                } else {
+                    unreachable!()
+                }
+            }
             (TypeData::Float { .. }, TypeData::Integer { signed, width }) => {
                 let llvm_to = self.llvm_int_ty(width);
                 if let BasicValueEnum::FloatValue(fv) = llvm_rhs {
                     if signed {
-                        self.builder.build_float_to_signed_int(fv, llvm_to, "f_to_s").into()
+                        self.builder
+                            .build_float_to_signed_int(fv, llvm_to, "f_to_s")
+                            .into()
                     } else {
-                        self.builder.build_float_to_unsigned_int(fv, llvm_to, "f_to_u").into()
+                        self.builder
+                            .build_float_to_unsigned_int(fv, llvm_to, "f_to_u")
+                            .into()
                     }
-                } else { unreachable!() }
-            },
+                } else {
+                    unreachable!()
+                }
+            }
             (TypeData::Pointer(..), TypeData::Pointer(..)) => {
                 let llvm_to = self.llvm_ty(to_ty).into_pointer_type();
                 if let BasicValueEnum::PointerValue(pv) = llvm_rhs {
-                    self.builder.build_pointer_cast(pv, llvm_to, "ptr_to_ptr").into()
-                } else { unreachable!() }
-            },
+                    self.builder
+                        .build_pointer_cast(pv, llvm_to, "ptr_to_ptr")
+                        .into()
+                } else {
+                    unreachable!()
+                }
+            }
             (TypeData::Pointer(..), TypeData::Integer { signed, width }) => {
                 let llvm_to = self.llvm_int_ty(width);
                 if let BasicValueEnum::PointerValue(pv) = llvm_rhs {
                     let int = self.builder.build_ptr_to_int(pv, llvm_to, "ptr_to_u");
                     if signed {
-                        self.builder.build_int_s_extend_or_bit_cast(int, llvm_to, "ptr_to_u_to_i").into()
+                        self.builder
+                            .build_int_s_extend_or_bit_cast(int, llvm_to, "ptr_to_u_to_i")
+                            .into()
                     } else {
                         int.into()
                     }
-                } else { unreachable!() }
-            },
-            _ => return Err(Diagnostic::error()
-                .with_message(format!(
+                } else {
+                    unreachable!()
+                }
+            }
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
                         "Cannot cast value of type {} to {}",
                         self.spark.get_type_name(rhs_ty),
                         self.spark.get_type_name(to_ty)
-                    )
-                )
-                .with_labels(vec![Label::primary(file, rhs.span)])
-            )
+                    ))
+                    .with_labels(vec![Label::primary(file, rhs.span)]))
+            }
         })
     }
 
@@ -496,7 +764,12 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Get the type of an AST expression
-    fn ast_type(&mut self, file: FileId, module: ModId, ast: &Ast<TypeId>) -> Result<TypeId, Diagnostic<FileId>> {
+    fn ast_type(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        ast: &Ast<TypeId>,
+    ) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match &ast.node {
             AstNode::UnitLiteral => SparkCtx::UNIT,
             AstNode::NumberLiteral(num) => match num.annotation() {
@@ -522,7 +795,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .map(|part| self.ast_type(file, module, part))
                     .collect::<Result<Vec<_>, _>>()?;
                 self.spark.new_type(TypeData::Tuple(part_types))
-            },
+            }
             AstNode::ArrayLiteral(parts) => {
                 let first_type = self.ast_type(file, module, parts.first().ok_or_else(||
                     Diagnostic::error()
@@ -531,9 +804,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 )?)?;
                 self.spark.new_type(TypeData::Array {
                     element: first_type,
-                    len: parts.len() as u64
+                    len: parts.len() as u64,
                 })
-            },
+            }
             AstNode::CastExpr(ty, ..) => *ty,
             AstNode::FunCall(called, ..) => {
                 let called_ty = self.ast_type(file, module, called)?;
@@ -541,26 +814,31 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     f_ty.return_ty
                 } else {
                     return Err(Diagnostic::error()
-                        .with_message(format!("Attempting to call a value of type '{}' as a function", self.spark.get_type_name(called_ty)))
-                        .with_labels(vec![
-                            Label::primary(file, called.span)
-                                .with_message(format!("Called value of type '{}' here", self.spark.get_type_name(called_ty))),
-                        ])
-                    )
+                        .with_message(format!(
+                            "Attempting to call a value of type '{}' as a function",
+                            self.spark.get_type_name(called_ty)
+                        ))
+                        .with_labels(vec![Label::primary(file, called.span).with_message(
+                            format!(
+                                "Called value of type '{}' here",
+                                self.spark.get_type_name(called_ty)
+                            ),
+                        )]));
                 }
-            },
+            }
             AstNode::Access(path) => {
                 let def = self.find_in_scope(file, module, ast.span, path)?;
 
                 match def {
                     ScopeDef::Def(SparkDef::FunDef(_, f)) => self.spark[f].ty.return_ty,
                     ScopeDef::Value(ty, _) => ty,
-                    _ => return Err(Diagnostic::error()
-                        .with_message("Cannot infer type of definition")
-                        .with_labels(vec![Label::primary(file, ast.span)])
-                    )
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message("Cannot infer type of definition")
+                            .with_labels(vec![Label::primary(file, ast.span)]))
+                    }
                 }
-            },
+            }
             AstNode::MemberAccess(lhs, name) => {
                 let lhs_ty = self.ast_type(file, module, lhs)?;
                 if let TypeData::Struct { fields } = &self.spark[lhs_ty].data {
@@ -584,18 +862,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     return Err(Diagnostic::error()
                         .with_message(format!(
-                                "Attempting to access field {} of non-struct type '{}'",
-                                name,
-                                self.spark.get_type_name(lhs_ty)
-                            )
-                        )
-                        .with_labels(vec![
-                            Label::primary(file, lhs.span)
-                                .with_message(format!("this expression is found to be of type '{}'", self.spark.get_type_name(lhs_ty)))
-                        ])
-                    )
+                            "Attempting to access field {} of non-struct type '{}'",
+                            name,
+                            self.spark.get_type_name(lhs_ty)
+                        ))
+                        .with_labels(vec![Label::primary(file, lhs.span).with_message(format!(
+                            "this expression is found to be of type '{}'",
+                            self.spark.get_type_name(lhs_ty)
+                        ))]));
                 }
-            },
+            }
             AstNode::Index { object, index } => {
                 let object_ty = self.ast_type(file, module, object)?;
                 if let TypeData::Array { element, len: _ } = self.spark[object_ty].data {
@@ -603,103 +879,109 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     return Err(Diagnostic::error()
                         .with_message(format!(
-                                "Attempting to index into a value of type '{}'",
+                            "Attempting to index into a value of type '{}'",
+                            self.spark.get_type_name(object_ty)
+                        ))
+                        .with_labels(vec![Label::primary(file, object.span).with_message(
+                            format!(
+                                "This expression is found to be of type '{}'",
                                 self.spark.get_type_name(object_ty)
-                            )
-                        )
-                        .with_labels(vec![
-                            Label::primary(file, object.span)
-                                .with_message(format!("This expression is found to be of type '{}'", self.spark.get_type_name(object_ty)))
-                        ])
-                    )
+                            ),
+                        )]));
                 }
-            },
-            AstNode::BinExpr(_,
-                Op::Greater | Op::GreaterEq |
-                Op::Less | Op::LessEq |
-                Op::Eq,
-            _) => SparkCtx::BOOL,
+            }
+            AstNode::BinExpr(
+                _,
+                Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq | Op::Eq,
+                _,
+            ) => SparkCtx::BOOL,
             AstNode::BinExpr(lhs, ..) => self.ast_type(file, module, lhs)?,
             AstNode::UnaryExpr(op, rhs) => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
                 match op {
-                    Op::Star => if let TypeData::Pointer(pointee) = self.spark[rhs_ty].data {
-                        pointee
-                    } else {
-                        return Err(Diagnostic::error()
-                            .with_message("Attempting to dereference expression of non-pointer type")
-                            .with_labels(vec![
-                                Label::primary(file, ast.span)
-                                    .with_message(format!("This expression is found to be of type '{}'", self.spark.get_type_name(rhs_ty)))
-                            ])
-                        )
-                    },
+                    Op::Star => {
+                        if let TypeData::Pointer(pointee) = self.spark[rhs_ty].data {
+                            pointee
+                        } else {
+                            return Err(Diagnostic::error()
+                                .with_message(
+                                    "Attempting to dereference expression of non-pointer type",
+                                )
+                                .with_labels(vec![Label::primary(file, ast.span).with_message(
+                                    format!(
+                                        "This expression is found to be of type '{}'",
+                                        self.spark.get_type_name(rhs_ty)
+                                    ),
+                                )]));
+                        }
+                    }
                     Op::AND => self.spark.new_type(TypeData::Pointer(rhs_ty)),
-                    _ => return Err(Diagnostic::error()
-                        .with_message(format!("Unsupported unary operator '{}' used", op))
-                        .with_labels(vec![Label::primary(file, ast.span)])
-                    ),
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message(format!("Unsupported unary operator '{}' used", op))
+                            .with_labels(vec![Label::primary(file, ast.span)]))
+                    }
                 }
-            },
+            }
             AstNode::IfExpr(if_expr) => {
-                let phi_node = Self::phi_node(file, &if_expr.body)
-                    .map_err(|e| e.with_labels(vec![
-                        Label::secondary(file, ast.span)
-                            .with_message("In if body here")
+                let phi_node = Self::phi_node(file, &if_expr.body).map_err(|e| {
+                    e.with_labels(vec![
+                        Label::secondary(file, ast.span).with_message("In if body here")
                     ])
-                )?;
+                })?;
                 let phi_ty = self.ast_type(file, module, phi_node)?;
                 phi_ty
-            },
+            }
 
             AstNode::VarDeclaration { ty: Some(ty), .. } => *ty,
-            AstNode::Return(..) |
-                AstNode::Break |
-                AstNode::Continue |
-                AstNode::VarDeclaration { .. } |
-                AstNode::Assignment { .. } | 
-                AstNode::PhiExpr(..) => {
-                    return Err(Diagnostic::error()
-                        .with_message("Cannot find type of statement")
-                        .with_labels(vec![
-                            Label::primary(file, ast.span)
-                        ])
-                    )
-                }
+            AstNode::Return(..)
+            | AstNode::Break
+            | AstNode::Continue
+            | AstNode::VarDeclaration { .. }
+            | AstNode::Assignment { .. }
+            | AstNode::PhiExpr(..) => {
+                return Err(Diagnostic::error()
+                    .with_message("Cannot find type of statement")
+                    .with_labels(vec![Label::primary(file, ast.span)]))
+            }
             AstNode::Loop(body) | AstNode::Block(body) => {
-                let phi_node = Self::phi_node(file, &body).map_err(|e| e.with_labels(vec![
-                        Label::secondary(file, ast.span)
-                            .with_message("In loop body here")
+                let phi_node = Self::phi_node(file, &body).map_err(|e| {
+                    e.with_labels(vec![
+                        Label::secondary(file, ast.span).with_message("In loop body here")
                     ])
-                )?;
+                })?;
                 self.ast_type(file, module, phi_node)?
-            },
+            }
             AstNode::Match { matched: _, cases } => {
-                let case_1 = cases.first().ok_or_else(|| Diagnostic::error()
-                    .with_message("Failed to infer type of match expression")
-                    .with_labels(vec![Label::primary(file, ast.span)])
-                )?;
+                let case_1 = cases.first().ok_or_else(|| {
+                    Diagnostic::error()
+                        .with_message("Failed to infer type of match expression")
+                        .with_labels(vec![Label::primary(file, ast.span)])
+                })?;
                 self.ast_type(file, module, &case_1.1)?
-            },
+            }
         })
     }
-    
+
     /// Get the phi node from a block of AST nodes
     fn phi_node(file: FileId, body: &[Ast<TypeId>]) -> Result<&Ast<TypeId>, Diagnostic<FileId>> {
-        body
-            .iter()
-            .find_map(|stmt| if let AstNode::PhiExpr(_) = &stmt.node {
+        body.iter()
+            .find_map(|stmt| {
+                if let AstNode::PhiExpr(_) = &stmt.node {
                     Some(stmt)
-                } else { None }
-            )
-            .ok_or_else(|| Diagnostic::error()
-                .with_message("Failed to locate phi node in block of statements")
-                .with_labels(if let Some(first) = body.first() {
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| {
+                Diagnostic::error()
+                    .with_message("Failed to locate phi node in block of statements")
+                    .with_labels(if let Some(first) = body.first() {
                         vec![Label::primary(file, first.span)
-                            .with_message("First expression of block here")
-                        ]
-                    } else { vec![] }
-                )
-            )
+                            .with_message("First expression of block here")]
+                    } else {
+                        vec![]
+                    })
+            })
     }
-} 
+}

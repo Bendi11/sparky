@@ -3,9 +3,10 @@ use std::ops;
 use quickscope::ScopeMap;
 
 use crate::{
+    arena::{Arena, Index, Interner},
+    ast::{Ast, IntegerWidth, PathIter, SymbolPath},
+    util::files::FileId,
     Symbol,
-    arena::{Index, Interner, Arena},
-    ast::{Ast, IntegerWidth, PathIter, SymbolPath}, util::files::FileId,
 };
 
 pub type TypeId = Index<Type>;
@@ -13,7 +14,7 @@ pub type FunId = Index<Function>;
 pub type ModId = Index<SparkModule>;
 pub type DefId = Index<SparkDef>;
 
-/// Structure containing arenas holding all function definitions, 
+/// Structure containing arenas holding all function definitions,
 /// types, etc.
 #[derive(Clone, Debug)]
 pub struct SparkCtx {
@@ -23,7 +24,6 @@ pub struct SparkCtx {
 }
 
 impl SparkCtx {
-    
     /// Create a new module with the given name and return an ID for the created
     /// module
     pub fn new_module(&mut self, name: Symbol) -> ModId {
@@ -33,30 +33,28 @@ impl SparkCtx {
             defs: ScopeMap::new(),
         })
     }
-    
+
     /// Create a type using the given type data and return the ID of the created
     /// type
     pub fn new_type(&mut self, data: TypeData) -> TypeId {
-        self.types.insert_with(|id| {
-            Type {
-                id,
-                data,
-            }
-        })
+        self.types.insert_with(|id| Type { id, data })
     }
-    
+
     /// Create a new invalid type with a unique type ID for forward references
     pub fn new_empty_type(&mut self) -> TypeId {
-        self.types.insert_with_nointern(|id| {
-            Type {
-                id,
-                data: TypeData::Invalid,
-            }
+        self.types.insert_with_nointern(|id| Type {
+            id,
+            data: TypeData::Invalid,
         })
     }
-    
+
     /// Create a new function and return the ID of the created function
-    pub fn new_fun(&mut self, name: Symbol, ty: FunctionType, arg_names: Vec<Option<Symbol>>) -> FunId {
+    pub fn new_fun(
+        &mut self,
+        name: Symbol,
+        ty: FunctionType,
+        arg_names: Vec<Option<Symbol>>,
+    ) -> FunId {
         self.funs.insert_with(|id| Function {
             id,
             name,
@@ -65,7 +63,7 @@ impl SparkCtx {
             body: None,
         })
     }
-    
+
     /// Get the name of a definition
     pub fn get_def_name(&self, def: SparkDef) -> Symbol {
         match def {
@@ -74,7 +72,7 @@ impl SparkCtx {
             SparkDef::ModDef(module) => self.modules[module].name,
         }
     }
-    
+
     /// Get the name of a type
     pub fn get_type_name(&self, type_id: TypeId) -> Symbol {
         match &self[type_id].data {
@@ -101,51 +99,45 @@ impl SparkCtx {
             TypeData::Unit => Symbol::from("()"),
             TypeData::Bool => Symbol::from("bool"),
             TypeData::Enum { parts } => Symbol::from(&format!(
-                    "( {} )",
-                    parts.iter()
-                        .map(|ty| self.get_type_name(*ty).to_string())
-                        .collect::<Vec<_>>()
-                        .join(" | ")
-                )
-            ),
+                "( {} )",
+                parts
+                    .iter()
+                    .map(|ty| self.get_type_name(*ty).to_string())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            )),
             TypeData::Struct { fields } => Symbol::from(&format!(
-                    "{{ {} }}",
-                    fields
-                        .iter()
-                        .map(|(field, name)| format!("{} {}", self.get_type_name(*field), name))
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                )
-            ),
+                "{{ {} }}",
+                fields
+                    .iter()
+                    .map(|(field, name)| format!("{} {}", self.get_type_name(*field), name))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )),
             TypeData::Tuple(parts) => Symbol::from(&format!(
-                    "( {} )",
-                    parts
-                        .iter()
-                        .map(|part| self.get_type_name(*part).to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            ),
-            TypeData::Array { element, len } => Symbol::from(&format!(
-                    "[{}]{}",
-                    len,
-                    self.get_type_name(*element)
-                )
-            ),
+                "( {} )",
+                parts
+                    .iter()
+                    .map(|part| self.get_type_name(*part).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+            TypeData::Array { element, len } => {
+                Symbol::from(&format!("[{}]{}", len, self.get_type_name(*element)))
+            }
             TypeData::Function(f_ty) => Symbol::from(&format!(
-                    "fun({})->{}",
-                    f_ty.args
-                        .iter()
-                        .map(|ty| self.get_type_name(*ty).to_string())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    self.get_type_name(f_ty.return_ty),
-                )
-            ),
+                "fun({})->{}",
+                f_ty.args
+                    .iter()
+                    .map(|ty| self.get_type_name(*ty).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.get_type_name(f_ty.return_ty),
+            )),
             TypeData::Invalid => unreachable!(),
         }
     }
-    
+
     /// Get a definition by path from the given module, returns the symbol that is unresolved if
     /// error occurs
     pub fn get_def(&self, module: ModId, path: &SymbolPath) -> Result<SparkDef, Symbol> {
@@ -174,22 +166,21 @@ impl SparkCtx {
             } else {
                 Err(name)
             }
-            
         }
     }
 
-    pub const I8:  TypeId = unsafe { TypeId::from_raw(0) };
+    pub const I8: TypeId = unsafe { TypeId::from_raw(0) };
     pub const I16: TypeId = unsafe { TypeId::from_raw(1) };
     pub const I32: TypeId = unsafe { TypeId::from_raw(2) };
     pub const I64: TypeId = unsafe { TypeId::from_raw(3) };
 
-    pub const U8:  TypeId = unsafe { TypeId::from_raw(4) };
+    pub const U8: TypeId = unsafe { TypeId::from_raw(4) };
     pub const U16: TypeId = unsafe { TypeId::from_raw(5) };
     pub const U32: TypeId = unsafe { TypeId::from_raw(6) };
     pub const U64: TypeId = unsafe { TypeId::from_raw(7) };
 
-    pub const F32:  TypeId = unsafe { TypeId::from_raw(8) };
-    pub const F64:  TypeId = unsafe { TypeId::from_raw(9) };
+    pub const F32: TypeId = unsafe { TypeId::from_raw(8) };
+    pub const F64: TypeId = unsafe { TypeId::from_raw(9) };
     pub const BOOL: TypeId = unsafe { TypeId::from_raw(10) };
     pub const UNIT: TypeId = unsafe { TypeId::from_raw(11) };
 
@@ -197,20 +188,80 @@ impl SparkCtx {
         let mut types = Interner::new();
         let mut modules = Arena::new();
 
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: true}});
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Sixteen, signed: true}});
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::ThirtyTwo, signed: true}});
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::SixtyFour, signed: true}});
- 
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Eight, signed: false}});
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::Sixteen, signed: false}});
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::ThirtyTwo, signed: false}});
-        types.insert_with(|id| Type { id, data: TypeData::Integer { width: IntegerWidth::SixtyFour, signed: false}});
- 
-        types.insert_with(|id| Type { id, data: TypeData::Float { doublewide: false }});
-        types.insert_with(|id| Type { id, data: TypeData::Float { doublewide: true }});
-        types.insert_with(|id| Type { id, data: TypeData::Bool });
-        types.insert_with(|id| Type { id, data: TypeData::Unit });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::Eight,
+                signed: true,
+            },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::Sixteen,
+                signed: true,
+            },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::ThirtyTwo,
+                signed: true,
+            },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::SixtyFour,
+                signed: true,
+            },
+        });
+
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::Eight,
+                signed: false,
+            },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::Sixteen,
+                signed: false,
+            },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::ThirtyTwo,
+                signed: false,
+            },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Integer {
+                width: IntegerWidth::SixtyFour,
+                signed: false,
+            },
+        });
+
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Float { doublewide: false },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Float { doublewide: true },
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Bool,
+        });
+        types.insert_with(|id| Type {
+            id,
+            data: TypeData::Unit,
+        });
 
         Self {
             types,
@@ -275,9 +326,8 @@ pub struct FunctionType {
     pub args: Vec<TypeId>,
 }
 
-
 /// Structure holding all definitions contained in a single module
-#[derive(Clone,)]
+#[derive(Clone)]
 pub struct SparkModule {
     pub id: ModId,
     pub name: Symbol,
@@ -296,7 +346,7 @@ impl std::fmt::Debug for SparkModule {
     }
 }
 
-/// A single definition in the 
+/// A single definition in the
 #[derive(Clone, Copy, Debug)]
 pub enum SparkDef {
     TypeDef(FileId, TypeId),

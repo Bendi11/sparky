@@ -1,4 +1,4 @@
-use std::{io::Write, fmt};
+use std::{fmt, io::Write};
 
 use crate::util::{files::CompiledFile, loc::Span};
 
@@ -20,7 +20,6 @@ impl<'src> Token<'src> {
             data,
         }
     }
-
 }
 
 /// All possible tokens lexed from a source string
@@ -61,23 +60,31 @@ impl fmt::Display for TokenData<'_> {
             Self::Number(num) => write!(f, "number: {}", num),
             Self::String(literal) => write!(f, "string literal: \"{}\"", literal),
             Self::Char(character) => write!(f, "character literal: '{}'", character),
-            Self::OpenBracket(ty) => write!(f, "'{}'", match ty {
-                BracketType::Smooth => '(',
-                BracketType::Curly => '{',
-                BracketType::Square => '['
-            }),
-            Self::CloseBracket(ty) => write!(f, "'{}'", match ty {
-                BracketType::Smooth => ')',
-                BracketType::Curly => '}',
-                BracketType::Square => ']'
-            }),
+            Self::OpenBracket(ty) => write!(
+                f,
+                "'{}'",
+                match ty {
+                    BracketType::Smooth => '(',
+                    BracketType::Curly => '{',
+                    BracketType::Square => '[',
+                }
+            ),
+            Self::CloseBracket(ty) => write!(
+                f,
+                "'{}'",
+                match ty {
+                    BracketType::Smooth => ')',
+                    BracketType::Curly => '}',
+                    BracketType::Square => ']',
+                }
+            ),
             Self::Comma => write!(f, "','"),
             Self::Period => write!(f, "'.'"),
             Self::Arrow => write!(f, "->"),
             Self::Op(op) => write!(f, "'{}'", op),
             Self::Colon => write!(f, "':'"),
             Self::Dollar => write!(f, "'$'"),
-            Self::Assign => write!(f, "':='")
+            Self::Assign => write!(f, "':='"),
         }
     }
 }
@@ -120,21 +127,21 @@ impl fmt::Display for Op {
             Self::Mod => write!(f, "%"),
 
             Self::AND => write!(f, "&"),
-            Self::OR  => write!(f, "|"),
+            Self::OR => write!(f, "|"),
             Self::XOR => write!(f, "^"),
             Self::NOT => write!(f, "~"),
 
             Self::LogicalAnd => write!(f, "&&"),
-            Self::LogicalOr  => write!(f, "||"),
+            Self::LogicalOr => write!(f, "||"),
             Self::LogicalNot => write!(f, "!"),
 
-            Self::Greater   => write!(f, ">"),
+            Self::Greater => write!(f, ">"),
             Self::GreaterEq => write!(f, ">="),
-            Self::Less      => write!(f, "<"),
-            Self::LessEq    => write!(f, "<="),
-            Self::Eq        => write!(f, "="),
+            Self::Less => write!(f, "<"),
+            Self::LessEq => write!(f, "<="),
+            Self::Eq => write!(f, "="),
 
-            Self::ShLeft  => write!(f, "<<"),
+            Self::ShLeft => write!(f, "<<"),
             Self::ShRight => write!(f, ">>"),
         }
     }

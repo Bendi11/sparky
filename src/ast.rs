@@ -2,14 +2,17 @@
 
 use std::fmt;
 
-use std::{collections::HashMap, io::Write, hash::Hash, cmp::Eq};
+use std::{cmp::Eq, collections::HashMap, hash::Hash, io::Write};
 
 use bitflags::bitflags;
 use num_bigint::BigInt;
 
 use crate::Symbol;
 
-use crate::{util::{loc::Span, files::FileId}, parse::token::Op};
+use crate::{
+    parse::token::Op,
+    util::{files::FileId, loc::Span},
+};
 
 bitflags! {
     /// Structure holding flags of a function's prototype
@@ -19,17 +22,17 @@ bitflags! {
 }
 
 /// Structure containing a list of symbols separated by the colon
-/// character, for example std:io:open 
+/// character, for example std:io:open
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SymbolPath {
-    internal: SymbolPathInternal 
+    internal: SymbolPathInternal,
 }
 
 /// Enumeration allowing both a heap-allocated list of parts for a path
-/// or a single stack-allocated [Symbol] for optimization, avoiding a 
+/// or a single stack-allocated [Symbol] for optimization, avoiding a
 /// heap allocation for every identifier
 ///
-/// Kept private becase the [Multiple](UnresolvedPathInternal::Multiple) variant 
+/// Kept private becase the [Multiple](UnresolvedPathInternal::Multiple) variant
 /// must always have at least one symbol and allowing public access risks allowing
 /// that invariant
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -47,7 +50,7 @@ pub enum PathIter<'a> {
     /// A single element path
     Single(std::iter::Once<Symbol>),
     /// Multiple path parts to iterate over
-    Multiple(std::slice::Iter<'a, Symbol>)
+    Multiple(std::slice::Iter<'a, Symbol>),
 }
 
 impl PathIter<'_> {
@@ -64,10 +67,9 @@ impl PathIter<'_> {
 impl Iterator for PathIter<'_> {
     type Item = Symbol;
     fn next(&mut self) -> Option<Self::Item> {
-
         match self {
             Self::Single(once) => once.next(),
-            Self::Multiple(parts) => parts.next().map(|x| *x)
+            Self::Multiple(parts) => parts.next().map(|x| *x),
         }
     }
 }
@@ -84,21 +86,27 @@ impl ExactSizeIterator for PathIter<'_> {
 impl SymbolPath {
     /// Create a new path with only one identifier
     pub fn new(part: Symbol) -> Self {
-        Self { internal: SymbolPathInternal::Single(part) }
+        Self {
+            internal: SymbolPathInternal::Single(part),
+        }
     }
-    
+
     /// Create a new path from a list of parts
     ///
     /// **Note**
     /// The `parts` argument must contain at least one Symbol
     pub fn new_parts(parts: &[Symbol]) -> Self {
         if parts.len() == 1 {
-            Self { internal: SymbolPathInternal::Single(parts[0]) }
+            Self {
+                internal: SymbolPathInternal::Single(parts[0]),
+            }
         } else {
-            Self { internal: SymbolPathInternal::Multiple(parts.to_owned()) }
+            Self {
+                internal: SymbolPathInternal::Multiple(parts.to_owned()),
+            }
         }
     }
-    
+
     /// Get the length of this path
     pub fn len(&self) -> usize {
         match self.internal {
@@ -111,30 +119,29 @@ impl SymbolPath {
     pub fn last(&self) -> Symbol {
         match self.internal {
             SymbolPathInternal::Single(last) => last,
-            SymbolPathInternal::Multiple(ref parts) => *parts.last().unwrap()
+            SymbolPathInternal::Multiple(ref parts) => *parts.last().unwrap(),
         }
     }
-    
+
     /// Return the first part of this path
     pub fn first(&self) -> Symbol {
         match self.internal {
             SymbolPathInternal::Single(first) => first,
-            SymbolPathInternal::Multiple(ref parts) => *parts.first().unwrap()
+            SymbolPathInternal::Multiple(ref parts) => *parts.first().unwrap(),
         }
     }
-    
+
     /// Return an iterator over all parts of this path from first to last
     pub fn iter(&self) -> PathIter<'_> {
         match &self.internal {
             SymbolPathInternal::Single(single) => PathIter::Single(std::iter::once(*single)),
-            SymbolPathInternal::Multiple(parts) => PathIter::Multiple(parts.into_iter())
+            SymbolPathInternal::Multiple(parts) => PathIter::Multiple(parts.into_iter()),
         }
     }
 }
 
 impl fmt::Display for SymbolPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         match &self.internal {
             SymbolPathInternal::Single(sym) => sym.fmt(f),
             SymbolPathInternal::Multiple(parts) => {
@@ -145,7 +152,9 @@ impl fmt::Display for SymbolPath {
                         if !(iter.len() == 0) {
                             write!(f, ":")?;
                         }
-                    } else { break }
+                    } else {
+                        break;
+                    }
                 }
                 Ok(())
             }
@@ -166,11 +175,12 @@ pub struct FunProto<T: Clone + Hash + Eq> {
     pub return_ty: T,
 }
 
-
 /// A node in an Abstract Syntax Tree
-#[derive(Clone, PartialEq, Eq,)]
-pub enum AstNode<T = UnresolvedType> 
-where T: Clone + Hash + Eq {
+#[derive(Clone, PartialEq, Eq)]
+pub enum AstNode<T = UnresolvedType>
+where
+    T: Clone + Hash + Eq,
+{
     /// A variable / enum / constant / function access by name
     Access(SymbolPath),
     /// Member item access with the '.' operator
@@ -235,22 +245,22 @@ where T: Clone + Hash + Eq {
         matched: Box<Ast<T>>,
         //The possible cases being tested for
         cases: Vec<(Ast<T>, Ast<T>)>,
-    }
+    },
 }
 
-impl<T: Clone + Hash + Eq> AstNode<T> {   
+impl<T: Clone + Hash + Eq> AstNode<T> {
     /// Return true if the body has a phi node
     fn has_phi(body: &[Ast<T>]) -> bool {
         for node in body {
             if let Self::PhiExpr(_) = node.node {
-                return true
+                return true;
             }
         }
         false
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq,)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IfExpr<T: Clone + Hash + Eq> {
     /// Conditional expression
     pub cond: Box<Ast<T>>,
@@ -261,18 +271,19 @@ pub struct IfExpr<T: Clone + Hash + Eq> {
 }
 
 /// Enum representing what can come after an if expression's body
-#[derive(Clone, Debug, PartialEq, Eq,)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ElseExpr<T: Clone + Hash + Eq> {
     ElseIf(Box<IfExpr<T>>),
-    Else(Vec<Ast<T>>)
+    Else(Vec<Ast<T>>),
 }
-
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ast<T = UnresolvedType>
-where T: Clone + Hash + Eq {
+where
+    T: Clone + Hash + Eq,
+{
     /// The AST node's data
     pub node: AstNode<T>,
     /// The span of the source string that this AST node occupies
@@ -291,14 +302,14 @@ pub enum DefData {
         /// The alias that `aliased` can be accessed by
         name: Symbol,
         /// The aliased type
-        aliased: UnresolvedType
+        aliased: UnresolvedType,
     },
     /// A structure type definition
     StructDef {
         /// The name of the structure type
         name: Symbol,
         /// A map of all fields in the type
-        fields: HashMap<Symbol, UnresolvedType>
+        fields: HashMap<Symbol, UnresolvedType>,
     },
     /// An enumeration definition
     EnumDef {
@@ -308,22 +319,17 @@ pub enum DefData {
         variants: Vec<UnresolvedType>,
     },
     /// An imported module definition
-    ImportDef {
-        name: SymbolPath
-    }
+    ImportDef { name: SymbolPath },
 }
 impl DefData {
     /// Get the name of this definition
     pub fn name(&self) -> Symbol {
         match self {
             Self::FunDef(proto, _) | Self::FunDec(proto) => proto.name,
-    Self::StructDef {
-                name,
-                ..
-            } => *name,
-            Self::EnumDef{name, ..} => *name,
-            Self::AliasDef{name, ..} => *name,
-            Self::ImportDef{name} => name.last(),
+            Self::StructDef { name, .. } => *name,
+            Self::EnumDef { name, .. } => *name,
+            Self::AliasDef { name, .. } => *name,
+            Self::ImportDef { name } => name.last(),
         }
     }
 }
@@ -337,7 +343,7 @@ pub struct Def {
     pub file: FileId,
 }
 
-/// Structure representing a fully parsed module with easy access 
+/// Structure representing a fully parsed module with easy access
 /// to all defined types and functions
 #[derive(Clone, Debug)]
 pub struct ParsedModule {
@@ -371,14 +377,13 @@ pub enum NumberLiteral {
     Float(f64, Option<NumberLiteralAnnotation>),
 }
 
-impl std::cmp::Eq for NumberLiteral { 
-}
+impl std::cmp::Eq for NumberLiteral {}
 
 impl NumberLiteral {
     /// Get user-defined annotated type of this number literal
     pub fn annotation(&self) -> Option<NumberLiteralAnnotation> {
         match self {
-            Self::Integer(_, annotation) | Self::Float(_, annotation) => *annotation
+            Self::Integer(_, annotation) | Self::Float(_, annotation) => *annotation,
         }
     }
 }
@@ -428,7 +433,7 @@ pub enum UnresolvedType {
     Pointer(Box<UnresolvedType>),
     Array {
         elements: Box<UnresolvedType>,
-        len: u64
+        len: u64,
     },
     /// Unit type with only one value, like void in C or () in rust
     Unit,
@@ -457,12 +462,10 @@ pub enum IntegerWidth {
 impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
     fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Match {matched, cases} => {
+            Self::Match { matched, cases } => {
                 write!(w, "MATCH {:?}", matched.node)?;
                 writeln!(w, " {{")?;
-                for (literal, case_expr) in cases.iter() {
-
-                }
+                for (literal, case_expr) in cases.iter() {}
                 write!(w, "}}")
             }
             Self::Block(stmts) => {
@@ -471,7 +474,7 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                     writeln!(w, "{:?}", stmt.node)?;
                 }
                 write!(w, "}}")
-            },
+            }
             Self::ArrayLiteral(parts) => {
                 write!(w, "ARRAY [ ")?;
                 for part in parts.iter() {
@@ -496,35 +499,39 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                     write!(w, "{:?}, ", element.node)?;
                 }
                 write!(w, " )")
-            },
+            }
             Self::UnitLiteral => write!(w, "UNIT LITERAL ()"),
             Self::Return(expr) => {
                 write!(w, "RETURN {:?}", expr.node)
-            },
+            }
             Self::PhiExpr(expr) => {
                 write!(w, "PHI {:?}", expr.node)
-            },
+            }
             Self::CastExpr(cast, casted) => {
                 write!(w, "CAST ${:?} {:?}", cast, casted.node)
-            },
+            }
             Self::BooleanLiteral(boolean) => write!(w, "BOOL {}", boolean),
-            Self::Assignment{lhs, rhs} => {
+            Self::Assignment { lhs, rhs } => {
                 write!(w, "ASSIGN {:?}", lhs.node)?;
                 write!(w, " = {:?}", rhs.node)
-            },
+            }
             Self::UnaryExpr(op, expr) => {
                 write!(w, "UNARY {} {:?}", op, expr.node)
-            },
-            Self::VarDeclaration {
-                name, ty, mutable
-            } => write!(w, "VARDEC {} ({:?}) {}", if *mutable { "mut" } else { "let" }, ty, name),
+            }
+            Self::VarDeclaration { name, ty, mutable } => write!(
+                w,
+                "VARDEC {} ({:?}) {}",
+                if *mutable { "mut" } else { "let" },
+                ty,
+                name
+            ),
             Self::Access(path) => {
                 write!(w, "ACCESSS ")?;
                 for part in path.iter() {
                     write!(w, "{}:", part)?;
                 }
                 Ok(())
-            },
+            }
             Self::FunCall(called, args) => {
                 write!(w, "FUNCALL {:?}", called.node)?;
 
@@ -533,26 +540,29 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                     write!(w, "{:?}, ", arg.node)?;
                 }
                 write!(w, " )")
-            },
+            }
             Self::MemberAccess(lhs, index) => {
                 write!(w, "MEMBERACCESS {:?}", lhs.node)?;
                 write!(w, ".")?;
                 write!(w, "{}", index)
-            },
+            }
             Self::BinExpr(lhs, op, rhs) => {
                 write!(w, "BIN {:?}", lhs.node)?;
                 write!(w, " {} ", op)?;
                 write!(w, "{:?}", rhs.node)
-            },
+            }
             Self::IfExpr(ifexpr) => {
-                fn display_if<T: Clone + Eq + Hash + std::fmt::Debug>(ifexpr: &IfExpr<T>, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                fn display_if<T: Clone + Eq + Hash + std::fmt::Debug>(
+                    ifexpr: &IfExpr<T>,
+                    w: &mut std::fmt::Formatter<'_>,
+                ) -> std::fmt::Result {
                     write!(w, "IF {:?}", ifexpr.cond.node)?;
                     writeln!(w, " {{")?;
                     for expr in ifexpr.body.iter() {
                         writeln!(w, "{:?}", expr.node)?;
                     }
                     write!(w, "}}")?;
-                    
+
                     if let Some(ref else_expr) = ifexpr.else_expr {
                         match else_expr {
                             ElseExpr::ElseIf(another_if) => display_if(&*another_if, w),
@@ -568,8 +578,8 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                 }
 
                 display_if(ifexpr, w)
-            },
-            Self::Index{object, index} => {
+            }
+            Self::Index { object, index } => {
                 write!(w, "INDEX {:?}", object.node)?;
                 write!(w, " [ ")?;
                 write!(w, "{:?}", index.node)?;

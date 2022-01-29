@@ -3,27 +3,37 @@ use std::{io::Write, path::Path};
 use clap::{App, Arg};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::context::Context;
-use spark::{ast::{DefData, ParsedModule}, codegen::{ir::SparkCtx, lower::Lowerer, llvm::LlvmCodeGenerator}, parse::{Parser, ParseError}, util::files::{CompiledFile, Files, FileId}, Symbol, error::DiagnosticManager};
-
+use spark::{
+    ast::{DefData, ParsedModule},
+    codegen::{ir::SparkCtx, llvm::LlvmCodeGenerator, lower::Lowerer},
+    error::DiagnosticManager,
+    parse::{ParseError, Parser},
+    util::files::{CompiledFile, FileId, Files},
+    Symbol,
+};
 
 enum InputItem {
     Dir(String, Vec<InputItem>),
-    File(FileId)
+    File(FileId),
 }
 
 fn main() {
     let app = App::new("sparkc")
         .about("Compiler for the spark programming language")
-        .arg(Arg::new("input")
-            .required(true)
-            .takes_value(true)
-            .help("A path to an input file or directory to compile")
-            .multiple_values(false)
-            .value_name("input")
-            .validator_os(|path| match Path::new(path).exists() {
-                true => Ok(()),
-                false => Err(format!("The input directory at {} does not exist", path.to_string_lossy()))
-            })
+        .arg(
+            Arg::new("input")
+                .required(true)
+                .takes_value(true)
+                .help("A path to an input file or directory to compile")
+                .multiple_values(false)
+                .value_name("input")
+                .validator_os(|path| match Path::new(path).exists() {
+                    true => Ok(()),
+                    false => Err(format!(
+                        "The input directory at {} does not exist",
+                        path.to_string_lossy()
+                    )),
+                }),
         );
 
     let args = app.get_matches();
@@ -41,16 +51,27 @@ fn main() {
             module
         }
         InputItem::Dir(name, items) => {
-            let main = items.iter().find_map(|item| if let InputItem::File(id) = item {
-                if files.get(*id).path.file_name().map(|s| s.to_str()).flatten() == Some("main.sprk") {
-                        Some(*id)
+            let main = items
+                .iter()
+                .find_map(|item| {
+                    if let InputItem::File(id) = item {
+                        if files
+                            .get(*id)
+                            .path
+                            .file_name()
+                            .map(|s| s.to_str())
+                            .flatten()
+                            == Some("main.sprk")
+                        {
+                            Some(*id)
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
-                } else {
-                    None
-                } 
-            ).expect("main.sprk does not exist in root directory");
+                })
+                .expect("main.sprk does not exist in root directory");
             let mut root = ParsedModule::new(Symbol::from("root"));
             let mut parser = Parser::new(files.get(main).text.as_str());
             handle_parse_error(parser.parse_to(&mut root, main), &files, main);
@@ -62,7 +83,7 @@ fn main() {
                         let src = files.get(f).text.as_str();
                         parser.set_text(src);
                         handle_parse_error(parser.parse_to(&mut root, f), &files, f);
-                    },
+                    }
                     InputItem::Dir(name, items) => {
                         let child = parse_dir(name.clone(), items, &files, &mut parser);
                         root.children.insert(Symbol::from(&name), child);
@@ -75,7 +96,7 @@ fn main() {
 
     let mut ctx = SparkCtx::new();
     let mut lowerer = Lowerer::new(&mut ctx, &files);
-    
+
     let root_id = lowerer.lower_module(&root_module);
 
     let mut llvm_ctx = Context::create();
@@ -89,18 +110,29 @@ fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId
         let mut diags = DiagnosticManager::new(files);
         let diag = Diagnostic::error()
             .with_message(e.error.to_string())
-            .with_notes(e.backtrace.iter().map(|trace| format!("in {}", trace)).collect());
-        
+            .with_notes(
+                e.backtrace
+                    .iter()
+                    .map(|trace| format!("in {}", trace))
+                    .collect(),
+            );
+
         diags.emit(if let Some(span) = e.highlighted_span {
-                diag.with_labels(vec![Label::primary(file, span)])
-            } else { diag }
-        );
-        
+            diag.with_labels(vec![Label::primary(file, span)])
+        } else {
+            diag
+        });
+
         std::process::exit(-1);
     })
 }
 
-fn parse_dir<'src>(name: String, items: Vec<InputItem>, files: &'src Files, parser: &mut Parser<'src>) -> ParsedModule {
+fn parse_dir<'src>(
+    name: String,
+    items: Vec<InputItem>,
+    files: &'src Files,
+    parser: &mut Parser<'src>,
+) -> ParsedModule {
     let mut root = ParsedModule::new(Symbol::from(&name));
 
     for item in items {
@@ -109,7 +141,7 @@ fn parse_dir<'src>(name: String, items: Vec<InputItem>, files: &'src Files, pars
                 let src = files.get(f).text.as_str();
                 parser.set_text(src);
                 handle_parse_error(parser.parse_to(&mut root, f), &files, f);
-            },
+            }
             InputItem::Dir(name, items) => {
                 let child = parse_dir(name.clone(), items, files, parser);
                 root.children.insert(Symbol::new(name), child);
@@ -118,7 +150,6 @@ fn parse_dir<'src>(name: String, items: Vec<InputItem>, files: &'src Files, pars
     }
     root
 }
-
 
 /// Collect all input items from a file or directory
 fn collect_files(input: &Path, files: &mut Files) -> InputItem {
@@ -132,7 +163,7 @@ fn collect_files(input: &Path, files: &mut Files) -> InputItem {
                 }
             }
             InputItem::Dir(input.to_string_lossy().into_owned(), items)
-        },
+        }
         false => {
             let id = files.add(CompiledFile::open(input).expect("failed to open a file"));
             InputItem::File(id)

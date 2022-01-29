@@ -7,19 +7,31 @@ use std::convert::TryFrom;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 use inkwell::{
-    AddressSpace, 
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
-    module::{Module, Linkage},
-    targets::{TargetData, TargetMachine, Target, InitializationConfig, RelocMode, CodeModel},
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType, PointerType},
-    values::{FunctionValue, BasicValueEnum, PointerValue}, OptimizationLevel, basic_block::BasicBlock
+    module::{Linkage, Module},
+    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine},
+    types::{
+        AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType, PointerType,
+    },
+    values::{BasicValueEnum, FunctionValue, PointerValue},
+    AddressSpace, OptimizationLevel,
 };
 use quickscope::ScopeMap;
 
-use crate::{Symbol, ast::{IntegerWidth, SymbolPath}, codegen::ir::{ModId, SparkCtx, TypeId, SparkDef, TypeData, FunctionType, FunId}, error::DiagnosticManager, util::{files::{FileId, Files}, loc::Span}};
+use crate::{
+    ast::{IntegerWidth, SymbolPath},
+    codegen::ir::{FunId, FunctionType, ModId, SparkCtx, SparkDef, TypeData, TypeId},
+    error::DiagnosticManager,
+    util::{
+        files::{FileId, Files},
+        loc::Span,
+    },
+    Symbol,
+};
 
-/// A type representing all types that can be defined in the global scope 
+/// A type representing all types that can be defined in the global scope
 /// map of the code generator
 #[derive(Clone, Copy)]
 enum ScopeDef<'ctx> {
@@ -27,7 +39,7 @@ enum ScopeDef<'ctx> {
     Def(SparkDef),
 }
 
-/// Structure that generates LLVM IR modules from a parsed and 
+/// Structure that generates LLVM IR modules from a parsed and
 /// type lowered AST module
 pub struct LlvmCodeGenerator<'ctx, 'files> {
     pub ctx: &'ctx Context,
@@ -58,7 +70,8 @@ struct PhiData<'ctx> {
 impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Create a new code generator from an LLVM context
     pub fn new(spark: SparkCtx, ctx: &'ctx Context, files: &'files Files) -> Self {
-        Target::initialize_native(&InitializationConfig::default()).expect("LLVM: failed to initialize native compilation target");
+        Target::initialize_native(&InitializationConfig::default())
+            .expect("LLVM: failed to initialize native compilation target");
 
         Self {
             current_scope: ScopeMap::new(),
@@ -69,64 +82,71 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             diags: DiagnosticManager::new(files),
             llvm_funs: HashMap::new(),
             break_data: None,
-            target: Target::from_triple(&TargetMachine::get_default_triple()).unwrap().create_target_machine(
-                &TargetMachine::get_default_triple(),
-                TargetMachine::get_host_cpu_name().to_str().unwrap(),
-                TargetMachine::get_host_cpu_features().to_str().unwrap(),
-                OptimizationLevel::Default,
-                RelocMode::Default,
-                CodeModel::Medium
-            ).unwrap().get_target_data(),
+            target: Target::from_triple(&TargetMachine::get_default_triple())
+                .unwrap()
+                .create_target_machine(
+                    &TargetMachine::get_default_triple(),
+                    TargetMachine::get_host_cpu_name().to_str().unwrap(),
+                    TargetMachine::get_host_cpu_features().to_str().unwrap(),
+                    OptimizationLevel::Default,
+                    RelocMode::Default,
+                    CodeModel::Medium,
+                )
+                .unwrap()
+                .get_target_data(),
         }
     }
-    
+
     /// Find a name in the current scope
-    fn find_in_scope(&self,
-        file: FileId, 
-        module: ModId, 
-        span: Span, 
-        path: &SymbolPath
+    fn find_in_scope(
+        &self,
+        file: FileId,
+        module: ModId,
+        span: Span,
+        path: &SymbolPath,
     ) -> Result<ScopeDef<'ctx>, Diagnostic<FileId>> {
         let mut iter = path.iter();
 
         let first = iter.next().unwrap();
 
         match self.current_scope.get(&first) {
-            Some(def) => if iter.len() == 0 {
-                Ok(*def)
-            } else {
-                match *def {
-                    ScopeDef::Def(SparkDef::ModDef(submod)) => {
-                        self.spark.get_def_impl(submod, iter)
+            Some(def) => {
+                if iter.len() == 0 {
+                    Ok(*def)
+                } else {
+                    match *def {
+                        ScopeDef::Def(SparkDef::ModDef(submod)) => self
+                            .spark
+                            .get_def_impl(submod, iter)
                             .map(|d| ScopeDef::Def(d))
-                            .map_err(|name| Diagnostic::error()
-                                .with_message(format!("'{}' not found in current scope", name))
-                                .with_labels(vec![Label::primary(file, span)])
-                            )
-                    },
-                    _ => Err(Diagnostic::error()
-                        .with_message(format!(
+                            .map_err(|name| {
+                                Diagnostic::error()
+                                    .with_message(format!("'{}' not found in current scope", name))
+                                    .with_labels(vec![Label::primary(file, span)])
+                            }),
+                        _ => Err(Diagnostic::error()
+                            .with_message(format!(
                                 "Cannot access '{}' of non-module definition",
-                                iter.map(|s| s.as_str().to_owned()).collect::<Vec<_>>().join(":")
-                            )
-                        )
-                        .with_labels(vec![Label::primary(file, span)])
-                    )
-                } 
-            },
+                                iter.map(|s| s.as_str().to_owned())
+                                    .collect::<Vec<_>>()
+                                    .join(":")
+                            ))
+                            .with_labels(vec![Label::primary(file, span)])),
+                    }
+                }
+            }
             None => Err(Diagnostic::error()
                 .with_message(format!("Symbol '{}' not found in the current scope", first))
-                .with_labels(vec![Label::primary(file, span)])
-            )
+                .with_labels(vec![Label::primary(file, span)])),
         }
     }
-    
+
     /// Codegen LLVM IR from a type-lowered module
     pub fn codegen_module(&mut self, module: ModId) -> Module<'ctx> {
         let mut llvm_mod = self.ctx.create_module(self.spark[module].name.as_str());
 
         self.forward_funs(&mut llvm_mod, module);
-        
+
         let defs = self.spark[module].defs.clone();
 
         self.current_scope.push_layer();
@@ -134,10 +154,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         for (name, def) in defs.iter() {
             self.current_scope.define(name.clone(), ScopeDef::Def(*def));
         }
-        
+
         let defs = self.spark[module].defs.clone();
         for (name, def) in defs.iter() {
-
             if let SparkDef::FunDef(file, fun) = def {
                 if let Some(ref body) = self.spark[*fun].body {
                     let llvm_fun = *self.llvm_funs.get(fun).unwrap();
@@ -147,7 +166,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     self.current_fun = Some((llvm_fun, *fun));
                     for stmt in body.clone() {
                         if let Err(e) = self.gen_stmt(*file, module, stmt) {
-                            self.diags.emit(e.with_notes(vec![format!("In function {}", name)]));
+                            self.diags
+                                .emit(e.with_notes(vec![format!("In function {}", name)]));
                         }
                     }
                 }
@@ -158,17 +178,22 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         llvm_mod
     }
-    
+
     /// Generate code for all function prototypes
     fn forward_funs(&mut self, llvm: &mut Module<'ctx>, module: ModId) {
         let defs = self.spark[module].defs.clone();
 
-        for fun_id in defs
-            .iter()
-            .filter_map(|(_, def)| if let SparkDef::FunDef(_, id) = def { Some(*id) } else { None }) {
+        for fun_id in defs.iter().filter_map(|(_, def)| {
+            if let SparkDef::FunDef(_, id) = def {
+                Some(*id)
+            } else {
+                None
+            }
+        }) {
             let fun = self.spark[fun_id].clone();
             let llvm_fun_ty = self.gen_fun_ty(&fun.ty);
-            let llvm_fun = llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External));
+            let llvm_fun =
+                llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External));
             self.llvm_funs.insert(fun_id, llvm_fun);
         }
     }
@@ -189,30 +214,27 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .map(|id| BasicTypeEnum::try_from(self.llvm_ty(*id)).unwrap())
                     .collect::<Vec<_>>();
                 self.ctx.struct_type(&elems, false).into()
-            },
+            }
             TypeData::Struct { fields } => {
                 let fields = fields
                     .iter()
                     .map(|(id, _)| BasicTypeEnum::try_from(self.llvm_ty(*id)).unwrap())
                     .collect::<Vec<_>>();
                 self.ctx.struct_type(&fields, false).into()
-            },
+            }
             TypeData::Alias(_, id) => self.llvm_ty(id),
             TypeData::Pointer(id) => {
                 let pointee = self.llvm_ty(id);
 
                 match BasicTypeEnum::try_from(pointee) {
-                    Ok(b) => b
-                        .ptr_type(AddressSpace::Generic)
-                        .into(),
-                    Err(_) => unimplemented!() 
+                    Ok(b) => b.ptr_type(AddressSpace::Generic).into(),
+                    Err(_) => unimplemented!(),
                 }
-            },
-            TypeData::Array { element, len } => 
-                BasicTypeEnum::try_from(self.llvm_ty(element))
-                    .unwrap()
-                    .array_type(len as u32)
-                    .into(),
+            }
+            TypeData::Array { element, len } => BasicTypeEnum::try_from(self.llvm_ty(element))
+                .unwrap()
+                .array_type(len as u32)
+                .into(),
             TypeData::Unit => self.ctx.void_type().into(),
             TypeData::Invalid => unreachable!(),
             TypeData::Float { doublewide } => match doublewide {
@@ -221,13 +243,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             },
             TypeData::Function(ty) => self.gen_fun_ty(&ty).ptr_type(AddressSpace::Generic).into(),
             TypeData::Enum { parts } => {
-                let parts = parts
+                let parts = parts.iter().map(|ty| self.llvm_ty(*ty)).collect::<Vec<_>>();
+                let max_size = parts
                     .iter()
-                    .map(|ty| self.llvm_ty(*ty))
-                    .collect::<Vec<_>>();
-                let max_size = parts.iter().map(|ty| {
+                    .map(|ty| {
                         if let Ok(ty) = BasicTypeEnum::try_from(*ty) {
-                            ty.size_of().map(|i| i.get_zero_extended_constant().unwrap() as u32).unwrap_or(0)
+                            ty.size_of()
+                                .map(|i| i.get_zero_extended_constant().unwrap() as u32)
+                                .unwrap_or(0)
                         } else {
                             0
                         }
@@ -235,14 +258,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .max()
                     .unwrap();
 
-                let field_types = &[self.ctx.i8_type().into(), self.ctx.i8_type().array_type(max_size).into()];
+                let field_types = &[
+                    self.ctx.i8_type().into(),
+                    self.ctx.i8_type().array_type(max_size).into(),
+                ];
 
-                self.ctx.struct_type(field_types, true).into() 
+                self.ctx.struct_type(field_types, true).into()
             }
         }
-
     }
-    
+
     /// Create an LLVM function type from a spark IR function type
     fn gen_fun_ty(&mut self, ty: &FunctionType) -> InkwellFunctionType<'ctx> {
         let return_ty = self.llvm_ty(ty.return_ty);
@@ -252,14 +277,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             .map(|ty| BasicTypeEnum::try_from(self.llvm_ty(*ty)).unwrap().into())
             .collect::<Vec<_>>();
         match return_ty {
-            AnyTypeEnum::VoidType(return_ty) => 
-                return_ty.fn_type(&args, false),
+            AnyTypeEnum::VoidType(return_ty) => return_ty.fn_type(&args, false),
             _ => BasicTypeEnum::try_from(return_ty)
                 .unwrap()
-                .fn_type(&args, false)
+                .fn_type(&args, false),
         }
-
     }
 }
-
-
