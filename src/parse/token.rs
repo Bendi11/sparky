@@ -1,6 +1,6 @@
-use std::{fmt, io::Write};
+use std::fmt;
 
-use crate::util::{files::CompiledFile, loc::Span};
+use crate::util::loc::Span;
 
 /// The main type used for a token lexed from a source file containing location information
 /// and token data
@@ -84,7 +84,7 @@ impl fmt::Display for TokenData<'_> {
             Self::Op(op) => write!(f, "'{}'", op),
             Self::Colon => write!(f, "':'"),
             Self::Dollar => write!(f, "'$'"),
-            Self::Assign => write!(f, "':='"),
+            Self::Assign => write!(f, "'='"),
         }
     }
 }
@@ -139,7 +139,7 @@ impl fmt::Display for Op {
             Self::GreaterEq => write!(f, ">="),
             Self::Less => write!(f, "<"),
             Self::LessEq => write!(f, "<="),
-            Self::Eq => write!(f, "="),
+            Self::Eq => write!(f, "=="),
 
             Self::ShLeft => write!(f, "<<"),
             Self::ShRight => write!(f, ">>"),

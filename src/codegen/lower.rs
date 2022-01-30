@@ -126,7 +126,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     Err(name) => {
                         self.diags.emit(
                             Diagnostic::error()
-                                .with_message("Imported item '{}' not found")
+                                .with_message(format!("Imported item '{}' not found", name))
                                 .with_labels(vec![Label::primary(def.file, def.span)]),
                         );
                         panic!()

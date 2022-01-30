@@ -1,5 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::{types::IntType, values::BasicValue, IntPredicate, FloatPredicate};
+use inkwell::{types::IntType, IntPredicate, FloatPredicate};
 use num_bigint::Sign;
 
 use crate::{
@@ -175,7 +175,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         Ok(match &ast.node {
             AstNode::CastExpr(to, rhs) => self.gen_cast(file, module, *to, rhs)?,
             AstNode::Access(path) => {
-                let access = self.gen_access(file, module, ast.span, path)?;
+                let access = self.gen_access(file, ast.span, path)?;
                 if access.get_type().get_element_type().is_function_type() {
                     access.into()
                 } else {
@@ -607,7 +607,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
-            AstNode::Access(path) => return self.gen_access(file, module, ast.span, path),
+            AstNode::Access(path) => return self.gen_access(file, ast.span, path),
             _ => {
                 let expr = self.gen_expr(file, module, ast)?;
                 let alloca = self.builder.build_alloca(expr.get_type(), "lvalue_alloca");
@@ -620,11 +620,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     fn gen_access(
         &mut self,
         file: FileId,
-        module: ModId,
         span: Span,
         path: &SymbolPath,
     ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
-        let def = self.find_in_scope(file, module, span, path)?;
+        let def = self.find_in_scope(file, span, path)?;
         Ok(match def {
             ScopeDef::Def(SparkDef::FunDef(_, fun)) => {
                 let llvm_fun = self.llvm_funs[&fun];
@@ -669,7 +668,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             (
                 TypeData::Integer {
                     width: from_width,
-                    signed: from_sign,
+                    signed: _,
                 },
                 TypeData::Integer {
                     signed: to_sign,
@@ -856,7 +855,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 }
             }
             AstNode::Access(path) => {
-                let def = self.find_in_scope(file, module, ast.span, path)?;
+                let def = self.find_in_scope(file, ast.span, path)?;
 
                 match def {
                     ScopeDef::Def(SparkDef::FunDef(_, f)) => self.spark[f].ty.return_ty,
@@ -901,7 +900,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         ))]));
                 }
             }
-            AstNode::Index { object, index } => {
+            AstNode::Index { object, index: _ } => {
                 let object_ty = self.ast_type(file, module, object)?;
                 if let TypeData::Array { element, len: _ } = self.spark[object_ty].data {
                     element

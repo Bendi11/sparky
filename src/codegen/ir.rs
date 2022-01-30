@@ -157,7 +157,7 @@ impl SparkCtx {
                 if let SparkDef::ModDef(mod_id) = def {
                     return self.get_def_impl(*mod_id, parts);
                 } else if parts.is_final() {
-                    if let SparkDef::TypeDef(_, ty) = def {
+                    if let SparkDef::TypeDef(_, _) = def {
                         unimplemented!("Functions associated with types not implemented");
                     }
                 }
@@ -186,7 +186,7 @@ impl SparkCtx {
 
     pub fn new() -> Self {
         let mut types = Interner::new();
-        let mut modules = Arena::new();
+        let modules = Arena::new();
 
         types.insert_with(|id| Type {
             id,

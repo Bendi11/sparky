@@ -92,7 +92,7 @@ impl<T: Hash + Eq + Clone> Interner<T> {
     /// Insert the value into the internal arena and gurantee that it's index
     /// won't be returned by another insert() call
     pub fn insert_nointern(&mut self, val: T) -> Index<T> {
-        self.arena.insert_with(|id| val)
+        self.arena.insert_with(|_| val)
     }
 
     pub fn insert_with_nointern<F: FnOnce(Index<T>) -> T>(&mut self, f: F) -> Index<T> {
@@ -118,8 +118,6 @@ impl<T: Hash + Eq + Clone> Interner<T> {
         self.arena.get_mut(idx)
     }
 
-    /// Set the item at the specified index to the specified value
-    pub fn set(&mut self, idx: Index<T>, val: T) {}
 }
 
 impl<T> Arena<T> {

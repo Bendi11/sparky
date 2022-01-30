@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, convert::TryFrom, fmt};
+use std::{borrow::Cow, convert::TryFrom, fmt};
 
 use crate::Symbol;
 use num_bigint::BigInt;
@@ -1172,38 +1172,39 @@ impl<'src> Parser<'src> {
                 self.trace.push("structure typename".into());
 
                 let mut fields = vec![];
+                
                 loop {
-                    let peeked = self.peek_tok(EXPECTING_FOR_STRUCT)?.clone();
-                    match peeked.data {
-                        TokenData::CloseBracket(BracketType::Curly) => {
-                            self.toks.next();
-                            break;
-                        }
-                        TokenData::Ident(_)
-                        | TokenData::OpenBracket(BracketType::Square)
-                        | TokenData::Op(Op::Star) => {
-                            self.trace.push("struct type field".into());
-                            let field_typename = self.parse_typename()?;
+                    const EXPECTING_AFTER_FIELD: &[TokenData<'static>] = &[
+                        TokenData::Comma, TokenData::CloseBracket(BracketType::Curly),
+                    ];
 
-                            let field_name =
-                                self.expect_next_ident(&[TokenData::Ident(
-                                    "struct field name",
-                                )])?;
-                            self.trace.pop();
-                            fields.push((field_typename, self.symbol(field_name)));
-                        }
-                        _ => {
-                            return Err(ParseError {
-                                highlighted_span: Some(
-                                    (next.span.from, peeked.span.to).into(),
-                                ),
-                                backtrace: self.trace.clone(),
-                                error: ParseErrorKind::UnexpectedToken {
-                                    found: peeked.clone(),
-                                    expecting: ExpectingOneOf(EXPECTING_FOR_STRUCT),
-                                },
-                            })
-                        }
+                    if let TokenData::CloseBracket(BracketType::Curly) = self.peek_tok(EXPECTING_FOR_STRUCT)?.data {
+                        self.toks.next();
+                        break
+                    } 
+
+                    self.trace.push("struct type field".into());
+                    let field_typename = self.parse_typename()?;
+
+                    let field_name = self.expect_next_ident(&[TokenData::Ident(
+                            "struct field name",
+                        )])?;
+                    self.trace.pop();
+                    fields.push((field_typename, self.symbol(field_name)));
+                        
+                    let next = self.next_tok(EXPECTING_AFTER_FIELD)?;
+                        
+                    match next.data {
+                        TokenData::Comma => (),
+                        TokenData::CloseBracket(BracketType::Curly) => break,
+                        _ => return Err(ParseError {
+                            highlighted_span: Some(next.span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::UnexpectedToken {
+                                found: next,
+                                expecting: ExpectingOneOf(EXPECTING_AFTER_FIELD),
+                            }
+                        })
                     }
                 }
 

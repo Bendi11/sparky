@@ -9,10 +9,7 @@ use codespan_reporting::{
     },
 };
 
-use crate::util::{
-    files::{FileId, Files},
-    loc::Span,
-};
+use crate::util::files::{FileId, Files};
 /// A structure that handles emitted diagnostics from the compiler,
 /// respecting command line options for verbosity
 #[derive(Clone, Debug)]
@@ -41,6 +38,6 @@ impl<'files> DiagnosticManager<'files> {
             },
             self.files,
             &diag,
-        );
+        ).expect("Failed to write compiler output to stderr");
     }
 }

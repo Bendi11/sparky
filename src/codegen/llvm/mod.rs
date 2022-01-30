@@ -13,7 +13,7 @@ use inkwell::{
     module::{Linkage, Module},
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine},
     types::{
-        AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType, PointerType,
+        AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType,
     },
     values::{BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
@@ -101,7 +101,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     fn find_in_scope(
         &self,
         file: FileId,
-        module: ModId,
         span: Span,
         path: &SymbolPath,
     ) -> Result<ScopeDef<'ctx>, Diagnostic<FileId>> {
@@ -243,27 +242,19 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             },
             TypeData::Function(ty) => self.gen_fun_ty(&ty).ptr_type(AddressSpace::Generic).into(),
             TypeData::Enum { parts } => {
-                let parts = parts.iter().map(|ty| self.llvm_ty(*ty)).collect::<Vec<_>>();
-                let max_size = parts
-                    .iter()
-                    .map(|ty| {
-                        if let Ok(ty) = BasicTypeEnum::try_from(*ty) {
-                            ty.size_of()
-                                .map(|i| i.get_zero_extended_constant().unwrap() as u32)
-                                .unwrap_or(0)
-                        } else {
-                            0
-                        }
-                    })
-                    .max()
-                    .unwrap();
+                let max = parts.iter().map(|part| self.size_of_type(*part)).max().unwrap_or(0);
+                    
+                if max > 0 { 
+                    self.ctx.struct_type(&[
+                        self.ctx.i8_type().into(),
+                        self.ctx.i8_type().array_type(max).into(),
+                    ], true).into()
+                } else {
+                    self.ctx.struct_type(&[
+                        self.ctx.i8_type().into(),
+                    ], true).into()
+                }
 
-                let field_types = &[
-                    self.ctx.i8_type().into(),
-                    self.ctx.i8_type().array_type(max_size).into(),
-                ];
-
-                self.ctx.struct_type(field_types, true).into()
             }
         }
     }
@@ -282,5 +273,35 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 .unwrap()
                 .fn_type(&args, false),
         }
+    }
+    
+    /// Get the size of a type in bytes from a type ID
+    fn size_of_type(&self, ty: TypeId) -> u32 {
+        match &self.spark[ty].data {
+            TypeData::Integer {width, ..} => (*width as u8 / 8) as u32,
+            TypeData::Float {doublewide: true} => 8,
+            TypeData::Float {doublewide: false} => 4,
+            TypeData::Enum { parts } => {
+                let max = parts.iter()
+                    .map(|part| self.size_of_type(*part))
+                    .max()
+                    .unwrap_or(0);
+                max + 1
+            },
+            TypeData::Bool => 1,
+            TypeData::Struct { fields } => fields.iter().map(|field| self.size_of_type(field.0)).sum(),
+            TypeData::Tuple(elems) => elems.iter().map(|elem| self.size_of_type(*elem)).sum(),
+            TypeData::Unit => 0,
+            TypeData::Pointer(_) => self.ptr_size(),
+            TypeData::Array { element, len } => self.size_of_type(*element) * *len as u32,
+            TypeData::Alias(_, ty) => self.size_of_type(*ty),
+            TypeData::Function(_) => self.ptr_size(),
+            TypeData::Invalid => unreachable!(),
+        }
+    }
+    
+    /// Get the size in bytes of a pointer on the target platform
+    fn ptr_size(&self) -> u32 {
+        self.target.get_pointer_byte_size(None)
     }
 }

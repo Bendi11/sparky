@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use std::{cmp::Eq, collections::HashMap, hash::Hash, io::Write};
+use std::{cmp::Eq, collections::HashMap, hash::Hash};
 
 use bitflags::bitflags;
 use num_bigint::BigInt;
@@ -248,18 +248,6 @@ where
     },
 }
 
-impl<T: Clone + Hash + Eq> AstNode<T> {
-    /// Return true if the body has a phi node
-    fn has_phi(body: &[Ast<T>]) -> bool {
-        for node in body {
-            if let Self::PhiExpr(_) = node.node {
-                return true;
-            }
-        }
-        false
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IfExpr<T: Clone + Hash + Eq> {
     /// Conditional expression
@@ -454,10 +442,10 @@ pub enum IntegerWidth {
 impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
     fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Match { matched, cases } => {
+            Self::Match { matched, cases: _ } => {
                 write!(w, "MATCH {:?}", matched.node)?;
                 writeln!(w, " {{")?;
-                for (literal, case_expr) in cases.iter() {}
+                //for (literal, case_expr) in cases.iter() {}
                 write!(w, "}}")
             }
             Self::Block(stmts) => {

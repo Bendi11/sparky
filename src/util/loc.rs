@@ -1,6 +1,4 @@
-use std::{cmp::Ordering, fmt, io::Write, num::NonZeroU16};
-
-use super::files::CompiledFile;
+use std::fmt;
 
 /// A span representing a section of the input text over two locations
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

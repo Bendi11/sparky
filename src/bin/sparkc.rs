@@ -1,10 +1,10 @@
-use std::{io::Write, path::Path};
+use std::path::Path;
 
 use clap::{App, Arg};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::context::Context;
 use spark::{
-    ast::{DefData, ParsedModule},
+    ast::ParsedModule,
     codegen::{ir::SparkCtx, llvm::LlvmCodeGenerator, lower::Lowerer},
     error::DiagnosticManager,
     parse::{ParseError, Parser},
@@ -50,7 +50,7 @@ fn main() {
             drop(src);
             module
         }
-        InputItem::Dir(name, items) => {
+        InputItem::Dir(_name, items) => {
             let main = items
                 .iter()
                 .find_map(|item| {
