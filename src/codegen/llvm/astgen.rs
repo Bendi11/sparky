@@ -610,8 +610,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         Ok(match &ast.node {
             AstNode::Access(path) => return self.gen_access(file, ast.span, path),
             AstNode::Block(block) => {
+                let start_bb = self.builder.get_insert_block().unwrap();
                 let body_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "block");
+                
                 let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
+                
+
+                self.builder.position_at_end(start_bb);
+                self.builder.build_unconditional_branch(body_bb);
+                
+                self.builder.position_at_end(start_bb);
 
                 if let Some(pv) = self.gen_body(file, module, block, body_bb, after_bb)? {
                     pv
@@ -1000,7 +1008,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             return_to_bb: after_bb,
             phi_data,
         });
-
+        
         self.current_scope.push_layer();
         
         for stmt in body.iter() {
@@ -1015,6 +1023,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         self.break_data = old_break_data;
         self.current_scope.pop_layer();
         self.builder.build_unconditional_branch(after_bb);
+        self.builder.position_at_end(after_bb);
 
         Ok(phi_data.map(|d| d.alloca))
     }
