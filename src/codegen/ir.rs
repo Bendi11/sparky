@@ -63,6 +63,15 @@ impl SparkCtx {
             body: None,
         })
     }
+    
+    /// Recursively unwrap any aliased types, returning a type id that is guranteeed to 
+    /// not be an alias type
+    pub fn unwrap_alias(&self, ty: TypeId) -> TypeId {
+        match &self[ty].data {
+            TypeData::Alias(_, ty) => self.unwrap_alias(*ty),
+            _ => ty,
+        }
+    }
 
     /// Get the name of a definition
     pub fn get_def_name(&self, def: SparkDef) -> Symbol {

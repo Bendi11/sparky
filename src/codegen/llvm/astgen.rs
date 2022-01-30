@@ -662,7 +662,86 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         let to = self.spark[to_ty].clone().data;
         let from = self.spark[rhs_ty].clone().data;
 
+                
+        //Generate an enum literal from a cast to an enum that contains the casted
+        //type as a variant
+        if let TypeData::Enum {parts} = &self.spark[self.spark.unwrap_alias(to_ty)].data {
+            let idx = parts.iter().enumerate().find_map(|(idx, ty)| {
+                if *ty == rhs_ty {
+                    Some(idx)
+                } else {
+                    None
+                }
+            });
+
+            if let Some(idx) = idx {
+                let rhs_size = self.size_of_type(rhs_ty);
+                let llvm_rhs = self.gen_lval(file, module, rhs)?;
+                
+                //Round a number up to the nearest multiple of two
+                let next_pow = |num: u32| {
+                    let mut pow = 1;
+                    while pow < num {
+                        pow *= 2;
+                    }
+                    pow
+                };
+
+                let enum_ty = BasicTypeEnum::try_from(self.llvm_ty(to_ty)).unwrap();
+
+                let enum_literal = self.builder.build_alloca(
+                    enum_ty, 
+                    "enum_literal_alloca"
+                );
+
+                let discrim = self.builder.build_struct_gep(enum_literal, 0, "enum_literal_get_discrim").unwrap();
+                self.builder.build_store(discrim, self.ctx.i8_type().const_int(idx as u64, false));
+
+                let array_size = self.size_of_type(to_ty) - 1;
+                let rhs_ptr_bc = self.builder.build_bitcast(llvm_rhs, self.ctx.i8_type().ptr_type(AddressSpace::Generic), "enum_variant_store_bc").into_pointer_value();
+
+                let variant = self.builder.build_struct_gep(enum_literal, 1, "enum_literal_get_variant").unwrap();
+
+                let variant_ptr = self.builder.build_bitcast(
+                    variant, 
+                    self.ctx.i8_type().ptr_type(AddressSpace::Generic), 
+                    "enum_variant_bc"
+                ).into_pointer_value();
+                
+                let array_align = next_pow(array_size);
+                let src_align = next_pow(rhs_size);
+
+                self.builder.build_memcpy(
+                    variant_ptr,
+                    array_align,
+                    rhs_ptr_bc,
+                    src_align,
+                    self.ctx.ptr_sized_int_type(&self.target, None)
+                        .const_int(rhs_size as u64,  false)
+                ).unwrap();
+                
+                let enum_literal_load = self.builder.build_load(enum_literal, "enum_lit_load");
+                return Ok(enum_literal_load.into())
+                
+            } else {
+                return Err(Diagnostic::error()
+                    .with_message(
+                        "Attempting to cast to an enum type that does not contain castee type"
+                    )
+                    .with_labels(vec![
+                        Label::primary(file, rhs.span)
+                            .with_message(format!(
+                                "Attempted to cast type {} to enum type {}",
+                                self.spark.get_type_name(rhs_ty),
+                                self.spark.get_type_name(to_ty)
+                            ))
+                    ])
+                )
+            }
+        }
+
         let llvm_rhs = self.gen_expr(file, module, rhs)?;
+
 
         Ok(match (from, to) {
             (
