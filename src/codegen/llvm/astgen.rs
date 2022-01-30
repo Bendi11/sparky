@@ -2,11 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::{types::IntType, IntPredicate, FloatPredicate};
 use num_bigint::Sign;
 
-use crate::{
-    ast::{Ast, AstNode, NumberLiteral, NumberLiteralAnnotation},
-    parse::token::Op,
-    util::files::FileId,
-};
+use crate::{ast::{Ast, AstNode, IfExpr, NumberLiteral, NumberLiteralAnnotation}, parse::token::Op, util::files::FileId};
 
 use super::*;
 
@@ -855,6 +851,18 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         })
     }
+        
+    /// Generate code for a single if expression or statement
+    /*fn gen_if_expr(&mut self, file: FileId, module: ModId, if_expr: &IfExpr) -> Result<(), Diagnostic<FileId>> {
+        let cond = self.gen_expr(file, module, &if_expr.cond)?;
+        
+    }
+
+    fn gen_body(&mut self, file: FileId, module: ModId, body: &[Ast<TypeId>]) -> Result<(), DIagnostic<FileId>> {
+        for stmt in body.iter() {
+            self.gen_stmt(file, module, stmt)?;
+        }
+    }*/
 
     /// Generate an LLVM integer type to match an IR integer type
     fn llvm_int_ty(&self, width: IntegerWidth) -> IntType<'ctx> {

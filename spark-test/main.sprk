@@ -7,7 +7,7 @@ type testing_type = fun(i32) -> f32
 type test_enum = i32 | bool
 
 fun main test_ty argc, testing_type a -> i32 {
-    let testing = $(test_ty| i32 | testing_type) 15
+    let testing = $(test_ty| i32 | testing_type | (i32, bool, f64)) 15
     let a = "test"
     let start = 51.31
     let sum = start * 31.1

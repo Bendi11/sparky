@@ -952,26 +952,15 @@ impl<'src> Parser<'src> {
                 self.toks.next();
                 let mut tuple_types = vec![first];
                 loop {
-                    let element_type = self.parse_typename()?;
+                    let element_type = self.parse_first_typename()?;
                     tuple_types.push(element_type);
-                    let after_typename = self.next_tok(EXPECTING_AFTER_TUPLE_TYPENAME)?;
+                    let after_typename = self.peek_tok(EXPECTING_AFTER_TUPLE_TYPENAME)?;
                     match after_typename.data {
-                        TokenData::CloseBracket(BracketType::Smooth) => break,
-                        TokenData::Comma => continue,
-                        _ => {
-                            return Err(ParseError {
-                                highlighted_span: Some(
-                                    after_typename.span,
-                                ),
-                                backtrace: self.trace.clone(),
-                                error: ParseErrorKind::UnexpectedToken {
-                                    found: after_typename,
-                                    expecting: ExpectingOneOf(
-                                        EXPECTING_AFTER_TUPLE_TYPENAME,
-                                    ),
-                                },
-                            })
-                        }
+                        TokenData::Comma => {
+                            self.toks.next();
+                            continue
+                        },
+                        _ => break
                     }
                 }
                 Ok(UnresolvedType::Tuple { elements: tuple_types })
@@ -1213,11 +1202,11 @@ impl<'src> Parser<'src> {
                 Ok(UnresolvedType::Struct { fields })
             },
             TokenData::OpenBracket(BracketType::Smooth) => {
-                self.trace.push("unit or tuple type".into());
+                self.trace.push("Type in parentheses".into());
                 let peeked = self
                     .peek_tok(&[
                         TokenData::CloseBracket(BracketType::Smooth),
-                        TokenData::Ident("typename in brackets"),
+                        TokenData::Ident("typename in parentheses"),
                     ])?
                     .clone();
                 let ty = match peeked.data {
