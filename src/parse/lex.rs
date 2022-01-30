@@ -62,7 +62,7 @@ impl<'src> Lexer<'src> {
             '!' => Token::new(start_loc, TokenData::Op(Op::LogicalNot)),
             '~' => Token::new(start_loc, TokenData::Op(Op::NOT)),
             '^' => Token::new(start_loc, TokenData::Op(Op::XOR)),
-            '=' => Token::new(start_loc, TokenData::Op(Op::Eq)),
+            '=' => Token::new(start_loc, TokenData::Assign),
             '$' => Token::new(start_loc, TokenData::Dollar),
 
             '.' => Token::new(start_loc, TokenData::Period),
@@ -94,10 +94,10 @@ impl<'src> Lexer<'src> {
                         Token::new(startpos..startpos + 1, TokenData::Arrow)
                     }
 
-                    (':', Some('=')) => {
+                    ('=', Some('=')) => {
                         self.next_char();
-                        Token::new(startpos..startpos + 1, TokenData::Assign)
-                    }
+                        Token::new(startpos..startpos + 1, TokenData::Op(Op::Eq))
+                    },
                     (':', _) => Token::new(start_loc, TokenData::Colon),
 
                     ('<', Some('<')) => Token::new(start_loc, TokenData::Op(Op::ShLeft)),

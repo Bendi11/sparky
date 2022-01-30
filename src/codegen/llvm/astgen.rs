@@ -1,5 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::{types::IntType, values::BasicValue, IntPredicate};
+use inkwell::{types::IntType, values::BasicValue, IntPredicate, FloatPredicate};
 use num_bigint::Sign;
 
 use crate::{
@@ -482,6 +482,27 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             "icmp",
                         )
                         .into())
+                },
+
+                (
+                    Op::Eq | Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq,
+                    TypeData::Float {..}
+                ) => {
+                    return Ok(self
+                        .builder
+                        .build_float_compare(match op {
+                            Op::Eq => FloatPredicate::OEQ,
+                            Op::Greater => FloatPredicate::OGT,
+                            Op::GreaterEq => FloatPredicate::OGE,
+                            Op::Less => FloatPredicate::OLT,
+                            Op::LessEq => FloatPredicate::OLE,
+                            _ => unreachable!(),
+                        },
+                        llvm_lhs.into_float_value(),
+                        llvm_rhs.into_float_value(),
+                        "fcmp",
+                    )
+                    .into())
                 }
 
                 (Op::Star, TypeData::Float { .. }) => {
@@ -557,7 +578,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         "ishr",
                     )
                     .into(),
-
                 _ => {
                     return Err(Diagnostic::error()
                         .with_message(format!(

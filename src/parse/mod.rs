@@ -312,6 +312,8 @@ impl<'src> Parser<'src> {
                 self.trace
                     .push(format!("type definition '{}'", name).into());
 
+                self.expect_next(&[TokenData::Assign])?;
+
                 let after_name = self.peek_tok(EXPECTING_AFTER_TYPE)?.clone();
                 let typedef = match after_name.data {
                     TokenData::OpenBracket(BracketType::Curly) => {

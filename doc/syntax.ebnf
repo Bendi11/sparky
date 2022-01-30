@@ -10,7 +10,7 @@
             | <typedecl> <typename> ( "|" <typename> )+
 <structfields> ::= "{" ( <typename> <ident> "," )* ( <typename> <ident>? ) "}"
 
-<typedecl> ::= "type" <ident> (
+<typedecl> ::= "type" <ident> "=" (
     "{" ( <typename> <ident> "," )* ( <typename> <ident> )? "}",
     <typename>
     <typename> ( "|" <typename> )+

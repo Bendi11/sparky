@@ -1,12 +1,12 @@
-type test_ty {
+type test_ty = {
     i32 a
 }
 
-type testing_type fun(i32) -> f32
+type testing_type = fun(i32) -> f32
 
 fun main test_ty argc, testing_type a -> i32 {
-    let a := "test"
-    let start := 51.31
-    let sum := start * 31.1
+    let a = "test"
+    let start = 51.31
+    let sum = start * 31.1
     return $i32 sum
 }
