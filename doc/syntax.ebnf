@@ -67,7 +67,7 @@
 <char-literal> ::= "'" ( . | "\\" . ) "'"
 <array-literal> := "[" (<exprlist> "]"
 <tuple-literal> ::+ "(" <exprlist> ")"
-<struct-literal> ::= <user-typename> "{" ( <ident> "=" <expr> "," )* ( <ident> "=" <expr> )? "}"
+<struct-literal> ::= ( <typename> | "new" ) "{" ( <ident> "=" <expr> "," )* ( <ident> "=" <expr> )? "}"
 
 <op> ::= "+" | "-" | "*" | "/" | "%" | "&" | "|" | "~" | "^" | "<" | ">" | "=="
        | "<=" | ">=" | "<<" | ">>" | "&&" | "||" | "!" | "!="

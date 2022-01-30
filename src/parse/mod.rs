@@ -985,7 +985,7 @@ impl<'src> Parser<'src> {
                     self.toks.next();
 
                     self.trace.push("enum variant typename".into());
-                    let variant_type = self.parse_typename()?;
+                    let variant_type = self.parse_first_typename()?;
                     self.trace.pop();
 
                     variants.push(variant_type);
