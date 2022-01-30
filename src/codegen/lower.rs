@@ -48,37 +48,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                         .collect();
                     self.ctx[fun].body = Some(body);
                 }
-                DefData::StructDef { name, fields } => {
-                    let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap()
-                    {
-                        *id
-                    } else {
-                        unreachable!()
-                    };
-                    let fields = fields
-                        .iter()
-                        .map(|(name, ty)| {
-                            (
-                                self.lower_type(id, Some(def.span), ty, def.file),
-                                name.clone(),
-                            )
-                        })
-                        .collect();
-                    self.ctx[ty].data = TypeData::Struct { fields };
-                }
-                DefData::EnumDef { name, variants } => {
-                    let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap()
-                    {
-                        *id
-                    } else {
-                        unreachable!()
-                    };
-                    let variants = variants
-                        .iter()
-                        .map(|ty| self.lower_type(id, Some(def.span), ty, def.file))
-                        .collect();
-                    self.ctx[ty].data = TypeData::Enum { parts: variants }
-                }
                 DefData::AliasDef { name, aliased } => {
                     let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap()
                     {
@@ -128,9 +97,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
 
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
-                DefData::StructDef { name, .. }
-                | DefData::EnumDef { name, .. }
-                | DefData::AliasDef { name, .. } => {
+                DefData::AliasDef { name, .. } => {
                     let ty = self.ctx.new_empty_type();
                     self.ctx[module_id]
                         .defs
@@ -357,6 +324,30 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         file: FileId,
     ) -> TypeId {
         match ty {
+            UnresolvedType::Struct {
+                fields
+            } => {
+                let fields = fields
+                    .iter()
+                    .map(|(ty, name)| {
+                        (
+                            self.lower_type(module, span, ty, file),
+                            name.clone(),
+                        )
+                    })
+                    .collect();
+                self.ctx.new_type(TypeData::Struct { fields })
+            },
+            UnresolvedType::Enum {
+                variants
+            } => {
+                let parts = variants
+                    .iter()
+                    .map(|ty| self.lower_type(module, span, ty, file))
+                    .collect();
+                self.ctx.new_type(TypeData::Enum { parts })
+
+            },
             UnresolvedType::Integer { width, signed } => match signed {
                 true => match width {
                     IntegerWidth::Eight => SparkCtx::I8,

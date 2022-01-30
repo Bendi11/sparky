@@ -299,134 +299,23 @@ impl<'src> Parser<'src> {
                 }
             }
             TokenData::Ident("type") => {
-                const EXPECTING_AFTER_TYPE: &[TokenData<'static>] = &[
-                    TokenData::Ident("enum / aliased type variant"),
-                    TokenData::OpenBracket(BracketType::Curly),
-                    TokenData::Op(Op::Star),
-                    TokenData::OpenBracket(BracketType::Smooth),
-                    TokenData::OpenBracket(BracketType::Square),
-                ];
-
                 let name = self.expect_next_ident(&[TokenData::Ident("type name")])?;
 
                 self.trace
                     .push(format!("type definition '{}'", name).into());
 
                 self.expect_next(&[TokenData::Assign])?;
-
-                let after_name = self.peek_tok(EXPECTING_AFTER_TYPE)?.clone();
-                let typedef = match after_name.data {
-                    TokenData::OpenBracket(BracketType::Curly) => {
-                        const EXPECTING_FOR_STRUCT: &[TokenData<'static>] = &[
-                            TokenData::Ident("field type"),
-                            TokenData::CloseBracket(BracketType::Curly),
-                            TokenData::OpenBracket(BracketType::Square),
-                            TokenData::Op(Op::Star),
-                        ];
-
-                        self.toks.next();
-
-                        let mut fields = HashMap::new();
-                        loop {
-                            let peeked = self.peek_tok(EXPECTING_FOR_STRUCT)?.clone();
-                            match peeked.data {
-                                TokenData::CloseBracket(BracketType::Curly) => {
-                                    self.toks.next();
-                                    break;
-                                }
-                                TokenData::Ident(_)
-                                | TokenData::OpenBracket(BracketType::Square)
-                                | TokenData::Op(Op::Star) => {
-                                    self.trace.push("struct type field".into());
-                                    let field_typename = self.parse_typename()?;
-
-                                    let field_name =
-                                        self.expect_next_ident(&[TokenData::Ident(
-                                            "struct field name",
-                                        )])?;
-                                    self.trace.pop();
-                                    fields.insert(self.symbol(field_name), field_typename);
-                                }
-                                _ => {
-                                    return Err(ParseError {
-                                        highlighted_span: Some(
-                                            (next.span.from, peeked.span.to).into(),
-                                        ),
-                                        backtrace: self.trace.clone(),
-                                        error: ParseErrorKind::UnexpectedToken {
-                                            found: peeked.clone(),
-                                            expecting: ExpectingOneOf(EXPECTING_FOR_STRUCT),
-                                        },
-                                    })
-                                }
-                            }
-                        }
-                        Def {
-                            file,
-                            span: (next.span.from, after_name.span.to).into(),
-                            data: DefData::StructDef {
-                                name: self.symbol(name),
-                                fields,
-                            },
-                        }
-                    }
-                    TokenData::Ident(_)
-                    | TokenData::OpenBracket(BracketType::Smooth)
-                    | TokenData::OpenBracket(BracketType::Square)
-                    | TokenData::Op(Op::Star) => {
-                        self.trace.push("enum / aliased typename".into());
-                        let first_type = self.parse_typename()?;
-                        self.trace.pop();
-
-                        //Check for enum types
-                        if let Some(TokenData::Op(Op::OR)) = self.toks.peek().map(|tok| &tok.data) {
-                            let mut variants = vec![first_type];
-
-                            while let Some(TokenData::Op(Op::OR)) =
-                                self.toks.peek().map(|tok| &tok.data)
-                            {
-                                self.toks.next();
-
-                                self.trace.push("enum variant typename".into());
-                                let variant_type = self.parse_typename()?;
-                                self.trace.pop();
-
-                                variants.push(variant_type);
-                            }
-
-                            Def {
-                                file,
-                                span: next.span,
-                                data: DefData::EnumDef {
-                                    name: self.symbol(name),
-                                    variants,
-                                },
-                            }
-                        } else {
-                            Def {
-                                file,
-                                span: next.span,
-                                data: DefData::AliasDef {
-                                    name: self.symbol(name),
-                                    aliased: first_type,
-                                },
-                            }
-                        }
-                    }
-                    _ => {
-                        return Err(ParseError {
-                            highlighted_span: Some((next.span.from, after_name.span.to).into()),
-                            backtrace: self.trace.clone(),
-                            error: ParseErrorKind::UnexpectedToken {
-                                found: next,
-                                expecting: ExpectingOneOf(EXPECTING_AFTER_TYPE),
-                            },
-                        })
-                    }
-                };
-
+                let aliased = self.parse_typename()?;
+                 
                 self.trace.pop();
-                Ok(typedef)
+                Ok(Def {
+                    span: next.span,
+                    data: DefData::AliasDef {
+                        name: self.symbol(name),
+                        aliased
+                    },
+                    file,
+                })
             }
             _ => Err(ParseError {
                 highlighted_span: Some(next.span),
@@ -1049,9 +938,68 @@ impl<'src> Parser<'src> {
             _ => Ok(accessing),
         }
     }
+    
+    /// Parse a full typename from the input stream
+    fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
+        let first = self.parse_first_typename()?;
+        match self.toks.peek().map(|tok| &tok.data) {
+            Some(TokenData::Comma) => {
+                const EXPECTING_AFTER_TUPLE_TYPENAME: &[TokenData<'static>] = &[
+                    TokenData::Comma,
+                    TokenData::CloseBracket(BracketType::Smooth),
+                ];
+
+                self.toks.next();
+                let mut tuple_types = vec![first];
+                loop {
+                    let element_type = self.parse_typename()?;
+                    tuple_types.push(element_type);
+                    let after_typename = self.next_tok(EXPECTING_AFTER_TUPLE_TYPENAME)?;
+                    match after_typename.data {
+                        TokenData::CloseBracket(BracketType::Smooth) => break,
+                        TokenData::Comma => continue,
+                        _ => {
+                            return Err(ParseError {
+                                highlighted_span: Some(
+                                    after_typename.span,
+                                ),
+                                backtrace: self.trace.clone(),
+                                error: ParseErrorKind::UnexpectedToken {
+                                    found: after_typename,
+                                    expecting: ExpectingOneOf(
+                                        EXPECTING_AFTER_TUPLE_TYPENAME,
+                                    ),
+                                },
+                            })
+                        }
+                    }
+                }
+                Ok(UnresolvedType::Tuple { elements: tuple_types })
+            },
+            Some(TokenData::Op(Op::OR)) => {
+                let mut variants = vec![first];
+
+                while let Some(TokenData::Op(Op::OR)) =
+                    self.toks.peek().map(|tok| &tok.data)
+                {
+                    self.toks.next();
+
+                    self.trace.push("enum variant typename".into());
+                    let variant_type = self.parse_typename()?;
+                    self.trace.pop();
+
+                    variants.push(variant_type);
+                }
+
+                Ok(UnresolvedType::Enum { variants })
+
+            },
+            _ => Ok(first),
+        }
+    }
 
     /// Attempt to parse a typename from the token stream
-    fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
+    fn parse_first_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
             TokenData::Ident("type name"),
             TokenData::OpenBracket(BracketType::Smooth),
@@ -1211,13 +1159,64 @@ impl<'src> Parser<'src> {
                         },
                     })
                 }
-            }
+            },
+            TokenData::OpenBracket(BracketType::Curly) => {
+                const EXPECTING_FOR_STRUCT: &[TokenData<'static>] = &[
+                    TokenData::Ident("field type"),
+                    TokenData::CloseBracket(BracketType::Curly),
+                    TokenData::OpenBracket(BracketType::Square),
+                    TokenData::OpenBracket(BracketType::Smooth),
+                    TokenData::Op(Op::Star),
+                ];
+
+                self.trace.push("structure typename".into());
+
+                let mut fields = vec![];
+                loop {
+                    let peeked = self.peek_tok(EXPECTING_FOR_STRUCT)?.clone();
+                    match peeked.data {
+                        TokenData::CloseBracket(BracketType::Curly) => {
+                            self.toks.next();
+                            break;
+                        }
+                        TokenData::Ident(_)
+                        | TokenData::OpenBracket(BracketType::Square)
+                        | TokenData::Op(Op::Star) => {
+                            self.trace.push("struct type field".into());
+                            let field_typename = self.parse_typename()?;
+
+                            let field_name =
+                                self.expect_next_ident(&[TokenData::Ident(
+                                    "struct field name",
+                                )])?;
+                            self.trace.pop();
+                            fields.push((field_typename, self.symbol(field_name)));
+                        }
+                        _ => {
+                            return Err(ParseError {
+                                highlighted_span: Some(
+                                    (next.span.from, peeked.span.to).into(),
+                                ),
+                                backtrace: self.trace.clone(),
+                                error: ParseErrorKind::UnexpectedToken {
+                                    found: peeked.clone(),
+                                    expecting: ExpectingOneOf(EXPECTING_FOR_STRUCT),
+                                },
+                            })
+                        }
+                    }
+                }
+
+                self.trace.pop();
+
+                Ok(UnresolvedType::Struct { fields })
+            },
             TokenData::OpenBracket(BracketType::Smooth) => {
                 self.trace.push("unit or tuple type".into());
                 let peeked = self
                     .peek_tok(&[
                         TokenData::CloseBracket(BracketType::Smooth),
-                        TokenData::Ident("tuple element typename"),
+                        TokenData::Ident("typename in brackets"),
                     ])?
                     .clone();
                 let ty = match peeked.data {
@@ -1227,42 +1226,9 @@ impl<'src> Parser<'src> {
                         UnresolvedType::Unit
                     }
                     _ => {
-                        const EXPECTING_AFTER_TUPLE_TYPENAME: &[TokenData<'static>] = &[
-                            TokenData::Comma,
-                            TokenData::CloseBracket(BracketType::Smooth),
-                        ];
-
-                        //Replace trace with more descriptive string
-                        self.trace.pop();
-                        self.trace.push("tuple typename".into());
-                        let mut tuple_types = vec![];
-                        loop {
-                            let element_type = self.parse_typename()?;
-                            tuple_types.push(element_type);
-                            let after_typename = self.next_tok(EXPECTING_AFTER_TUPLE_TYPENAME)?;
-                            match after_typename.data {
-                                TokenData::CloseBracket(BracketType::Smooth) => break,
-                                TokenData::Comma => continue,
-                                _ => {
-                                    return Err(ParseError {
-                                        highlighted_span: Some(
-                                            (next.span.from, peeked.span.to).into(),
-                                        ),
-                                        backtrace: self.trace.clone(),
-                                        error: ParseErrorKind::UnexpectedToken {
-                                            found: after_typename,
-                                            expecting: ExpectingOneOf(
-                                                EXPECTING_AFTER_TUPLE_TYPENAME,
-                                            ),
-                                        },
-                                    })
-                                }
-                            }
-                        }
-                        self.trace.pop();
-                        UnresolvedType::Tuple {
-                            elements: tuple_types,
-                        }
+                        let ty = self.parse_typename()?;
+                        self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                        ty
                     }
                 };
 

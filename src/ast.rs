@@ -304,20 +304,6 @@ pub enum DefData {
         /// The aliased type
         aliased: UnresolvedType,
     },
-    /// A structure type definition
-    StructDef {
-        /// The name of the structure type
-        name: Symbol,
-        /// A map of all fields in the type
-        fields: HashMap<Symbol, UnresolvedType>,
-    },
-    /// An enumeration definition
-    EnumDef {
-        /// The name of the enum
-        name: Symbol,
-        /// All variants of this enum
-        variants: Vec<UnresolvedType>,
-    },
     /// An imported module definition
     ImportDef { name: SymbolPath },
 }
@@ -326,8 +312,6 @@ impl DefData {
     pub fn name(&self) -> Symbol {
         match self {
             Self::FunDef(proto, _) | Self::FunDec(proto) => proto.name,
-            Self::StructDef { name, .. } => *name,
-            Self::EnumDef { name, .. } => *name,
             Self::AliasDef { name, .. } => *name,
             Self::ImportDef { name } => name.last(),
         }
@@ -441,6 +425,14 @@ pub enum UnresolvedType {
     Tuple {
         /// The element types contained in the tuple
         elements: Vec<UnresolvedType>,
+    },
+    /// A structure with named members
+    Struct {
+        fields: Vec<(UnresolvedType, Symbol)>
+    },
+    /// A tagged union with variant types
+    Enum {
+        variants: Vec<UnresolvedType>,
     },
     /// User-defined identifier
     UserDefined {
