@@ -2,7 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::{types::IntType, IntPredicate, FloatPredicate};
 use num_bigint::Sign;
 
-use crate::{ast::{Ast, AstNode, IfExpr, NumberLiteral, NumberLiteralAnnotation}, parse::token::Op, util::files::FileId};
+use crate::{ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation}, parse::token::Op, util::files::FileId};
 
 use super::*;
 
@@ -12,9 +12,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         file: FileId,
         module: ModId,
-        ast: Ast<TypeId>,
+        ast: &Ast<TypeId>,
     ) -> Result<(), Diagnostic<FileId>> {
         match &ast.node {
+            AstNode::IfExpr(if_expr) => { self.gen_if_expr(file, module, if_expr)?; },
             AstNode::Assignment { lhs, rhs } => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
 
@@ -169,6 +170,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
+            AstNode::IfExpr(..) | AstNode::Block(..) => {
+                let phi = self.gen_lval(file, module, ast)?;
+                self.builder.build_load(phi, "load_phi")
+            } 
             AstNode::CastExpr(to, rhs) => self.gen_cast(file, module, *to, rhs)?,
             AstNode::Access(path) => {
                 let access = self.gen_access(file, ast.span, path)?;
@@ -604,6 +609,33 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
             AstNode::Access(path) => return self.gen_access(file, ast.span, path),
+            AstNode::Block(block) => {
+                let body_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "block");
+                let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
+
+                if let Some(pv) = self.gen_body(file, module, block, body_bb, after_bb)? {
+                    pv
+                } else {
+                    return Err(Diagnostic::error()
+                        .with_message("Cannot use block without phi statement as expression")
+                        .with_labels(vec![
+                            Label::primary(file, ast.span)
+                        ])
+                    )
+                }
+            },
+            AstNode::IfExpr(if_expr) => {
+                if let Some(pv) = self.gen_if_expr(file, module, if_expr)? {
+                    pv
+                } else {
+                    return Err(Diagnostic::error()
+                        .with_message("Cannot use if block with no phi nodes as expression")
+                        .with_labels(vec![
+                            Label::primary(file, ast.span)
+                        ])
+                    )
+                }
+            }
             _ => {
                 let expr = self.gen_expr(file, module, ast)?;
                 let alloca = self.builder.build_alloca(expr.get_type(), "lvalue_alloca");
@@ -853,16 +885,139 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
         
     /// Generate code for a single if expression or statement
-    /*fn gen_if_expr(&mut self, file: FileId, module: ModId, if_expr: &IfExpr) -> Result<(), Diagnostic<FileId>> {
-        let cond = self.gen_expr(file, module, &if_expr.cond)?;
-        
-    }
+    fn gen_if_expr(
+        &mut self, 
+        file: FileId, 
+        module: ModId,
+        if_expr: &IfExpr<TypeId>
+    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+        let start_bb = self.builder.get_insert_block().unwrap();
 
-    fn gen_body(&mut self, file: FileId, module: ModId, body: &[Ast<TypeId>]) -> Result<(), DIagnostic<FileId>> {
-        for stmt in body.iter() {
-            self.gen_stmt(file, module, stmt)?;
+        let cond_ty = self.ast_type(file, module, &if_expr.cond)?;
+        if let TypeData::Bool = &self.spark[cond_ty].data {
+            let cond = self.gen_expr(file, module, &if_expr.cond)?.into_int_value();
+            let if_body_block = self.ctx.append_basic_block(self.current_fun.unwrap().0, "if_body");
+            
+            match &if_expr.else_expr {
+                Some(else_expr) => {
+                    let else_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "else_bb");
+                    let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after_bb");
+
+                    let if_phi = self.gen_body(
+                        file, 
+                        module, 
+                        &if_expr.body, 
+                        if_body_block, 
+                        after_bb
+                    )?;
+                    
+                    match else_expr {
+                        ElseExpr::ElseIf(elif_expr) => {
+                            self.builder.position_at_end(else_bb);
+                            let else_phi = self.gen_if_expr(file, module, elif_expr)?;
+                            if let (Some(if_pv), Some(else_pv)) = (if_phi, else_phi) {
+                                let else_phi = self.builder.build_load(else_pv, "elif_phi");
+                                self.builder.build_store(if_pv, else_phi);
+                            }
+                        },
+                        ElseExpr::Else(else_body) => {
+                            if let (Some(if_pv), Some(pv)) = (if_phi, self.gen_body(
+                                file, 
+                                module, 
+                                else_body,
+                                else_bb, 
+                                after_bb
+                            )?) {
+                                let else_phi = self.builder.build_load(pv, "else_expr_phi");
+                                self.builder.build_store(if_pv, else_phi);
+                            }
+                        }
+                    }
+
+                    self.builder.position_at_end(start_bb);
+                    self.builder.build_conditional_branch(cond, if_body_block, else_bb);
+                    Ok(if_phi)
+                },
+                None => {
+                    let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after_if");
+                    let if_phi = self.gen_body(
+                        file, 
+                        module, 
+                        &if_expr.body, 
+                        if_body_block, 
+                        after_bb
+                    )?;
+                    self.builder.position_at_end(start_bb);
+                    self.builder.build_conditional_branch(cond, if_body_block, after_bb);
+                    self.builder.position_at_end(after_bb);
+                    Ok(if_phi)
+                }
+            }
+
+        } else {
+            return Err(Diagnostic::error()
+                .with_message(format!(
+                    "Using value of type {} as boolean condition for if expression",
+                    self.spark.get_type_name(cond_ty)
+                ))
+                .with_labels(vec![
+                    Label::primary(file, if_expr.cond.span)
+                        .with_message("Non-boolean value here")
+                ])
+            )
         }
-    }*/
+    }
+    
+    /// Generate LLVM IR for a block of statements 
+    fn gen_body(
+        &mut self,
+        file: FileId, 
+        module: ModId,
+        body: &[Ast<TypeId>],
+        to_bb: BasicBlock<'ctx>,
+        after_bb: BasicBlock<'ctx>,
+    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+        let from_bb = self.builder.get_insert_block().unwrap();
+
+        let phi_data = match Self::phi_node(file, body) {
+            Err(_) => None,
+            Ok(phi_node) => {
+                let ty = self.ast_type(file, module, phi_node).unwrap();
+                let llvm_ty = BasicTypeEnum::try_from(self.llvm_ty(ty)).unwrap();
+                let phi_alloca = self.builder.build_alloca(llvm_ty, "phi_alloca");
+
+                Some(PhiData {
+                    phi_ty: ty,
+                    alloca: phi_alloca
+                })
+            }
+        };
+        
+        let old_break_data = self.break_data;
+        self.builder.position_at_end(to_bb);
+
+        self.break_data = Some(BreakData {
+            return_to_bb: after_bb,
+            phi_data,
+        });
+
+        self.current_scope.push_layer();
+        
+        for stmt in body.iter() {
+            if let Err(e) = self.gen_stmt(file, module, stmt) {
+                self.break_data = old_break_data;
+                self.current_scope.pop_layer();
+                self.builder.position_at_end(from_bb);
+                return Err(e)
+            }
+        }
+
+        self.break_data = old_break_data;
+        self.current_scope.pop_layer();
+        self.builder.build_unconditional_branch(after_bb);
+
+        Ok(phi_data.map(|d| d.alloca))
+    }
 
     /// Generate an LLVM integer type to match an IR integer type
     fn llvm_int_ty(&self, width: IntegerWidth) -> IntType<'ctx> {
@@ -1049,6 +1204,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
 
             AstNode::VarDeclaration { ty: Some(ty), .. } => *ty,
+            AstNode::PhiExpr(phid) => self.ast_type(file, module, phid)?,
             AstNode::Return(..)
             | AstNode::Break
             | AstNode::Continue

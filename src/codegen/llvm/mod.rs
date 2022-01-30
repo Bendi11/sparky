@@ -164,7 +164,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
                     self.current_fun = Some((llvm_fun, *fun));
                     for stmt in body.clone() {
-                        if let Err(e) = self.gen_stmt(*file, module, stmt) {
+                        if let Err(e) = self.gen_stmt(*file, module, &stmt) {
                             self.diags
                                 .emit(e.with_notes(vec![format!("In function {}", name)]));
                         }

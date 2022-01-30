@@ -223,12 +223,18 @@ impl<'src> Parser<'src> {
                     TokenData::OpenBracket(BracketType::Curly),
                 ];
 
+                self.expect_next(&[TokenData::OpenBracket(BracketType::Smooth)])?;
+
                 let mut args = Vec::new();
 
                 loop {
                     let peeked = self.peek_tok(ARGS_EXPECTING)?;
                     match peeked.data {
-                        TokenData::Ident(_) => {
+                        TokenData::CloseBracket(BracketType::Smooth) => {
+                            self.toks.next();
+                            break
+                        },
+                        _ => {
                             self.trace.push("function argument typename".into());
                             let arg_type = self.parse_typename()?;
                             self.trace.pop();
@@ -251,7 +257,6 @@ impl<'src> Parser<'src> {
                                 self.next_tok(EXPECTING_AFTER_ARG)?;
                             }
                         }
-                        _ => break,
                     }
                 }
 
