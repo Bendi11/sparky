@@ -214,8 +214,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             AstNode::BooleanLiteral(b) => match b {
                 true => self.ctx.bool_type().const_all_ones(),
                 false => self.ctx.bool_type().const_zero(),
-            }
-            .into(),
+            }.into(),
+            AstNode::StringLiteral(s) => {
+                let glob = self.builder.build_global_string_ptr(s.as_str(), "const_str");
+                glob.as_pointer_value().into()
+            },
             AstNode::NumberLiteral(n) => {
                 match n {
                     NumberLiteral::Integer(num, annot) => {
