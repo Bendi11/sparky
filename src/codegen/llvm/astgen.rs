@@ -116,7 +116,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     self.builder.build_return(None);
                 }
-            }
+            },
             AstNode::PhiExpr(phi) => {
                 if let Some(break_data) = self.break_data {
                     if let Some(phi_data) = break_data.phi_data {
@@ -135,7 +135,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         let phi_val = self.gen_expr(file, module, phi)?;
                         self.builder.build_store(phi_data.alloca, phi_val);
                         self.builder
-                            .build_unconditional_branch(break_data.return_to_bb);
+                            .build_unconditional_branch(break_data.break_bb);
                     } else {
                         return Err(Diagnostic::error()
                             .with_message("Phi statement encountered but not used")
@@ -985,7 +985,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         to_bb: BasicBlock<'ctx>,
         after_bb: BasicBlock<'ctx>,
     ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
-        let from_bb = self.builder.get_insert_block().unwrap();
 
         let phi_data = match Self::phi_node(file, body) {
             Err(_) => None,
@@ -1005,7 +1004,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         self.builder.position_at_end(to_bb);
 
         self.break_data = Some(BreakData {
-            return_to_bb: after_bb,
+            break_bb: after_bb,
             phi_data,
         });
         
@@ -1015,7 +1014,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             if let Err(e) = self.gen_stmt(file, module, stmt) {
                 self.break_data = old_break_data;
                 self.current_scope.pop_layer();
-                self.builder.position_at_end(from_bb);
+                self.builder.position_at_end(after_bb);
                 return Err(e)
             }
         }

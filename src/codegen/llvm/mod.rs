@@ -51,12 +51,13 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
     current_scope: ScopeMap<Symbol, ScopeDef<'ctx>>,
     current_fun: Option<(FunctionValue<'ctx>, FunId)>,
     break_data: Option<BreakData<'ctx>>,
+    continue_bb: Option<BasicBlock<'ctx>>,
 }
 
 /// Data needed to use a phi / break / continue statement
 #[derive(Clone, Copy)]
 struct BreakData<'ctx> {
-    pub return_to_bb: BasicBlock<'ctx>,
+    pub break_bb: BasicBlock<'ctx>,
     pub phi_data: Option<PhiData<'ctx>>,
 }
 
@@ -82,6 +83,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             diags: DiagnosticManager::new(files),
             llvm_funs: HashMap::new(),
             break_data: None,
+            continue_bb: None,
             target: Target::from_triple(&TargetMachine::get_default_triple())
                 .unwrap()
                 .create_target_machine(
