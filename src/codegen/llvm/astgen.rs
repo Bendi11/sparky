@@ -752,7 +752,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     array_align,
                     rhs_ptr_bc,
                     src_align,
-                    self.ctx.ptr_sized_int_type(&self.target, None)
+                    self.ctx.ptr_sized_int_type(&self.target.get_target_data(), None)
                         .const_int(rhs_size as u64,  false)
                 ).unwrap();
                 

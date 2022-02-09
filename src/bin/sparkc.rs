@@ -102,7 +102,8 @@ fn main() {
     let mut llvm_ctx = Context::create();
     let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files);
     let llvm_root = generator.codegen_module(root_id);
-    llvm_root.print_to_stderr();
+    generator.gen_obj("out.o", llvm_root);
+    //llvm_root.print_to_stderr();
 }
 
 fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {

@@ -1,6 +1,7 @@
 //! Generating LLVM IR from a parsed and type lowered AST
 
 pub mod astgen;
+pub mod bingen; 
 
 use std::convert::TryFrom;
 
@@ -47,7 +48,7 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
     pub spark: SparkCtx,
     pub diags: DiagnosticManager<'files>,
     llvm_funs: HashMap<FunId, FunctionValue<'ctx>>,
-    target: TargetData,
+    target: TargetMachine,
     current_scope: ScopeMap<Symbol, ScopeDef<'ctx>>,
     current_fun: Option<(FunctionValue<'ctx>, FunId)>,
     break_data: Option<BreakData<'ctx>>,
@@ -94,8 +95,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     RelocMode::Default,
                     CodeModel::Medium,
                 )
-                .unwrap()
-                .get_target_data(),
+                .unwrap(),
         }
     }
 
@@ -304,6 +304,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     
     /// Get the size in bytes of a pointer on the target platform
     fn ptr_size(&self) -> u32 {
-        self.target.get_pointer_byte_size(None)
+        self.target.get_target_data().get_pointer_byte_size(None)
     }
 }
