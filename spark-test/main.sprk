@@ -8,10 +8,11 @@ type test_enum = i32 | bool
 
 fun main(i32 argc, **u8 a) -> i32 {
     {
-        mut a = 0
+        mut a = 1
         if a > 3 {
             break
         } else {
+            a = a + 1
             continue
         }
     }

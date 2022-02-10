@@ -15,6 +15,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<(), Diagnostic<FileId>> {
         match &ast.node {
+            AstNode::Block(block) => { self.gen_block_ast(file, module, block)?; },
             AstNode::IfExpr(if_expr) => { self.gen_if_expr(file, module, if_expr)?; },
             AstNode::FunCall(called, args) => { self.gen_call(file, module, called, args)?; },
             AstNode::Assignment { lhs, rhs } => {
@@ -151,6 +152,31 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     return Err(Diagnostic::error()
                         .with_message("Phi statement not in a block")
                         .with_labels(vec![Label::primary(file, ast.span)]));
+                }
+            },
+            AstNode::Break => {
+                if let Some(break_data) = self.break_data {
+                    self.builder.build_unconditional_branch(break_data.break_bb);
+                } else {
+                    return Err(Diagnostic::error()
+                        .with_message("Break statement encountered while not in a block")
+                        .with_labels(vec![
+                            Label::primary(file, ast.span)
+                        ])
+                    )
+                }
+            },
+            AstNode::Continue => {
+                if let Some(continue_bb) = self.continue_bb {
+                    self.builder.build_unconditional_branch(continue_bb);
+                } else {
+                    return Err(Diagnostic::error()
+                        .with_message("Continue statement while not in a block")
+                        .with_labels(vec![
+                            Label::primary(file, ast.span)
+                                .with_message("Continue statement encountered here")
+                        ])
+                    )
                 }
             }
             other => {
@@ -620,19 +646,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         Ok(match &ast.node {
             AstNode::Access(path) => return self.gen_access(file, ast.span, path),
             AstNode::Block(block) => {
-                let old_continue = self.continue_bb;
-                let start_bb = self.builder.get_insert_block().unwrap();
-                let body_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "block");
-                self.continue_bb = Some(body_bb);
-                let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
-
-                self.builder.position_at_end(start_bb);
-                self.builder.build_unconditional_branch(body_bb);
-                
-                self.builder.position_at_end(start_bb);
-
-                if let Some(pv) = self.gen_body(file, module, block, body_bb, after_bb)? {
-                    self.continue_bb = old_continue;
+                if let Some(pv) = self.gen_block_ast(file, module, block)? {
                     pv
                 } else {
                     return Err(Diagnostic::error()
@@ -661,6 +675,28 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 alloca
             }
         })
+    }
+
+    fn gen_block_ast(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        block: &[Ast<TypeId>]
+    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+        let old_continue = self.continue_bb;
+        let start_bb = self.builder.get_insert_block().unwrap();
+        let body_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "block");
+        self.continue_bb = Some(body_bb);
+        let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
+
+        self.builder.position_at_end(start_bb);
+        self.builder.build_unconditional_branch(body_bb);
+                
+        self.builder.position_at_end(start_bb);
+
+        let pv = self.gen_body(file, module, block, body_bb, after_bb)?;
+        self.continue_bb = old_continue;
+        Ok(pv)
     }
 
     /// Generate LLVM IR for a single symbol access
@@ -1069,13 +1105,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             Err(_) => None,
             Ok(phi_node) => {
                 let ty = self.ast_type(file, module, phi_node).unwrap();
-                let llvm_ty = BasicTypeEnum::try_from(self.llvm_ty(ty)).unwrap();
-                let phi_alloca = self.builder.build_alloca(llvm_ty, "phi_alloca");
+                if let Ok(llvm_ty) = BasicTypeEnum::try_from(self.llvm_ty(ty)) {
+                    let phi_alloca = self.builder.build_alloca(llvm_ty, "phi_alloca");
 
-                Some(PhiData {
-                    phi_ty: ty,
-                    alloca: phi_alloca
-                })
+                    Some(PhiData {
+                        phi_ty: ty,
+                        alloca: phi_alloca
+                    })
+                } else {
+                    None
+                }
             }
         };
         
