@@ -620,11 +620,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         Ok(match &ast.node {
             AstNode::Access(path) => return self.gen_access(file, ast.span, path),
             AstNode::Block(block) => {
+                let old_continue = self.continue_bb;
                 let start_bb = self.builder.get_insert_block().unwrap();
                 let body_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "block");
-                
+                self.continue_bb = Some(body_bb);
                 let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
-                
 
                 self.builder.position_at_end(start_bb);
                 self.builder.build_unconditional_branch(body_bb);
@@ -632,6 +632,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 self.builder.position_at_end(start_bb);
 
                 if let Some(pv) = self.gen_body(file, module, block, body_bb, after_bb)? {
+                    self.continue_bb = old_continue;
                     pv
                 } else {
                     return Err(Diagnostic::error()
@@ -1052,6 +1053,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             ])
         )
     }
+        
 
     /// Generate LLVM IR for a block of statements 
     fn gen_body(
