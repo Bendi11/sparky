@@ -29,7 +29,7 @@ use crate::{
         files::{FileId, Files},
         loc::Span,
     },
-    Symbol,
+    Symbol, CompileOpts, OutputOptimizationLevel,
 };
 
 /// A type representing all types that can be defined in the global scope
@@ -47,6 +47,7 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
     pub builder: Builder<'ctx>,
     pub spark: SparkCtx,
     pub diags: DiagnosticManager<'files>,
+    pub opts: CompileOpts,
     llvm_funs: HashMap<FunId, FunctionValue<'ctx>>,
     target: TargetMachine,
     current_scope: ScopeMap<Symbol, ScopeDef<'ctx>>,
@@ -71,7 +72,7 @@ struct PhiData<'ctx> {
 
 impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Create a new code generator from an LLVM context
-    pub fn new(spark: SparkCtx, ctx: &'ctx Context, files: &'files Files) -> Self {
+    pub fn new(spark: SparkCtx, ctx: &'ctx Context, files: &'files Files, opts: CompileOpts) -> Self {
         Target::initialize_native(&InitializationConfig::default())
             .expect("LLVM: failed to initialize native compilation target");
 
@@ -91,11 +92,23 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     &TargetMachine::get_default_triple(),
                     TargetMachine::get_host_cpu_name().to_str().unwrap(),
                     TargetMachine::get_host_cpu_features().to_str().unwrap(),
-                    OptimizationLevel::Default,
-                    RelocMode::Default,
-                    CodeModel::Medium,
+                    match opts.opt_lvl {
+                        OutputOptimizationLevel::Size => OptimizationLevel::Less,
+                        OutputOptimizationLevel::Medium => OptimizationLevel::Less,
+                        OutputOptimizationLevel::Debug => OptimizationLevel::None,
+                        OutputOptimizationLevel::Release => OptimizationLevel::Aggressive,
+                    },
+                    match opts.pic {
+                        true => RelocMode::PIC,
+                        false => RelocMode::Default
+                    },
+                    match opts.opt_lvl {
+                        OutputOptimizationLevel::Size => CodeModel::Small,
+                        _ => CodeModel::Default,
+                    },
                 )
                 .unwrap(),
+            opts,
         }
     }
 
@@ -176,6 +189,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         }
 
         self.current_scope.pop_layer();
+
+        for (_name, def) in defs.iter() {
+            if let SparkDef::ModDef(submod) = def {
+                let submod = self.codegen_module(*submod);
+                llvm_mod.link_in_module(submod).unwrap();
+            }
+        }
 
         llvm_mod
     }

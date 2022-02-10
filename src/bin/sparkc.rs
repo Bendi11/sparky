@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use clap::{App, Arg};
+use clap::{App, Arg, ValueHint};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::context::Context;
 use spark::{
@@ -9,7 +9,7 @@ use spark::{
     error::DiagnosticManager,
     parse::{ParseError, Parser},
     util::files::{CompiledFile, FileId, Files},
-    Symbol,
+    Symbol, CompileOpts, OutputFileType, OutputOptimizationLevel,
 };
 
 enum InputItem {
@@ -21,10 +21,11 @@ fn main() {
     let app = App::new("sparkc")
         .about("Compiler for the spark programming language")
         .arg(
-            Arg::new("input")
+            Arg::new("input-path")
                 .required(true)
                 .takes_value(true)
                 .help("A path to an input file or directory to compile")
+                .long_help("A full or relative path to a file or directory to compile.\nIf a directory is passed, all files ending in .sprk will be compiled")
                 .multiple_values(false)
                 .value_name("input")
                 .validator_os(|path| match Path::new(path).exists() {
@@ -33,11 +34,98 @@ fn main() {
                         "The input directory at {} does not exist",
                         path.to_string_lossy()
                     )),
-                }),
+                })
+                .value_hint(ValueHint::AnyPath)
+                .help_heading("input"),
+        )
+        .arg(Arg::new("opt-lvl")
+            .short('O')
+            .long("opt-lvl")
+            .takes_value(true)
+            .default_value("0")
+            .possible_values([
+                "0", "1", "2", "size"
+            ])
+            .value_name("optimization-level")
+            .help("Set the optimization level of the output")
+            .help_heading("output")
+        )
+        .arg(Arg::new("output-file")
+            .short('o')
+            .long("output-file")
+            .takes_value(true)
+            .help("Path to a file that will have output written to")
+            .help_heading("output")
+            .required(true)
+        )
+        .arg(Arg::new("output-type")
+            .short('T')
+            .long("output-type")
+            .takes_value(true)
+            .possible_values([
+                "asm",
+                "obj",
+                "ll"
+            ])
+            .help("Set the output type to be written to the output file")
+            .help_heading("output")
+            .long_help("Explicitly set the output file type instead of guessing from the extension given to [output-file]")
+        )
+        .arg(Arg::new("pic")
+            .long("pic")
+            .help("Generate position independent output")
+            .help_heading("output")
+            .takes_value(false)
+        )
+        .arg(Arg::new("strip")
+            .long("strip")
+            .takes_value(false)
+            .help("Strip symbols from the produced output (redundant if -Osize is passed)")
+            .help_heading("output")
         );
 
     let args = app.get_matches();
-    let input = Path::new(args.value_of("input").unwrap());
+
+    let opts = CompileOpts {
+        out_file: PathBuf::from(args.value_of("output-file").unwrap()),
+        out_type: match args.value_of("output-type") {
+            Some(ty) => match ty {
+                _ => unreachable!(),
+            },
+            None => match Path::new(args.value_of("output-file").unwrap()).extension() {
+                Some(ext) => match ext.to_str() {
+                    Some("obj") | Some("o") => OutputFileType::Object,
+                    Some("ll") => OutputFileType::LLVMIR,
+                    Some("asm") | Some("s") => OutputFileType::Assembly,
+                    _ => {
+                        eprintln!(
+                            "Output file '{}' has an unknown extension\nUse -T[type] option to explicitly set output type",
+                            args.value_of("output-file").unwrap(),
+                        );
+                        return
+                    }
+                },
+                None => {
+                    eprintln!(
+                        "Output file '{}' has no extension\nUse -T[type] option to explicitly set output type",
+                        args.value_of("output-file").unwrap(),
+                    );
+                    return
+                }
+            }
+        },
+        opt_lvl: match args.value_of("opt-lvl").unwrap() {
+            "0" => OutputOptimizationLevel::Debug,
+            "1" => OutputOptimizationLevel::Medium,
+            "2" => OutputOptimizationLevel::Release,
+            "size" => OutputOptimizationLevel::Size,
+            _ => unreachable!()
+        },
+        pic: args.is_present("pic"),
+        stripped: args.is_present("strip"),
+    };
+
+    let input = Path::new(args.value_of("input-path").unwrap());
     let mut files = Files::new();
     let input = collect_files(input, &mut files);
 
@@ -100,9 +188,9 @@ fn main() {
     let root_id = lowerer.lower_module(&root_module);
 
     let mut llvm_ctx = Context::create();
-    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files);
+    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files, opts);
     let llvm_root = generator.codegen_module(root_id);
-    generator.gen_obj("out.o", llvm_root);
+    generator.finish(llvm_root);
     //llvm_root.print_to_stderr();
 }
 
