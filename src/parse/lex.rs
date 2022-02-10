@@ -100,8 +100,14 @@ impl<'src> Lexer<'src> {
                     },
                     (':', _) => Token::new(start_loc, TokenData::Colon),
 
-                    ('<', Some('<')) => Token::new(start_loc, TokenData::Op(Op::ShLeft)),
-                    ('>', Some('>')) => Token::new(start_loc, TokenData::Op(Op::ShRight)),
+                    ('<', Some('<')) => {
+                        self.next_char();
+                        Token::new(start_loc, TokenData::Op(Op::ShLeft))
+                    },
+                    ('>', Some('>')) => {
+                        self.next_char();
+                        Token::new(start_loc, TokenData::Op(Op::ShRight))
+                    },
 
                     ('&', _) => Token::new(start_loc, TokenData::Op(Op::AND)),
                     ('|', _) => Token::new(start_loc, TokenData::Op(Op::OR)),
