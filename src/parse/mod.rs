@@ -292,8 +292,8 @@ impl<'src> Parser<'src> {
 
                     Ok(Def {
                         file,
-                        span: next.span,
-                        data: DefData::FunDef(proto, body),
+                        span: body.1,
+                        data: DefData::FunDef(proto, body.0),
                     })
                 } else {
                     Ok(Def {
@@ -334,22 +334,39 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a curly brace enclosed AST body
-    fn parse_body(&mut self) -> ParseResult<'src, Vec<Ast>> {
-        self.expect_next(&[TokenData::OpenBracket(BracketType::Curly)])?;
+    fn parse_body(&mut self) -> ParseResult<'src, (Vec<Ast>, Span)> {
+        const EXPECTING_FOR_BODY: &[TokenData<'static>] = &[
+            TokenData::OpenBracket(BracketType::Curly)
+        ];
+
+        let tok = self.next_tok(EXPECTING_FOR_BODY)?;
+        let start_loc = if let TokenData::OpenBracket(BracketType::Curly) = tok.data {
+            tok.span.from
+        } else {
+            return Err(ParseError {
+                highlighted_span: Some(tok.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    expecting: ExpectingOneOf(EXPECTING_FOR_BODY),
+                    found: tok
+                }
+            })
+        };
+
         let mut body = vec![];
 
-        loop {
+        let end_loc = loop {
             if self
                 .peek_tok(&[TokenData::CloseBracket(BracketType::Curly)])?
                 .data
                 == TokenData::CloseBracket(BracketType::Curly)
             {
-                self.toks.next();
-                break;
+                let next = self.toks.next().unwrap().span.to;
+                break next;
             }
             body.push(self.parse_stmt()?);
-        }
-        Ok(body)
+        };
+        Ok((body, Span::new(start_loc, end_loc)))
     }
 
     fn parse_stmt(&mut self) -> ParseResult<'src, Ast> {
@@ -715,20 +732,20 @@ impl<'src> Parser<'src> {
 
                     Ok(IfExpr {
                         cond: Box::new(cond),
-                        body,
-                        else_expr: Some(ElseExpr::Else(else_body)),
+                        body: body.0,
+                        else_expr: Some(ElseExpr::Else(else_body.0)),
                     })
                 }
                 _ => Ok(IfExpr {
                     cond: Box::new(cond),
-                    body,
+                    body: body.0,
                     else_expr: Some(ElseExpr::ElseIf(Box::new(self.parse_if()?))),
                 }),
             }
         } else {
             Ok(IfExpr {
                 cond: Box::new(cond),
-                body,
+                body: body.0,
                 else_expr: None,
             })
         }
@@ -757,8 +774,8 @@ impl<'src> Parser<'src> {
                 let block = self.parse_body()?;
 
                 Ast {
-                    span: next.span,
-                    node: AstNode::Block(block),
+                    span: block.1,
+                    node: AstNode::Block(block.0),
                 }
             }
             TokenData::OpenBracket(BracketType::Smooth) => {

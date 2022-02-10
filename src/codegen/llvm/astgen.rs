@@ -1296,8 +1296,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             | AstNode::Break
             | AstNode::Continue
             | AstNode::VarDeclaration { .. }
-            | AstNode::Assignment { .. }
-            | AstNode::PhiExpr(..) => {
+            | AstNode::Assignment { .. } => {
                 return Err(Diagnostic::error()
                     .with_message("Cannot find type of statement")
                     .with_labels(vec![Label::primary(file, ast.span)]))
