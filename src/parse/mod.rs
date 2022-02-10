@@ -383,15 +383,6 @@ impl<'src> Parser<'src> {
                     node: AstNode::Continue,
                 })
             }
-            TokenData::Ident("loop") => {
-                self.trace.push("loop statement".into());
-                let loop_body = self.parse_body()?;
-                self.trace.pop();
-                Ok(Ast {
-                    span: peeked.span,
-                    node: AstNode::Loop(loop_body),
-                })
-            }
             TokenData::Ident("if") => {
                 let if_stmt = self.parse_if()?;
                 Ok(Ast {
@@ -508,16 +499,6 @@ impl<'src> Parser<'src> {
                 Ast {
                     span: peeked.span,
                     node: AstNode::IfExpr(if_expr),
-                }
-            }
-            TokenData::Ident("loop") => {
-                self.toks.next();
-                self.trace.push("loop expression".into());
-                let body = self.parse_body()?;
-                self.trace.pop();
-                Ast {
-                    span: peeked.span,
-                    node: AstNode::Loop(body),
                 }
             }
             TokenData::Ident("true") => {

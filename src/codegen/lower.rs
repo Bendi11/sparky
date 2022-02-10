@@ -225,11 +225,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 AstNode::Return(expr) => {
                     AstNode::Return(Box::new(self.lower_ast(module, expr, file)))
                 }
-                AstNode::Loop(body) => AstNode::Loop(
-                    body.iter()
-                        .map(|expr| self.lower_ast(module, expr, file))
-                        .collect(),
-                ),
                 AstNode::Block(body) => AstNode::Block(
                     body.iter()
                         .map(|expr| self.lower_ast(module, expr, file))

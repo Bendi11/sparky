@@ -1302,7 +1302,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .with_message("Cannot find type of statement")
                     .with_labels(vec![Label::primary(file, ast.span)]))
             }
-            AstNode::Loop(body) | AstNode::Block(body) => {
+            AstNode::Block(body) => {
                 let phi_node = Self::phi_node(file, &body).map_err(|e| {
                     e.with_labels(vec![
                         Label::secondary(file, ast.span).with_message("In loop body here")

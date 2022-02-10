@@ -235,8 +235,6 @@ where
     Break,
     /// Continuing in a loop
     Continue,
-    /// An infinite loop with body
-    Loop(Vec<Ast<T>>),
     /// A block of statements
     Block(Vec<Ast<T>>),
     /// A match statement
@@ -461,13 +459,6 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                     write!(w, "{:?}, ", part.node)?;
                 }
                 write!(w, " ]")
-            }
-            Self::Loop(body) => {
-                writeln!(w, "LOOP {{")?;
-                for stmt in body.iter() {
-                    writeln!(w, "{:?}", stmt.node)?;
-                }
-                write!(w, "}}")
             }
             Self::Break => write!(w, "BREAK"),
             Self::Continue => write!(w, "CONTINUE"),
