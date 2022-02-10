@@ -9,7 +9,7 @@ use crate::{
     Symbol,
 };
 
-pub type TypeId = Index<Type>;
+pub type TypeId = Index<TypeData>;
 pub type FunId = Index<Function>;
 pub type ModId = Index<SparkModule>;
 pub type DefId = Index<SparkDef>;
@@ -18,7 +18,7 @@ pub type DefId = Index<SparkDef>;
 /// types, etc.
 #[derive(Clone, Debug)]
 pub struct SparkCtx {
-    types: Interner<Type>,
+    types: Interner<TypeData>,
     modules: Arena<SparkModule>,
     funs: Arena<Function>,
 }
@@ -37,15 +37,12 @@ impl SparkCtx {
     /// Create a type using the given type data and return the ID of the created
     /// type
     pub fn new_type(&mut self, data: TypeData) -> TypeId {
-        self.types.insert_with(|id| Type { id, data })
+        self.types.insert(data)
     }
 
     /// Create a new invalid type with a unique type ID for forward references
     pub fn new_empty_type(&mut self) -> TypeId {
-        self.types.insert_with_nointern(|id| Type {
-            id,
-            data: TypeData::Invalid,
-        })
+        self.types.insert_nointern(TypeData::Invalid)
     }
 
     /// Create a new function and return the ID of the created function
@@ -67,7 +64,7 @@ impl SparkCtx {
     /// Recursively unwrap any aliased types, returning a type id that is guranteeed to 
     /// not be an alias type
     pub fn unwrap_alias(&self, ty: TypeId) -> TypeId {
-        match &self[ty].data {
+        match &self[ty] {
             TypeData::Alias(_, ty) => self.unwrap_alias(*ty),
             _ => ty,
         }
@@ -84,7 +81,7 @@ impl SparkCtx {
 
     /// Get the name of a type
     pub fn get_type_name(&self, type_id: TypeId) -> Symbol {
-        match &self[type_id].data {
+        match &self[type_id] {
             TypeData::Integer { signed, width } => Symbol::from(match signed {
                 true => match width {
                     IntegerWidth::Eight => "i8",
@@ -197,80 +194,52 @@ impl SparkCtx {
         let mut types = Interner::new();
         let modules = Arena::new();
 
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::Eight,
                 signed: true,
-            },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+            }
+        );
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::Sixteen,
                 signed: true,
-            },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+            }
+        );
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::ThirtyTwo,
                 signed: true,
-            },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+            }
+        );
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::SixtyFour,
                 signed: true,
-            },
-        });
+            }
+        );
 
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::Eight,
                 signed: false,
-            },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+            }
+        );
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::Sixteen,
                 signed: false,
-            },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+            }
+        );
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::ThirtyTwo,
-                signed: false,
+            signed: false,
             },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Integer {
+        );
+        types.insert(TypeData::Integer {
                 width: IntegerWidth::SixtyFour,
                 signed: false,
-            },
-        });
+            }
+        );
 
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Float { doublewide: false },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Float { doublewide: true },
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Bool,
-        });
-        types.insert_with(|id| Type {
-            id,
-            data: TypeData::Unit,
-        });
+        types.insert(TypeData::Float { doublewide: false });
+        types.insert(TypeData::Float { doublewide: true });
+        types.insert(TypeData::Bool);
+        types.insert(TypeData::Unit);
 
         Self {
             types,
@@ -364,7 +333,7 @@ pub enum SparkDef {
 }
 
 impl ops::Index<TypeId> for SparkCtx {
-    type Output = Type;
+    type Output = TypeData;
     fn index(&self, index: TypeId) -> &Self::Output {
         self.types.get(index)
     }

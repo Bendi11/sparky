@@ -192,7 +192,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         lval.into()
                     }
                     Op::Star => {
-                        if let TypeData::Pointer(_) = &self.spark[rhs_ty].data {
+                        if let TypeData::Pointer(_) = &self.spark[rhs_ty] {
                             let pv = self.gen_expr(file, module, rhs)?.into_pointer_value();
                             let deref = self.builder.build_load(pv, "deref_load");
                             deref
@@ -409,7 +409,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         let llvm_rhs = self.gen_expr(file, module, rhs)?;
 
         if lhs_ty == rhs_ty {
-            match (op, self.spark[lhs_ty].data.clone()) {
+            match (op, &self.spark[lhs_ty]) {
                 (Op::Star, TypeData::Integer { .. }) => {
                     return Ok(self
                         .builder
@@ -572,9 +572,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         Ok(
             match (
-                self.spark[lhs_ty].data.clone(),
+                self.spark[lhs_ty].clone(),
                 op,
-                self.spark[rhs_ty].data.clone(),
+                self.spark[rhs_ty].clone(),
             ) {
                 (TypeData::Integer { .. }, Op::ShLeft, TypeData::Integer { .. }) => self
                     .builder
@@ -705,13 +705,12 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             .ast_type(file, module, rhs)
             .map_err(|d| d.with_notes(vec!["In cast expression".to_owned()]))?;
 
-        let to = self.spark[to_ty].clone().data;
-        let from = self.spark[rhs_ty].clone().data;
+        let to = self.spark[to_ty].clone();
+        let from = self.spark[rhs_ty].clone();
 
-                
         //Generate an enum literal from a cast to an enum that contains the casted
         //type as a variant
-        if let TypeData::Enum {parts} = &self.spark[self.spark.unwrap_alias(to_ty)].data {
+        if let TypeData::Enum {parts} = &self.spark[self.spark.unwrap_alias(to_ty)] {
             let idx = parts.iter().enumerate().find_map(|(idx, ty)| {
                 if *ty == rhs_ty {
                     Some(idx)
@@ -912,7 +911,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         let start_bb = self.builder.get_insert_block().unwrap();
 
         let cond_ty = self.ast_type(file, module, &if_expr.cond)?;
-        if let TypeData::Bool = &self.spark[cond_ty].data {
+        if let TypeData::Bool = &self.spark[cond_ty] {
             let cond = self.gen_expr(file, module, &if_expr.cond)?.into_int_value();
             let if_body_block = self.ctx.append_basic_block(self.current_fun.unwrap().0, "if_body");
             
@@ -995,7 +994,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         args: &[Ast<TypeId>]
     ) -> Result<Option<BasicValueEnum<'ctx>>, Diagnostic<FileId>> {
         let called_ty = self.ast_type(file, module, called)?;
-        if let TypeData::Function(f) = &self.spark[called_ty].data {
+        if let TypeData::Function(f) = &self.spark[called_ty] {
             let f = f.clone();
             if f.args.len() != args.len() {
                 return Err(Diagnostic::error()
@@ -1166,7 +1165,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             AstNode::CastExpr(ty, ..) => *ty,
             AstNode::FunCall(called, ..) => {
                 let called_ty = self.ast_type(file, module, called)?;
-                if let TypeData::Function(f_ty) = &self.spark[called_ty].data {
+                if let TypeData::Function(f_ty) = &self.spark[called_ty] {
                     f_ty.return_ty
                 } else {
                     return Err(Diagnostic::error()
@@ -1197,7 +1196,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
             AstNode::MemberAccess(lhs, name) => {
                 let lhs_ty = self.ast_type(file, module, lhs)?;
-                if let TypeData::Struct { fields } = &self.spark[lhs_ty].data {
+                if let TypeData::Struct { fields } = &self.spark[lhs_ty] {
                     fields.iter().find_map(|(ty, field_name)| if name == field_name {
                         Some(*ty)
                     } else {
@@ -1230,7 +1229,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
             AstNode::Index { object, index: _ } => {
                 let object_ty = self.ast_type(file, module, object)?;
-                if let TypeData::Array { element, len: _ } = self.spark[object_ty].data {
+                if let TypeData::Array { element, len: _ } = self.spark[object_ty] {
                     element
                 } else {
                     return Err(Diagnostic::error()
@@ -1256,7 +1255,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
                 match op {
                     Op::Star => {
-                        if let TypeData::Pointer(pointee) = self.spark[rhs_ty].data {
+                        if let TypeData::Pointer(pointee) = self.spark[rhs_ty] {
                             pointee
                         } else {
                             return Err(Diagnostic::error()

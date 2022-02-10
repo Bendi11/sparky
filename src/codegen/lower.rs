@@ -56,7 +56,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                         unreachable!()
                     };
                     let aliased = self.lower_type(id, Some(def.span), aliased, def.file);
-                    self.ctx[ty].data = TypeData::Alias(*name, aliased);
+                    self.ctx[ty] = TypeData::Alias(*name, aliased);
                 }
                 _ => continue,
             }

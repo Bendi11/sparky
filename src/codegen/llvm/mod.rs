@@ -221,7 +221,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
     /// Create an LLVM type from a type ID
     fn llvm_ty(&mut self, id: TypeId) -> AnyTypeEnum<'ctx> {
-        match self.spark[id].data.clone() {
+        match self.spark[id].clone() {
             TypeData::Integer { signed: _, width } => match width {
                 IntegerWidth::Eight => self.ctx.i8_type().into(),
                 IntegerWidth::Sixteen => self.ctx.i16_type().into(),
@@ -299,7 +299,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     
     /// Get the size of a type in bytes from a type ID
     fn size_of_type(&self, ty: TypeId) -> u32 {
-        match &self.spark[ty].data {
+        match &self.spark[ty] {
             TypeData::Integer {width, ..} => (*width as u8 / 8) as u32,
             TypeData::Float {doublewide: true} => 8,
             TypeData::Float {doublewide: false} => 4,
