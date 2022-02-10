@@ -10,5 +10,8 @@ fun main(i32 argc, **u8 a) -> i32 {
     let a = "test"
     let start = 51.31
     let sum = start * 31.1
+    puts:("test")
     return $i32 101
 }
+
+fun puts(*u8 s) -> ()

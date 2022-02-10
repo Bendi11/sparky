@@ -1,5 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::{types::IntType, IntPredicate, FloatPredicate};
+use inkwell::{types::IntType, IntPredicate, FloatPredicate, values::CallableValue};
 use num_bigint::Sign;
 
 use crate::{ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation}, parse::token::Op, util::files::FileId};
@@ -16,6 +16,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     ) -> Result<(), Diagnostic<FileId>> {
         match &ast.node {
             AstNode::IfExpr(if_expr) => { self.gen_if_expr(file, module, if_expr)?; },
+            AstNode::FunCall(called, args) => { self.gen_call(file, module, called, args)?; },
             AstNode::Assignment { lhs, rhs } => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
 
@@ -211,6 +212,15 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     }
                 }
             },
+            AstNode::FunCall(called, args) => match self.gen_call(file, module, called, args)? {
+                Some(v) => v,
+                None => return Err(Diagnostic::error()
+                    .with_message("Cannot use function returning unit type as an expression")
+                    .with_labels(vec![Label::primary(file, called.span)
+                        .with_message("This is found to be of function type returning '()'")
+                    ])
+                )
+            }
             AstNode::BinExpr(lhs, op, rhs) => return self.gen_bin_expr(file, module, lhs, *op, rhs),
             AstNode::BooleanLiteral(b) => match b {
                 true => self.ctx.bool_type().const_all_ones(),
@@ -975,7 +985,75 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             )
         }
     }
-    
+
+    /// Generate code for a single function call and return the return value of the function or
+    /// `None` if the function called returns the unit type
+    fn gen_call(&mut self,
+        file: FileId,
+        module: ModId,
+        called: &Ast<TypeId>,
+        args: &[Ast<TypeId>]
+    ) -> Result<Option<BasicValueEnum<'ctx>>, Diagnostic<FileId>> {
+        let called_ty = self.ast_type(file, module, called)?;
+        if let TypeData::Function(f) = &self.spark[called_ty].data {
+            let f = f.clone();
+            if f.args.len() != args.len() {
+                return Err(Diagnostic::error()
+                    .with_message("Passing invalid number of arguments to function")
+                    .with_labels(vec![
+                        Label::primary(file, called.span)
+                            .with_message(format!(
+                                "Expecting {} arguments, found {}",
+                                f.args.len(),
+                                args.len()
+                            ))
+                    ])
+                )
+            }
+
+            let passed_types = args.iter().map(|arg| match self.ast_type(file, module, arg) {
+                Ok(ty) => Ok((arg.span, ty)),
+                Err(e) => Err(e)
+            }).collect::<Result<Vec<_>, _>>()?;
+
+            for (expecting, (passed_span, passed_ty)) in f.args.iter().copied().zip(passed_types) {
+                let expecting_ty = self.spark.unwrap_alias(expecting);
+                let passed_ty = self.spark.unwrap_alias(passed_ty);
+                if expecting_ty != passed_ty {
+                    return Err(Diagnostic::error()
+                        .with_message(format!(
+                            "Passing invalid argument type '{}', expecting '{}'",
+                            /*self.spark.get_type_name*/(passed_ty),
+                            /*self.spark.get_type_name*/(expecting_ty)
+                        ))
+                        .with_labels(vec![
+                            Label::primary(file, passed_span)
+                        ])
+                    )
+                }
+            }
+            let called = self.gen_expr(file, module, called)?;
+            match called {
+                BasicValueEnum::PointerValue(pv) => match CallableValue::try_from(pv) {
+                    Ok(callable) => {
+                        let args = args.iter().map(|arg| self.gen_expr(file, module, arg).map(|v| v.into())).collect::<Result<Vec<_>, _>>()?;
+                        return Ok(self.builder.build_call(callable, &args, "fn_call").try_as_basic_value().left())
+                    },
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+
+        Err(Diagnostic::error()
+            .with_message("Cannot call a value of non-function type")
+            .with_labels(vec![
+                Label::primary(file, called.span)
+                    .with_message(format!("Value of type {} found here", self.spark.get_type_name(called_ty)))
+            ])
+        )
+    }
+
     /// Generate LLVM IR for a block of statements 
     fn gen_body(
         &mut self,
@@ -1108,7 +1186,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 let def = self.find_in_scope(file, ast.span, path)?;
 
                 match def {
-                    ScopeDef::Def(SparkDef::FunDef(_, f)) => self.spark[f].ty.return_ty,
+                    ScopeDef::Def(SparkDef::FunDef(_, f)) => self.spark.new_type(TypeData::Function(self.spark[f].ty.clone())),
                     ScopeDef::Value(ty, _) => ty,
                     _ => {
                         return Err(Diagnostic::error()

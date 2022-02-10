@@ -1,6 +1,6 @@
-use std::path::Path;
 
-use inkwell::{OptimizationLevel, module::Module, passes::PassManager, targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target}};
+
+use inkwell::{module::Module, passes::PassManager, targets::FileType};
 
 use crate::{OutputOptimizationLevel, OutputFileType};
 
@@ -31,7 +31,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         }
 
         if self.opts.opt_lvl >= OutputOptimizationLevel::Medium {
-            passes.add_function_inlining_pass();
+            //passes.add_function_inlining_pass();
             passes.add_loop_vectorize_pass();
             passes.add_loop_unroll_pass();
             passes.add_demote_memory_to_register_pass();
@@ -40,7 +40,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         if self.opts.opt_lvl >= OutputOptimizationLevel::Release {
             passes.add_licm_pass();
             passes.add_merge_functions_pass();
-            passes.add_argument_promotion_pass();
+            //passes.add_argument_promotion_pass();
         }
  
         passes.initialize();

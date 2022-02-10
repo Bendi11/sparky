@@ -23,10 +23,10 @@ pub enum OutputFileType {
 /// generated output
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OutputOptimizationLevel {
-    Release,
-    Medium,
-    Size,
-    Debug,
+    Release = 3,
+    Medium = 2,
+    Size = 1,
+    Debug = 0,
 }
 
 /// Structure with all configurable properties of code generation
