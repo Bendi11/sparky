@@ -182,10 +182,6 @@ fn main() {
         }
     };
 
-    for child in &root_module.children {
-        println!("{}", child.0);
-    }
-
     let mut ctx = SparkCtx::new();
     let mut lowerer = Lowerer::new(&mut ctx, &files);
 
