@@ -38,6 +38,7 @@ impl<'files> DiagnosticManager<'files> {
             },
             self.files,
             &diag,
-        ).expect("Failed to write compiler output to stderr");
+        )
+        .expect("Failed to write compiler output to stderr");
     }
 }

@@ -4,7 +4,7 @@ use quickscope::ScopeMap;
 
 use crate::{
     arena::{Arena, Index, Interner},
-    ast::{Ast, IntegerWidth, PathIter, SymbolPath, FunFlags},
+    ast::{Ast, FunFlags, IntegerWidth, PathIter, SymbolPath},
     util::files::FileId,
     Symbol,
 };
@@ -62,8 +62,8 @@ impl SparkCtx {
             body: None,
         })
     }
-    
-    /// Recursively unwrap any aliased types, returning a type id that is guranteeed to 
+
+    /// Recursively unwrap any aliased types, returning a type id that is guranteeed to
     /// not be an alias type
     pub fn unwrap_alias(&self, ty: TypeId) -> TypeId {
         match &self[ty] {
@@ -197,46 +197,38 @@ impl SparkCtx {
         let modules = Arena::new();
 
         types.insert(TypeData::Integer {
-                width: IntegerWidth::Eight,
-                signed: true,
-            }
-        );
+            width: IntegerWidth::Eight,
+            signed: true,
+        });
         types.insert(TypeData::Integer {
-                width: IntegerWidth::Sixteen,
-                signed: true,
-            }
-        );
+            width: IntegerWidth::Sixteen,
+            signed: true,
+        });
         types.insert(TypeData::Integer {
-                width: IntegerWidth::ThirtyTwo,
-                signed: true,
-            }
-        );
+            width: IntegerWidth::ThirtyTwo,
+            signed: true,
+        });
         types.insert(TypeData::Integer {
-                width: IntegerWidth::SixtyFour,
-                signed: true,
-            }
-        );
+            width: IntegerWidth::SixtyFour,
+            signed: true,
+        });
 
         types.insert(TypeData::Integer {
-                width: IntegerWidth::Eight,
-                signed: false,
-            }
-        );
-        types.insert(TypeData::Integer {
-                width: IntegerWidth::Sixteen,
-                signed: false,
-            }
-        );
-        types.insert(TypeData::Integer {
-                width: IntegerWidth::ThirtyTwo,
+            width: IntegerWidth::Eight,
             signed: false,
-            },
-        );
+        });
         types.insert(TypeData::Integer {
-                width: IntegerWidth::SixtyFour,
-                signed: false,
-            }
-        );
+            width: IntegerWidth::Sixteen,
+            signed: false,
+        });
+        types.insert(TypeData::Integer {
+            width: IntegerWidth::ThirtyTwo,
+            signed: false,
+        });
+        types.insert(TypeData::Integer {
+            width: IntegerWidth::SixtyFour,
+            signed: false,
+        });
 
         types.insert(TypeData::Float { doublewide: false });
         types.insert(TypeData::Float { doublewide: true });

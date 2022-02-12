@@ -97,17 +97,17 @@ impl<'src> Lexer<'src> {
                     ('=', Some('=')) => {
                         self.next_char();
                         Token::new(startpos..startpos + 1, TokenData::Op(Op::Eq))
-                    },
+                    }
                     (':', _) => Token::new(start_loc, TokenData::Colon),
 
                     ('<', Some('<')) => {
                         self.next_char();
                         Token::new(start_loc, TokenData::Op(Op::ShLeft))
-                    },
+                    }
                     ('>', Some('>')) => {
                         self.next_char();
                         Token::new(start_loc, TokenData::Op(Op::ShRight))
-                    },
+                    }
 
                     ('&', _) => Token::new(start_loc, TokenData::Op(Op::AND)),
                     ('|', _) => Token::new(start_loc, TokenData::Op(Op::OR)),

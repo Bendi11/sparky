@@ -9,6 +9,7 @@ type test_enum = i32 | bool
 
 fun ext main(i32 argc, **u8 a) -> i32 {
     mut b = 0
+    mod:puts:("Hello World!")
     return {
         phi if b > 100 {
             phi $i32 mod:test:()

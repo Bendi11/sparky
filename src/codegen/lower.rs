@@ -60,7 +60,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 _ => continue,
             }
         }
-        
+
         for child in &parsed.children {
             let child_id = *self.ctx[id].defs.get(child.0).unwrap();
             if let SparkDef::ModDef(child_id) = child_id {
@@ -164,7 +164,9 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         let module_id = self.gen_forward_types(parsed);
         for child in &parsed.children {
             let child_id = self.gen_forward_types(&child.1);
-            self.ctx[module_id].defs.define(child.0.clone(), SparkDef::ModDef(child_id));
+            self.ctx[module_id]
+                .defs
+                .define(child.0.clone(), SparkDef::ModDef(child_id));
         }
         self.gen_forward_funs(parsed, module_id);
         for child in &parsed.children {
@@ -346,30 +348,20 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         file: FileId,
     ) -> TypeId {
         match ty {
-            UnresolvedType::Struct {
-                fields
-            } => {
+            UnresolvedType::Struct { fields } => {
                 let fields = fields
                     .iter()
-                    .map(|(ty, name)| {
-                        (
-                            self.lower_type(module, span, ty, file),
-                            name.clone(),
-                        )
-                    })
+                    .map(|(ty, name)| (self.lower_type(module, span, ty, file), name.clone()))
                     .collect();
                 self.ctx.new_type(TypeData::Struct { fields })
-            },
-            UnresolvedType::Enum {
-                variants
-            } => {
+            }
+            UnresolvedType::Enum { variants } => {
                 let parts = variants
                     .iter()
                     .map(|ty| self.lower_type(module, span, ty, file))
                     .collect();
                 self.ctx.new_type(TypeData::Enum { parts })
-
-            },
+            }
             UnresolvedType::Integer { width, signed } => match signed {
                 true => match width {
                     IntegerWidth::Eight => SparkCtx::I8,

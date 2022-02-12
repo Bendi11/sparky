@@ -1,7 +1,11 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::{types::IntType, IntPredicate, FloatPredicate, values::CallableValue};
+use inkwell::{types::IntType, values::CallableValue, FloatPredicate, IntPredicate};
 
-use crate::{ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation}, parse::token::Op, util::files::FileId};
+use crate::{
+    ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation},
+    parse::token::Op,
+    util::files::FileId,
+};
 
 use super::*;
 
@@ -14,9 +18,15 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<(), Diagnostic<FileId>> {
         match &ast.node {
-            AstNode::Block(block) => { self.gen_block_ast(file, module, block)?; },
-            AstNode::IfExpr(if_expr) => { self.gen_if_expr(file, module, if_expr)?; },
-            AstNode::FunCall(called, args) => { self.gen_call(file, module, called, args)?; },
+            AstNode::Block(block) => {
+                self.gen_block_ast(file, module, block)?;
+            }
+            AstNode::IfExpr(if_expr) => {
+                self.gen_if_expr(file, module, if_expr)?;
+            }
+            AstNode::FunCall(called, args) => {
+                self.gen_call(file, module, called, args)?;
+            }
             AstNode::Assignment { lhs, rhs } => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
 
@@ -119,7 +129,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     self.builder.build_return(None);
                 }
-            },
+            }
             AstNode::PhiExpr(phi) => {
                 if let Some(phi_data) = self.phi_data {
                     let phid_ty = self.ast_type(file, module, phi)?;
@@ -133,19 +143,18 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             ])
                         );
                     }
-                    
+
                     let phi_val = self.gen_expr(file, module, phi)?;
                     self.builder.build_store(phi_data.alloca, phi_val);
                     self.placed_terminator = true;
 
-                    self.builder
-                        .build_unconditional_branch(phi_data.break_bb);
+                    self.builder.build_unconditional_branch(phi_data.break_bb);
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Phi statement not in a block")
                         .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            },
+            }
             AstNode::Break => {
                 if let Some(break_bb) = self.break_bb {
                     self.placed_terminator = true;
@@ -153,12 +162,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Break statement encountered while not in a block")
-                        .with_labels(vec![
-                            Label::primary(file, ast.span)
-                        ])
-                    )
+                        .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            },
+            }
             AstNode::Continue => {
                 if let Some(continue_bb) = self.continue_bb {
                     self.placed_terminator = true;
@@ -166,11 +172,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Continue statement while not in a block")
-                        .with_labels(vec![
-                            Label::primary(file, ast.span)
-                                .with_message("Continue statement encountered here")
-                        ])
-                    )
+                        .with_labels(vec![Label::primary(file, ast.span)
+                            .with_message("Continue statement encountered here")]));
                 }
             }
             other => {
@@ -194,7 +197,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             AstNode::IfExpr(..) | AstNode::Block(..) => {
                 let phi = self.gen_lval(file, module, ast)?;
                 self.builder.build_load(phi, "load_phi")
-            } 
+            }
             AstNode::CastExpr(to, rhs) => self.gen_cast(file, module, *to, rhs)?,
             AstNode::Access(path) => {
                 let access = self.gen_access(file, ast.span, path)?;
@@ -231,25 +234,30 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             .with_labels(vec![Label::primary(file, ast.span)]))
                     }
                 }
-            },
+            }
             AstNode::FunCall(called, args) => match self.gen_call(file, module, called, args)? {
                 Some(v) => v,
-                None => return Err(Diagnostic::error()
-                    .with_message("Cannot use function returning unit type as an expression")
-                    .with_labels(vec![Label::primary(file, called.span)
-                        .with_message("This is found to be of function type returning '()'")
-                    ])
-                )
+                None => {
+                    return Err(Diagnostic::error()
+                        .with_message("Cannot use function returning unit type as an expression")
+                        .with_labels(vec![Label::primary(file, called.span)
+                            .with_message("This is found to be of function type returning '()'")]))
+                }
+            },
+            AstNode::BinExpr(lhs, op, rhs) => {
+                return self.gen_bin_expr(file, module, lhs, *op, rhs)
             }
-            AstNode::BinExpr(lhs, op, rhs) => return self.gen_bin_expr(file, module, lhs, *op, rhs),
             AstNode::BooleanLiteral(b) => match b {
                 true => self.ctx.bool_type().const_all_ones(),
                 false => self.ctx.bool_type().const_zero(),
-            }.into(),
+            }
+            .into(),
             AstNode::StringLiteral(s) => {
-                let glob = self.builder.build_global_string_ptr(s.as_str(), "const_str");
+                let glob = self
+                    .builder
+                    .build_global_string_ptr(s.as_str(), "const_str");
                 glob.as_pointer_value().into()
-            },
+            }
             AstNode::NumberLiteral(n) => {
                 match n {
                     NumberLiteral::Integer(num, annot) => {
@@ -312,14 +320,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                     _ => n.into(),
                                 }
                             }
-                            None => self
-                                .ctx
-                                .i32_type()
-                                .const_int(
-                                    num.val,
-                                    num.sign,
-                                )
-                                .into(),
+                            None => self.ctx.i32_type().const_int(num.val, num.sign).into(),
                         }
                     }
                     NumberLiteral::Float(f, annot) => match annot {
@@ -511,27 +512,28 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             "icmp",
                         )
                         .into())
-                },
+                }
 
                 (
                     Op::Eq | Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq,
-                    TypeData::Float {..}
+                    TypeData::Float { .. },
                 ) => {
                     return Ok(self
                         .builder
-                        .build_float_compare(match op {
-                            Op::Eq => FloatPredicate::OEQ,
-                            Op::Greater => FloatPredicate::OGT,
-                            Op::GreaterEq => FloatPredicate::OGE,
-                            Op::Less => FloatPredicate::OLT,
-                            Op::LessEq => FloatPredicate::OLE,
-                            _ => unreachable!(),
-                        },
-                        llvm_lhs.into_float_value(),
-                        llvm_rhs.into_float_value(),
-                        "fcmp",
-                    )
-                    .into())
+                        .build_float_compare(
+                            match op {
+                                Op::Eq => FloatPredicate::OEQ,
+                                Op::Greater => FloatPredicate::OGT,
+                                Op::GreaterEq => FloatPredicate::OGE,
+                                Op::Less => FloatPredicate::OLT,
+                                Op::LessEq => FloatPredicate::OLE,
+                                _ => unreachable!(),
+                            },
+                            llvm_lhs.into_float_value(),
+                            llvm_rhs.into_float_value(),
+                            "fcmp",
+                        )
+                        .into())
                 }
 
                 (Op::Star, TypeData::Float { .. }) => {
@@ -589,11 +591,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         }
 
         Ok(
-            match (
-                self.spark[lhs_ty].clone(),
-                op,
-                self.spark[rhs_ty].clone(),
-            ) {
+            match (self.spark[lhs_ty].clone(), op, self.spark[rhs_ty].clone()) {
                 (TypeData::Integer { .. }, Op::ShLeft, TypeData::Integer { .. }) => self
                     .builder
                     .build_left_shift(llvm_lhs.into_int_value(), llvm_rhs.into_int_value(), "ishl")
@@ -643,22 +641,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Cannot use block without phi statement as expression")
-                        .with_labels(vec![
-                            Label::primary(file, ast.span)
-                        ])
-                    )
+                        .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            },
+            }
             AstNode::IfExpr(if_expr) => {
                 if let Some(pv) = self.gen_if_expr(file, module, if_expr)? {
                     pv
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Cannot use if block with no phi nodes as expression")
-                        .with_labels(vec![
-                            Label::primary(file, ast.span)
-                        ])
-                    )
+                        .with_labels(vec![Label::primary(file, ast.span)]));
                 }
             }
             _ => {
@@ -673,15 +665,19 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         file: FileId,
         module: ModId,
-        block: &[Ast<TypeId>]
+        block: &[Ast<TypeId>],
     ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
         let old_continue = self.continue_bb;
         let start_bb = self.builder.get_insert_block().unwrap();
-        let body_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "block");
+        let body_bb = self
+            .ctx
+            .append_basic_block(self.current_fun.unwrap().0, "block");
         self.continue_bb = Some(body_bb);
-        let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
+        let after_bb = self
+            .ctx
+            .append_basic_block(self.current_fun.unwrap().0, "after");
         self.break_bb = Some(after_bb);
-                        
+
         //self.builder.position_at_end(start_bb);
 
         let pv = self.gen_body(file, module, block, body_bb, after_bb)?;
@@ -741,19 +737,22 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         //Generate an enum literal from a cast to an enum that contains the casted
         //type as a variant
-        if let TypeData::Enum {parts} = &self.spark[self.spark.unwrap_alias(to_ty)] {
-            let idx = parts.iter().enumerate().find_map(|(idx, ty)| {
-                if *ty == rhs_ty {
-                    Some(idx)
-                } else {
-                    None
-                }
-            });
+        if let TypeData::Enum { parts } = &self.spark[self.spark.unwrap_alias(to_ty)] {
+            let idx =
+                parts.iter().enumerate().find_map(
+                    |(idx, ty)| {
+                        if *ty == rhs_ty {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    },
+                );
 
             if let Some(idx) = idx {
                 let rhs_size = self.size_of_type(rhs_ty);
                 let llvm_rhs = self.gen_lval(file, module, rhs)?;
-                
+
                 //Round a number up to the nearest multiple of two
                 let next_pow = |num: u32| {
                     let mut pow = 1;
@@ -765,59 +764,70 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
                 let enum_ty = BasicTypeEnum::try_from(self.llvm_ty(to_ty)).unwrap();
 
-                let enum_literal = self.builder.build_alloca(
-                    enum_ty, 
-                    "enum_literal_alloca"
-                );
+                let enum_literal = self.builder.build_alloca(enum_ty, "enum_literal_alloca");
 
-                let discrim = self.builder.build_struct_gep(enum_literal, 0, "enum_literal_get_discrim").unwrap();
-                self.builder.build_store(discrim, self.ctx.i8_type().const_int(idx as u64, false));
+                let discrim = self
+                    .builder
+                    .build_struct_gep(enum_literal, 0, "enum_literal_get_discrim")
+                    .unwrap();
+                self.builder
+                    .build_store(discrim, self.ctx.i8_type().const_int(idx as u64, false));
 
                 let array_size = self.size_of_type(to_ty) - 1;
-                let rhs_ptr_bc = self.builder.build_bitcast(llvm_rhs, self.ctx.i8_type().ptr_type(AddressSpace::Generic), "enum_variant_store_bc").into_pointer_value();
+                let rhs_ptr_bc = self
+                    .builder
+                    .build_bitcast(
+                        llvm_rhs,
+                        self.ctx.i8_type().ptr_type(AddressSpace::Generic),
+                        "enum_variant_store_bc",
+                    )
+                    .into_pointer_value();
 
-                let variant = self.builder.build_struct_gep(enum_literal, 1, "enum_literal_get_variant").unwrap();
+                let variant = self
+                    .builder
+                    .build_struct_gep(enum_literal, 1, "enum_literal_get_variant")
+                    .unwrap();
 
-                let variant_ptr = self.builder.build_bitcast(
-                    variant, 
-                    self.ctx.i8_type().ptr_type(AddressSpace::Generic), 
-                    "enum_variant_bc"
-                ).into_pointer_value();
-                
+                let variant_ptr = self
+                    .builder
+                    .build_bitcast(
+                        variant,
+                        self.ctx.i8_type().ptr_type(AddressSpace::Generic),
+                        "enum_variant_bc",
+                    )
+                    .into_pointer_value();
+
                 let array_align = next_pow(array_size);
                 let src_align = next_pow(rhs_size);
 
-                self.builder.build_memcpy(
-                    variant_ptr,
-                    array_align,
-                    rhs_ptr_bc,
-                    src_align,
-                    self.ctx.ptr_sized_int_type(&self.target.get_target_data(), None)
-                        .const_int(rhs_size as u64,  false)
-                ).unwrap();
-                
+                self.builder
+                    .build_memcpy(
+                        variant_ptr,
+                        array_align,
+                        rhs_ptr_bc,
+                        src_align,
+                        self.ctx
+                            .ptr_sized_int_type(&self.target.get_target_data(), None)
+                            .const_int(rhs_size as u64, false),
+                    )
+                    .unwrap();
+
                 let enum_literal_load = self.builder.build_load(enum_literal, "enum_lit_load");
-                return Ok(enum_literal_load.into())
-                
+                return Ok(enum_literal_load.into());
             } else {
                 return Err(Diagnostic::error()
                     .with_message(
-                        "Attempting to cast to an enum type that does not contain castee type"
+                        "Attempting to cast to an enum type that does not contain castee type",
                     )
-                    .with_labels(vec![
-                        Label::primary(file, rhs.span)
-                            .with_message(format!(
-                                "Attempted to cast type {} to enum type {}",
-                                self.spark.get_type_name(rhs_ty),
-                                self.spark.get_type_name(to_ty)
-                            ))
-                    ])
-                )
+                    .with_labels(vec![Label::primary(file, rhs.span).with_message(format!(
+                        "Attempted to cast type {} to enum type {}",
+                        self.spark.get_type_name(rhs_ty),
+                        self.spark.get_type_name(to_ty)
+                    ))]));
             }
         }
 
         let llvm_rhs = self.gen_expr(file, module, rhs)?;
-
 
         Ok(match (from, to) {
             (
@@ -931,34 +941,35 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         })
     }
-        
+
     /// Generate code for a single if expression or statement
     fn gen_if_expr(
-        &mut self, 
-        file: FileId, 
+        &mut self,
+        file: FileId,
         module: ModId,
-        if_expr: &IfExpr<TypeId>
+        if_expr: &IfExpr<TypeId>,
     ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
         let start_bb = self.builder.get_insert_block().unwrap();
 
         let cond_ty = self.ast_type(file, module, &if_expr.cond)?;
         if let TypeData::Bool = &self.spark[cond_ty] {
             let cond = self.gen_expr(file, module, &if_expr.cond)?.into_int_value();
-            let if_body_block = self.ctx.append_basic_block(self.current_fun.unwrap().0, "if_body");
-            
+            let if_body_block = self
+                .ctx
+                .append_basic_block(self.current_fun.unwrap().0, "if_body");
+
             match &if_expr.else_expr {
                 Some(else_expr) => {
-                    let else_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "else_bb");
-                    let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after_bb");
+                    let else_bb = self
+                        .ctx
+                        .append_basic_block(self.current_fun.unwrap().0, "else_bb");
+                    let after_bb = self
+                        .ctx
+                        .append_basic_block(self.current_fun.unwrap().0, "after_bb");
 
-                    let if_phi = self.gen_body(
-                        file, 
-                        module, 
-                        &if_expr.body, 
-                        if_body_block, 
-                        after_bb
-                    )?;
-                    
+                    let if_phi =
+                        self.gen_body(file, module, &if_expr.body, if_body_block, after_bb)?;
+
                     match else_expr {
                         ElseExpr::ElseIf(elif_expr) => {
                             self.builder.position_at_end(else_bb);
@@ -967,15 +978,12 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                 let else_phi = self.builder.build_load(else_pv, "elif_phi");
                                 self.builder.build_store(if_pv, else_phi);
                             }
-                        },
+                        }
                         ElseExpr::Else(else_body) => {
-                            if let (Some(if_pv), Some(pv)) = (if_phi, self.gen_body(
-                                file, 
-                                module, 
-                                else_body,
-                                else_bb, 
-                                after_bb
-                            )?) {
+                            if let (Some(if_pv), Some(pv)) = (
+                                if_phi,
+                                self.gen_body(file, module, else_body, else_bb, after_bb)?,
+                            ) {
                                 let else_phi = self.builder.build_load(pv, "else_expr_phi");
                                 self.builder.build_store(if_pv, else_phi);
                             }
@@ -983,26 +991,24 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     }
 
                     self.builder.position_at_end(start_bb);
-                    self.builder.build_conditional_branch(cond, if_body_block, else_bb);
+                    self.builder
+                        .build_conditional_branch(cond, if_body_block, else_bb);
                     self.builder.position_at_end(after_bb);
                     Ok(if_phi)
-                },
+                }
                 None => {
-                    let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after_if");
-                    let if_phi = self.gen_body(
-                        file, 
-                        module, 
-                        &if_expr.body, 
-                        if_body_block, 
-                        after_bb
-                    )?;
+                    let after_bb = self
+                        .ctx
+                        .append_basic_block(self.current_fun.unwrap().0, "after_if");
+                    let if_phi =
+                        self.gen_body(file, module, &if_expr.body, if_body_block, after_bb)?;
                     self.builder.position_at_end(start_bb);
-                    self.builder.build_conditional_branch(cond, if_body_block, after_bb);
+                    self.builder
+                        .build_conditional_branch(cond, if_body_block, after_bb);
                     self.builder.position_at_end(after_bb);
                     Ok(if_phi)
                 }
             }
-
         } else {
             return Err(Diagnostic::error()
                 .with_message(format!(
@@ -1010,20 +1016,19 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     self.spark.get_type_name(cond_ty)
                 ))
                 .with_labels(vec![
-                    Label::primary(file, if_expr.cond.span)
-                        .with_message("Non-boolean value here")
-                ])
-            )
+                    Label::primary(file, if_expr.cond.span).with_message("Non-boolean value here")
+                ]));
         }
     }
 
     /// Generate code for a single function call and return the return value of the function or
     /// `None` if the function called returns the unit type
-    fn gen_call(&mut self,
+    fn gen_call(
+        &mut self,
         file: FileId,
         module: ModId,
         called: &Ast<TypeId>,
-        args: &[Ast<TypeId>]
+        args: &[Ast<TypeId>],
     ) -> Result<Option<BasicValueEnum<'ctx>>, Diagnostic<FileId>> {
         let called_ty = self.ast_type(file, module, called)?;
         if let TypeData::Function(f) = &self.spark[called_ty] {
@@ -1031,21 +1036,18 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             if f.args.len() != args.len() {
                 return Err(Diagnostic::error()
                     .with_message("Passing invalid number of arguments to function")
-                    .with_labels(vec![
-                        Label::primary(file, called.span)
-                            .with_message(format!(
-                                "Expecting {} arguments, found {}",
-                                f.args.len(),
-                                args.len()
-                            ))
-                    ])
-                )
+                    .with_labels(vec![Label::primary(file, called.span).with_message(
+                        format!("Expecting {} arguments, found {}", f.args.len(), args.len()),
+                    )]));
             }
 
-            let passed_types = args.iter().map(|arg| match self.ast_type(file, module, arg) {
-                Ok(ty) => Ok((arg.span, ty)),
-                Err(e) => Err(e)
-            }).collect::<Result<Vec<_>, _>>()?;
+            let passed_types = args
+                .iter()
+                .map(|arg| match self.ast_type(file, module, arg) {
+                    Ok(ty) => Ok((arg.span, ty)),
+                    Err(e) => Err(e),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
             for (expecting, (passed_span, passed_ty)) in f.args.iter().copied().zip(passed_types) {
                 let expecting_ty = self.spark.unwrap_alias(expecting);
@@ -1054,22 +1056,26 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     return Err(Diagnostic::error()
                         .with_message(format!(
                             "Passing invalid argument type '{}', expecting '{}'",
-                            /*self.spark.get_type_name*/(passed_ty),
-                            /*self.spark.get_type_name*/(expecting_ty)
+                            /*self.spark.get_type_name*/ (passed_ty),
+                            /*self.spark.get_type_name*/ (expecting_ty)
                         ))
-                        .with_labels(vec![
-                            Label::primary(file, passed_span)
-                        ])
-                    )
+                        .with_labels(vec![Label::primary(file, passed_span)]));
                 }
             }
             let called = self.gen_expr(file, module, called)?;
             match called {
                 BasicValueEnum::PointerValue(pv) => match CallableValue::try_from(pv) {
                     Ok(callable) => {
-                        let args = args.iter().map(|arg| self.gen_expr(file, module, arg).map(|v| v.into())).collect::<Result<Vec<_>, _>>()?;
-                        return Ok(self.builder.build_call(callable, &args, "fn_call").try_as_basic_value().left())
-                    },
+                        let args = args
+                            .iter()
+                            .map(|arg| self.gen_expr(file, module, arg).map(|v| v.into()))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        return Ok(self
+                            .builder
+                            .build_call(callable, &args, "fn_call")
+                            .try_as_basic_value()
+                            .left());
+                    }
                     _ => (),
                 },
                 _ => (),
@@ -1078,24 +1084,23 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         Err(Diagnostic::error()
             .with_message("Cannot call a value of non-function type")
-            .with_labels(vec![
-                Label::primary(file, called.span)
-                    .with_message(format!("Value of type {} found here", self.spark.get_type_name(called_ty)))
-            ])
-        )
+            .with_labels(vec![Label::primary(file, called.span).with_message(
+                format!(
+                    "Value of type {} found here",
+                    self.spark.get_type_name(called_ty)
+                ),
+            )]))
     }
-        
 
-    /// Generate LLVM IR for a block of statements 
+    /// Generate LLVM IR for a block of statements
     fn gen_body(
         &mut self,
-        file: FileId, 
+        file: FileId,
         module: ModId,
         body: &[Ast<TypeId>],
         to_bb: BasicBlock<'ctx>,
         after_bb: BasicBlock<'ctx>,
     ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
-
         let phi_data = match Self::phi_node(file, body) {
             Err(_) => None,
             Ok(phi_node) => {
@@ -1106,27 +1111,27 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     Some(PhiData {
                         break_bb: after_bb,
                         phi_ty: ty,
-                        alloca: phi_alloca
+                        alloca: phi_alloca,
                     })
                 } else {
                     None
                 }
             }
         };
-        
+
         let old_phi_data = self.phi_data;
         self.builder.position_at_end(to_bb);
 
         self.phi_data = phi_data;
-        
+
         self.current_scope.push_layer();
-        
+
         for stmt in body.iter() {
             if let Err(e) = self.gen_stmt(file, module, stmt) {
                 self.phi_data = old_phi_data;
                 self.current_scope.pop_layer();
                 self.builder.position_at_end(after_bb);
-                return Err(e)
+                return Err(e);
             }
             if self.placed_terminator {
                 break;
@@ -1177,11 +1182,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     NumberLiteralAnnotation::F32 => SparkCtx::F32,
                     NumberLiteralAnnotation::F64 => SparkCtx::F64,
                 },
-                None => if let NumberLiteral::Float(..) = num {
-                    SparkCtx::F64
-                } else {
-                    SparkCtx::I32
-                },
+                None => {
+                    if let NumberLiteral::Float(..) = num {
+                        SparkCtx::F64
+                    } else {
+                        SparkCtx::I32
+                    }
+                }
             },
             AstNode::StringLiteral(_) => self.spark.new_type(TypeData::Pointer(SparkCtx::U8)),
             AstNode::BooleanLiteral(_) => SparkCtx::BOOL,
@@ -1226,7 +1233,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 let def = self.find_in_scope(file, ast.span, path)?;
 
                 match def {
-                    ScopeDef::Def(SparkDef::FunDef(_, f)) => self.spark.new_type(TypeData::Function(self.spark[f].ty.clone())),
+                    ScopeDef::Def(SparkDef::FunDef(_, f)) => self
+                        .spark
+                        .new_type(TypeData::Function(self.spark[f].ty.clone())),
                     ScopeDef::Value(ty, _) => ty,
                     _ => {
                         return Err(Diagnostic::error()

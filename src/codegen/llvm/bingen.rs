@@ -1,10 +1,8 @@
-
-
 use std::path::Path;
 
 use inkwell::{module::Module, passes::PassManager, targets::FileType};
 
-use crate::{OutputOptimizationLevel, OutputFileType};
+use crate::{OutputFileType, OutputOptimizationLevel};
 
 use super::LlvmCodeGenerator;
 
@@ -12,7 +10,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     ///Generate an object file from a compiled LLVM IR module
     pub fn finish(&self, module: Module<'ctx>) {
         let passes = PassManager::create(&module);
-            
+
         if self.opts.opt_lvl >= OutputOptimizationLevel::Size {
             passes.add_cfg_simplification_pass();
 
@@ -26,7 +24,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         if self.opts.opt_lvl == OutputOptimizationLevel::Size {
             passes.add_aggressive_dce_pass();
             passes.add_aggressive_inst_combiner_pass();
-            
         }
         if self.opts.opt_lvl == OutputOptimizationLevel::Size || self.opts.stripped {
             passes.add_strip_symbol_pass();
@@ -44,22 +41,24 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             passes.add_merge_functions_pass();
             //passes.add_argument_promotion_pass();
         }
- 
+
         passes.initialize();
 
         if let OutputFileType::LLVMIR = self.opts.out_type {
             module.print_to_file(&self.opts.out_file).unwrap();
-            return
+            return;
         }
-    
-        self.target.write_to_file(
-            &module,
-            match self.opts.out_type {
-                OutputFileType::Assembly => FileType::Assembly,
-                OutputFileType::Object => FileType::Object,
-                OutputFileType::LLVMIR => unreachable!()
-            },
-            &self.opts.out_file
-        ).unwrap();
+
+        self.target
+            .write_to_file(
+                &module,
+                match self.opts.out_type {
+                    OutputFileType::Assembly => FileType::Assembly,
+                    OutputFileType::Object => FileType::Object,
+                    OutputFileType::LLVMIR => unreachable!(),
+                },
+                &self.opts.out_file,
+            )
+            .unwrap();
     }
 }

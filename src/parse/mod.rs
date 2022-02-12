@@ -1,6 +1,6 @@
 use std::{borrow::Cow, convert::TryFrom, fmt};
 
-use crate::{Symbol, ast::BigInt};
+use crate::{ast::BigInt, Symbol};
 use smallvec::SmallVec;
 
 use crate::{
@@ -212,13 +212,14 @@ impl<'src> Parser<'src> {
                 })
             }
             TokenData::Ident("fun") => {
-                let (name, flags) = match self.expect_next_ident(&[TokenData::Ident("function name")])? {
-                    "ext" => (
-                        self.expect_next_ident(&[TokenData::Ident("function name")])?,
-                        FunFlags::EXTERN
-                    ),
-                    other => (other, FunFlags::empty())
-                };
+                let (name, flags) =
+                    match self.expect_next_ident(&[TokenData::Ident("function name")])? {
+                        "ext" => (
+                            self.expect_next_ident(&[TokenData::Ident("function name")])?,
+                            FunFlags::EXTERN,
+                        ),
+                        other => (other, FunFlags::empty()),
+                    };
 
                 self.trace
                     .push(format!("function declaration '{}'", name).into());
@@ -238,8 +239,8 @@ impl<'src> Parser<'src> {
                     match peeked.data {
                         TokenData::CloseBracket(BracketType::Smooth) => {
                             self.toks.next();
-                            break
-                        },
+                            break;
+                        }
                         _ => {
                             self.trace.push("function argument typename".into());
                             let arg_type = self.parse_typename()?;
@@ -317,13 +318,13 @@ impl<'src> Parser<'src> {
 
                 self.expect_next(&[TokenData::Assign])?;
                 let aliased = self.parse_typename()?;
-                 
+
                 self.trace.pop();
                 Ok(Def {
                     span: next.span,
                     data: DefData::AliasDef {
                         name: self.symbol(name),
-                        aliased
+                        aliased,
                     },
                     file,
                 })
@@ -341,9 +342,8 @@ impl<'src> Parser<'src> {
 
     /// Parse a curly brace enclosed AST body
     fn parse_body(&mut self) -> ParseResult<'src, (Vec<Ast>, Span)> {
-        const EXPECTING_FOR_BODY: &[TokenData<'static>] = &[
-            TokenData::OpenBracket(BracketType::Curly)
-        ];
+        const EXPECTING_FOR_BODY: &[TokenData<'static>] =
+            &[TokenData::OpenBracket(BracketType::Curly)];
 
         let tok = self.next_tok(EXPECTING_FOR_BODY)?;
         let start_loc = if let TokenData::OpenBracket(BracketType::Curly) = tok.data {
@@ -354,9 +354,9 @@ impl<'src> Parser<'src> {
                 backtrace: self.trace.clone(),
                 error: ParseErrorKind::UnexpectedToken {
                     expecting: ExpectingOneOf(EXPECTING_FOR_BODY),
-                    found: tok
-                }
-            })
+                    found: tok,
+                },
+            });
         };
 
         let mut body = vec![];
@@ -947,7 +947,7 @@ impl<'src> Parser<'src> {
             _ => Ok(accessing),
         }
     }
-    
+
     /// Parse a full typename from the input stream
     fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
         let first = self.parse_first_typename()?;
@@ -967,19 +967,19 @@ impl<'src> Parser<'src> {
                     match after_typename.data {
                         TokenData::Comma => {
                             self.toks.next();
-                            continue
-                        },
-                        _ => break
+                            continue;
+                        }
+                        _ => break,
                     }
                 }
-                Ok(UnresolvedType::Tuple { elements: tuple_types })
-            },
+                Ok(UnresolvedType::Tuple {
+                    elements: tuple_types,
+                })
+            }
             Some(TokenData::Op(Op::OR)) => {
                 let mut variants = vec![first];
 
-                while let Some(TokenData::Op(Op::OR)) =
-                    self.toks.peek().map(|tok| &tok.data)
-                {
+                while let Some(TokenData::Op(Op::OR)) = self.toks.peek().map(|tok| &tok.data) {
                     self.toks.next();
 
                     self.trace.push("enum variant typename".into());
@@ -990,8 +990,7 @@ impl<'src> Parser<'src> {
                 }
 
                 Ok(UnresolvedType::Enum { variants })
-
-            },
+            }
             _ => Ok(first),
         }
     }
@@ -1157,7 +1156,7 @@ impl<'src> Parser<'src> {
                         },
                     })
                 }
-            },
+            }
             TokenData::OpenBracket(BracketType::Curly) => {
                 const EXPECTING_FOR_STRUCT: &[TokenData<'static>] = &[
                     TokenData::Ident("field type"),
@@ -1170,46 +1169,50 @@ impl<'src> Parser<'src> {
                 self.trace.push("structure typename".into());
 
                 let mut fields = vec![];
-                
+
                 loop {
                     const EXPECTING_AFTER_FIELD: &[TokenData<'static>] = &[
-                        TokenData::Comma, TokenData::CloseBracket(BracketType::Curly),
+                        TokenData::Comma,
+                        TokenData::CloseBracket(BracketType::Curly),
                     ];
 
-                    if let TokenData::CloseBracket(BracketType::Curly) = self.peek_tok(EXPECTING_FOR_STRUCT)?.data {
+                    if let TokenData::CloseBracket(BracketType::Curly) =
+                        self.peek_tok(EXPECTING_FOR_STRUCT)?.data
+                    {
                         self.toks.next();
-                        break
-                    } 
+                        break;
+                    }
 
                     self.trace.push("struct type field".into());
                     let field_typename = self.parse_typename()?;
 
-                    let field_name = self.expect_next_ident(&[TokenData::Ident(
-                            "struct field name",
-                        )])?;
+                    let field_name =
+                        self.expect_next_ident(&[TokenData::Ident("struct field name")])?;
                     self.trace.pop();
                     fields.push((field_typename, self.symbol(field_name)));
-                        
+
                     let next = self.next_tok(EXPECTING_AFTER_FIELD)?;
-                        
+
                     match next.data {
                         TokenData::Comma => (),
                         TokenData::CloseBracket(BracketType::Curly) => break,
-                        _ => return Err(ParseError {
-                            highlighted_span: Some(next.span),
-                            backtrace: self.trace.clone(),
-                            error: ParseErrorKind::UnexpectedToken {
-                                found: next,
-                                expecting: ExpectingOneOf(EXPECTING_AFTER_FIELD),
-                            }
-                        })
+                        _ => {
+                            return Err(ParseError {
+                                highlighted_span: Some(next.span),
+                                backtrace: self.trace.clone(),
+                                error: ParseErrorKind::UnexpectedToken {
+                                    found: next,
+                                    expecting: ExpectingOneOf(EXPECTING_AFTER_FIELD),
+                                },
+                            })
+                        }
                     }
                 }
 
                 self.trace.pop();
 
                 Ok(UnresolvedType::Struct { fields })
-            },
+            }
             TokenData::OpenBracket(BracketType::Smooth) => {
                 self.trace.push("Type in parentheses".into());
                 let peeked = self
@@ -1322,10 +1325,7 @@ impl<'src> Parser<'src> {
                 };
 
             Ok(match u64::from_str_radix(number, base) {
-                Ok(val) => NumberLiteral::Integer(BigInt {
-                    val,
-                    sign: false,
-                }, annotation),
+                Ok(val) => NumberLiteral::Integer(BigInt { val, sign: false }, annotation),
                 Err(_) => match number.parse::<f64>() {
                     Ok(val) => NumberLiteral::Float(val, annotation),
                     Err(_) => {

@@ -2,3 +2,5 @@
 fun test() -> u8 {
     return 0xffu8
 }
+
+fun ext puts(*u8 s)

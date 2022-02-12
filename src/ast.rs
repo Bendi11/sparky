@@ -347,7 +347,7 @@ pub enum NumberLiteral {
 }
 
 /// A big integer that can hold any number literal expressed in spark source
-#[derive(Debug, Clone, Copy, PartialEq, Eq, )]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BigInt {
     pub val: u64,
     pub sign: bool,
@@ -420,7 +420,7 @@ pub enum UnresolvedType {
     },
     /// A structure with named members
     Struct {
-        fields: Vec<(UnresolvedType, Symbol)>
+        fields: Vec<(UnresolvedType, Symbol)>,
     },
     /// A tagged union with variant types
     Enum {

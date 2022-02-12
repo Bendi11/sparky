@@ -9,7 +9,7 @@ use spark::{
     error::DiagnosticManager,
     parse::{ParseError, Parser},
     util::files::{CompiledFile, FileId, Files},
-    Symbol, CompileOpts, OutputFileType, OutputOptimizationLevel,
+    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol,
 };
 
 enum InputItem {
@@ -102,7 +102,7 @@ fn main() {
                             "Output file '{}' has an unknown extension\nUse -T[type] option to explicitly set output type",
                             args.value_of("output-file").unwrap(),
                         );
-                        return
+                        return;
                     }
                 },
                 None => {
@@ -110,16 +110,16 @@ fn main() {
                         "Output file '{}' has no extension\nUse -T[type] option to explicitly set output type",
                         args.value_of("output-file").unwrap(),
                     );
-                    return
+                    return;
                 }
-            }
+            },
         },
         opt_lvl: match args.value_of("opt-lvl").unwrap() {
             "0" => OutputOptimizationLevel::Debug,
             "1" => OutputOptimizationLevel::Medium,
             "2" => OutputOptimizationLevel::Release,
             "size" => OutputOptimizationLevel::Size,
-            _ => unreachable!()
+            _ => unreachable!(),
         },
         pic: args.is_present("pic"),
         stripped: args.is_present("strip"),
@@ -262,7 +262,10 @@ fn collect_files(input: &Path, files: &mut Files) -> InputItem {
                     items.push(item);
                 }
             }
-            InputItem::Dir(input.file_name().unwrap().to_string_lossy().into_owned(), items)
+            InputItem::Dir(
+                input.file_name().unwrap().to_string_lossy().into_owned(),
+                items,
+            )
         }
         false => {
             let id = files.add(CompiledFile::open(input).expect("failed to open a file"));

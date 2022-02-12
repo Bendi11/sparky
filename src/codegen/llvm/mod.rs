@@ -1,7 +1,7 @@
 //! Generating LLVM IR from a parsed and type lowered AST
 
 pub mod astgen;
-pub mod bingen; 
+pub mod bingen;
 
 use std::convert::TryFrom;
 
@@ -13,23 +13,21 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine},
-    types::{
-        AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType,
-    },
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType},
     values::{BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
 };
 use quickscope::ScopeMap;
 
 use crate::{
-    ast::{IntegerWidth, SymbolPath, FunFlags},
+    ast::{FunFlags, IntegerWidth, SymbolPath},
     codegen::ir::{FunId, FunctionType, ModId, SparkCtx, SparkDef, TypeData, TypeId},
     error::DiagnosticManager,
     util::{
         files::{FileId, Files},
         loc::Span,
     },
-    Symbol, CompileOpts, OutputOptimizationLevel,
+    CompileOpts, OutputOptimizationLevel, Symbol,
 };
 
 /// A type representing all types that can be defined in the global scope
@@ -72,7 +70,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         spark: SparkCtx,
         ctx: &'ctx Context,
         files: &'files Files,
-        opts: CompileOpts
+        opts: CompileOpts,
     ) -> Self {
         Target::initialize_native(&InitializationConfig::default())
             .expect("LLVM: failed to initialize native compilation target");
@@ -103,7 +101,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     },
                     match opts.pic {
                         true => RelocMode::PIC,
-                        false => RelocMode::Default
+                        false => RelocMode::Default,
                     },
                     match opts.opt_lvl {
                         OutputOptimizationLevel::Size => CodeModel::Small,
@@ -191,7 +189,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         for (_name, def) in defs.iter() {
             if let SparkDef::ModDef(submod) = def {
-                self.codegen_defs(*submod); 
+                self.codegen_defs(*submod);
             }
         }
     }
@@ -218,14 +216,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             let fun = self.spark[fun_id].clone();
             let llvm_fun_ty = self.gen_fun_ty(&fun.ty);
             let llvm_fun = if fun.flags.contains(FunFlags::EXTERN) {
-                    llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External))
-                } else {
-                    llvm.add_function(
-                        format!("{}-{}", fun.name, uuid::Uuid::new_v4()).as_str(),
-                        llvm_fun_ty,
-                        Some(Linkage::Internal)
-                    )
-                };
+                llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External))
+            } else {
+                llvm.add_function(
+                    format!("{}-{}", fun.name, uuid::Uuid::new_v4()).as_str(),
+                    llvm_fun_ty,
+                    Some(Linkage::Internal),
+                )
+            };
             self.llvm_funs.insert(fun_id, llvm_fun);
         }
 
@@ -234,7 +232,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 self.forward_funs(*child, llvm);
             }
         }
-
     }
 
     /// Create an LLVM type from a type ID
@@ -282,19 +279,27 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             },
             TypeData::Function(ty) => self.gen_fun_ty(&ty).ptr_type(AddressSpace::Generic).into(),
             TypeData::Enum { parts } => {
-                let max = parts.iter().map(|part| self.size_of_type(*part)).max().unwrap_or(0);
-                    
-                if max > 0 { 
-                    self.ctx.struct_type(&[
-                        self.ctx.i8_type().into(),
-                        self.ctx.i8_type().array_type(max).into(),
-                    ], true).into()
-                } else {
-                    self.ctx.struct_type(&[
-                        self.ctx.i8_type().into(),
-                    ], true).into()
-                }
+                let max = parts
+                    .iter()
+                    .map(|part| self.size_of_type(*part))
+                    .max()
+                    .unwrap_or(0);
 
+                if max > 0 {
+                    self.ctx
+                        .struct_type(
+                            &[
+                                self.ctx.i8_type().into(),
+                                self.ctx.i8_type().array_type(max).into(),
+                            ],
+                            true,
+                        )
+                        .into()
+                } else {
+                    self.ctx
+                        .struct_type(&[self.ctx.i8_type().into()], true)
+                        .into()
+                }
             }
         }
     }
@@ -314,22 +319,25 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 .fn_type(&args, false),
         }
     }
-    
+
     /// Get the size of a type in bytes from a type ID
     fn size_of_type(&self, ty: TypeId) -> u32 {
         match &self.spark[ty] {
-            TypeData::Integer {width, ..} => (*width as u8 / 8) as u32,
-            TypeData::Float {doublewide: true} => 8,
-            TypeData::Float {doublewide: false} => 4,
+            TypeData::Integer { width, .. } => (*width as u8 / 8) as u32,
+            TypeData::Float { doublewide: true } => 8,
+            TypeData::Float { doublewide: false } => 4,
             TypeData::Enum { parts } => {
-                let max = parts.iter()
+                let max = parts
+                    .iter()
                     .map(|part| self.size_of_type(*part))
                     .max()
                     .unwrap_or(0);
                 max + 1
-            },
+            }
             TypeData::Bool => 1,
-            TypeData::Struct { fields } => fields.iter().map(|field| self.size_of_type(field.0)).sum(),
+            TypeData::Struct { fields } => {
+                fields.iter().map(|field| self.size_of_type(field.0)).sum()
+            }
             TypeData::Tuple(elems) => elems.iter().map(|elem| self.size_of_type(*elem)).sum(),
             TypeData::Unit => 0,
             TypeData::Pointer(_) => self.ptr_size(),
@@ -339,7 +347,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             TypeData::Invalid => unreachable!(),
         }
     }
-    
+
     /// Get the size in bytes of a pointer on the target platform
     fn ptr_size(&self) -> u32 {
         self.target.get_target_data().get_pointer_byte_size(None)

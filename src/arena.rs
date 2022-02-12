@@ -117,7 +117,6 @@ impl<T: Hash + Eq + Clone> Interner<T> {
     pub fn get_mut(&mut self, idx: Index<T>) -> &mut T {
         self.arena.get_mut(idx)
     }
-
 }
 
 impl<T> Arena<T> {
