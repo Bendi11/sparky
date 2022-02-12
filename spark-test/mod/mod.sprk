@@ -1,0 +1,4 @@
+
+fun test() -> u8 {
+    return 0xffu8
+}

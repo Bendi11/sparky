@@ -1,3 +1,4 @@
+
 type test_ty = {
     i32 a,
     { i64 b, (f32 | bool) c } b,
@@ -8,13 +9,13 @@ type test_enum = i32 | bool
 
 fun main(i32 argc, **u8 a) -> i32 {
     mut b = 0
-    {
-        if b > 3 {
-            break
+    return {
+        phi if b > 100 {
+            phi $i32 mod:test:()
         } else {
             b = b + 1
+            continue
         }
         continue
     }
-    return 2
 }

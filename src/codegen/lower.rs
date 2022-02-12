@@ -29,8 +29,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         }
     }
 
-    pub fn lower_module(&mut self, parsed: &ParsedModule) -> ModId {
-        let id = self.gen_forward_decls(parsed);
+    pub fn lower_defs(&mut self, parsed: &ParsedModule, id: ModId) {
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
                 DefData::FunDef(proto, body) => {
@@ -61,7 +60,18 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 _ => continue,
             }
         }
+        
+        for child in &parsed.children {
+            let child_id = *self.ctx[id].defs.get(child.0).unwrap();
+            if let SparkDef::ModDef(child_id) = child_id {
+                self.lower_defs(child.1, child_id);
+            }
+        }
+    }
 
+    pub fn lower_module(&mut self, parsed: &ParsedModule) -> ModId {
+        let id = self.gen_forward_decls(parsed);
+        self.lower_defs(parsed, id);
         id
     }
 
@@ -152,8 +162,24 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     /// module
     fn gen_forward_decls(&mut self, parsed: &ParsedModule) -> ModId {
         let module_id = self.gen_forward_types(parsed);
+        for child in &parsed.children {
+            let child_id = self.gen_forward_types(&child.1);
+            self.ctx[module_id].defs.define(child.0.clone(), SparkDef::ModDef(child_id));
+        }
         self.gen_forward_funs(parsed, module_id);
+        for child in &parsed.children {
+            let child_id = *self.ctx[module_id].defs.get(child.0).unwrap();
+            if let SparkDef::ModDef(child_id) = child_id {
+                self.gen_forward_funs(child.1, child_id);
+            }
+        }
         self.gen_imports(parsed, module_id);
+        for child in &parsed.children {
+            let child_id = *self.ctx[module_id].defs.get(child.0).unwrap();
+            if let SparkDef::ModDef(child_id) = child_id {
+                self.gen_imports(child.1, child_id);
+            }
+        }
 
         module_id
     }

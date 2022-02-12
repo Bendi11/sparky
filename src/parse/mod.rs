@@ -1,6 +1,6 @@
 use std::{borrow::Cow, convert::TryFrom, fmt};
 
-use crate::Symbol;
+use crate::{Symbol, ast::BigInt};
 use smallvec::SmallVec;
 
 use crate::{
@@ -1315,7 +1315,10 @@ impl<'src> Parser<'src> {
                 };
 
             Ok(match u64::from_str_radix(number, base) {
-                Ok(val) => NumberLiteral::Integer(val, annotation),
+                Ok(val) => NumberLiteral::Integer(BigInt {
+                    val,
+                    sign: false,
+                }, annotation),
                 Err(_) => match number.parse::<f64>() {
                     Ok(val) => NumberLiteral::Float(val, annotation),
                     Err(_) => {

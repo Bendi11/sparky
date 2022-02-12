@@ -20,6 +20,7 @@ internment = "0.5" # String and type interning
 quickscope = "0.1" # ScopeMap
 hashbrown = "0.11" # Non-secure fast hashmap
 clap = "3.0"
+uuid = { version = "0.8", features = ["v4"]}
 
 codespan-reporting = "0.11"
 

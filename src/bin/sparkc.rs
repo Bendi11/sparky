@@ -182,6 +182,10 @@ fn main() {
         }
     };
 
+    for child in &root_module.children {
+        println!("{}", child.0);
+    }
+
     let mut ctx = SparkCtx::new();
     let mut lowerer = Lowerer::new(&mut ctx, &files);
 
@@ -196,8 +200,7 @@ fn main() {
             std::process::exit(-1);
         }
     }
-    generator.finish(llvm_root);
-    //llvm_root.print_to_stderr();
+    llvm_root.print_to_stderr();
 }
 
 fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {
@@ -257,7 +260,7 @@ fn collect_files(input: &Path, files: &mut Files) -> InputItem {
                     items.push(item);
                 }
             }
-            InputItem::Dir(input.to_string_lossy().into_owned(), items)
+            InputItem::Dir(input.file_name().unwrap().to_string_lossy().into_owned(), items)
         }
         false => {
             let id = files.add(CompiledFile::open(input).expect("failed to open a file"));

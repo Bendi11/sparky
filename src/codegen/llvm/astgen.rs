@@ -134,9 +134,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         );
                     }
                     
-                    self.placed_terminator = true;
                     let phi_val = self.gen_expr(file, module, phi)?;
                     self.builder.build_store(phi_data.alloca, phi_val);
+                    self.placed_terminator = true;
+
                     self.builder
                         .build_unconditional_branch(phi_data.break_bb);
                 } else {
@@ -680,12 +681,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         self.continue_bb = Some(body_bb);
         let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
         self.break_bb = Some(after_bb);
-        self.builder.position_at_end(start_bb);
-        self.builder.build_unconditional_branch(body_bb);
-                
-        self.builder.position_at_end(start_bb);
+                        
+        //self.builder.position_at_end(start_bb);
 
         let pv = self.gen_body(file, module, block, body_bb, after_bb)?;
+        self.builder.position_at_end(start_bb);
+        self.builder.build_unconditional_branch(body_bb);
+
         self.builder.position_at_end(after_bb);
         self.continue_bb = old_continue;
         Ok(pv)

@@ -68,7 +68,12 @@ struct PhiData<'ctx> {
 
 impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Create a new code generator from an LLVM context
-    pub fn new(spark: SparkCtx, ctx: &'ctx Context, files: &'files Files, opts: CompileOpts) -> Self {
+    pub fn new(
+        spark: SparkCtx,
+        ctx: &'ctx Context,
+        files: &'files Files,
+        opts: CompileOpts
+    ) -> Self {
         Target::initialize_native(&InitializationConfig::default())
             .expect("LLVM: failed to initialize native compilation target");
 
@@ -153,12 +158,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         }
     }
 
-    /// Codegen LLVM IR from a type-lowered module
-    pub fn codegen_module(&mut self, module: ModId) -> Module<'ctx> {
-        let mut llvm_mod = self.ctx.create_module(self.spark[module].name.as_str());
-
-        self.forward_funs(&mut llvm_mod, module);
-
+    fn codegen_defs(&mut self, module: ModId) {
         let defs = self.spark[module].defs.clone();
 
         self.current_scope.push_layer();
@@ -191,16 +191,21 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         for (_name, def) in defs.iter() {
             if let SparkDef::ModDef(submod) = def {
-                let submod = self.codegen_module(*submod);
-                llvm_mod.link_in_module(submod).unwrap();
+                self.codegen_defs(*submod); 
             }
         }
+    }
 
-        llvm_mod
+    /// Codegen LLVM IR from a type-lowered module
+    pub fn codegen_module(&mut self, module: ModId) -> Module<'ctx> {
+        let mut llvm_mod = self.ctx.create_module(self.spark[module].name.as_str());
+        self.forward_funs(module, &mut llvm_mod);
+        self.codegen_defs(module);
+        return llvm_mod;
     }
 
     /// Generate code for all function prototypes
-    fn forward_funs(&mut self, llvm: &mut Module<'ctx>, module: ModId) {
+    fn forward_funs(&mut self, module: ModId, llvm: &mut Module<'ctx>) {
         let defs = self.spark[module].defs.clone();
 
         for fun_id in defs.iter().filter_map(|(_, def)| {
@@ -213,9 +218,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             let fun = self.spark[fun_id].clone();
             let llvm_fun_ty = self.gen_fun_ty(&fun.ty);
             let llvm_fun =
-                llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External));
+                llvm.add_function(format!("{}-{}", fun.name, uuid::Uuid::new_v4()).as_str(), llvm_fun_ty, Some(Linkage::External));
             self.llvm_funs.insert(fun_id, llvm_fun);
         }
+
+        for child in defs.iter() {
+            if let SparkDef::ModDef(child) = child.1 {
+                self.forward_funs(*child, llvm);
+            }
+        }
+
     }
 
     /// Create an LLVM type from a type ID
