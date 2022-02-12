@@ -4,7 +4,7 @@ use quickscope::ScopeMap;
 
 use crate::{
     arena::{Arena, Index, Interner},
-    ast::{Ast, IntegerWidth, PathIter, SymbolPath},
+    ast::{Ast, IntegerWidth, PathIter, SymbolPath, FunFlags},
     util::files::FileId,
     Symbol,
 };
@@ -50,12 +50,14 @@ impl SparkCtx {
         &mut self,
         name: Symbol,
         ty: FunctionType,
+        flags: FunFlags,
         arg_names: Vec<Option<Symbol>>,
     ) -> FunId {
         self.funs.insert_with(|id| Function {
             id,
             name,
             ty,
+            flags,
             arg_names,
             body: None,
         })
@@ -262,6 +264,7 @@ pub struct Type {
 pub struct Function {
     pub id: FunId,
     pub name: Symbol,
+    pub flags: FunFlags,
     pub ty: FunctionType,
     pub arg_names: Vec<Option<Symbol>>,
     pub body: Option<Vec<Ast<TypeId>>>,

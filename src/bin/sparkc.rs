@@ -200,7 +200,9 @@ fn main() {
             std::process::exit(-1);
         }
     }
-    llvm_root.print_to_stderr();
+
+    generator.finish(llvm_root);
+    //llvm_root.print_to_stderr();
 }
 
 fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {

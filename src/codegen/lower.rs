@@ -327,6 +327,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         self.ctx.new_fun(
             proto.name,
             fun_ty,
+            proto.flags,
             proto
                 .args
                 .iter()

@@ -212,7 +212,14 @@ impl<'src> Parser<'src> {
                 })
             }
             TokenData::Ident("fun") => {
-                let name = self.expect_next_ident(&[TokenData::Ident("function name")])?;
+                let (name, flags) = match self.expect_next_ident(&[TokenData::Ident("function name")])? {
+                    "ext" => (
+                        self.expect_next_ident(&[TokenData::Ident("function name")])?,
+                        FunFlags::EXTERN
+                    ),
+                    other => (other, FunFlags::empty())
+                };
+
                 self.trace
                     .push(format!("function declaration '{}'", name).into());
 
@@ -279,7 +286,7 @@ impl<'src> Parser<'src> {
                     name: self.symbol(name),
                     args,
                     return_ty,
-                    flags: FunFlags::empty(),
+                    flags,
                 };
 
                 if let Ok(TokenData::OpenBracket(BracketType::Curly)) =

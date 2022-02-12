@@ -22,7 +22,7 @@ use inkwell::{
 use quickscope::ScopeMap;
 
 use crate::{
-    ast::{IntegerWidth, SymbolPath},
+    ast::{IntegerWidth, SymbolPath, FunFlags},
     codegen::ir::{FunId, FunctionType, ModId, SparkCtx, SparkDef, TypeData, TypeId},
     error::DiagnosticManager,
     util::{
@@ -217,8 +217,15 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         }) {
             let fun = self.spark[fun_id].clone();
             let llvm_fun_ty = self.gen_fun_ty(&fun.ty);
-            let llvm_fun =
-                llvm.add_function(format!("{}-{}", fun.name, uuid::Uuid::new_v4()).as_str(), llvm_fun_ty, Some(Linkage::External));
+            let llvm_fun = if fun.flags.contains(FunFlags::EXTERN) {
+                    llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External))
+                } else {
+                    llvm.add_function(
+                        format!("{}-{}", fun.name, uuid::Uuid::new_v4()).as_str(),
+                        llvm_fun_ty,
+                        Some(Linkage::Internal)
+                    )
+                };
             self.llvm_funs.insert(fun_id, llvm_fun);
         }
 
