@@ -197,6 +197,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             AstNode::IfExpr(..) | AstNode::Block(..) => {
                 let phi = self.gen_lval(file, module, ast)?;
                 self.builder.build_load(phi, "load_phi")
+            },
+            AstNode::MemberAccess(object, field) => {
+                let field_pv = self.gen_member(file, module, object, *field)?;
+                self.builder.build_load(field_pv, "load_struct_member")
             }
             AstNode::CastExpr(to, rhs) => self.gen_cast(file, module, *to, rhs)?,
             AstNode::Access(path) => {
@@ -652,7 +656,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         .with_message("Cannot use if block with no phi nodes as expression")
                         .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            }
+            },
+            AstNode::MemberAccess(object, field) => self.gen_member(file, module, object, *field)?,
             _ => {
                 let expr = self.gen_expr(file, module, ast)?;
                 let alloca = self.builder.build_alloca(expr.get_type(), "lvalue_alloca");
@@ -1018,6 +1023,62 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 .with_labels(vec![
                     Label::primary(file, if_expr.cond.span).with_message("Non-boolean value here")
                 ]));
+        }
+    }
+    
+    /// Generate code for a single member access
+    fn gen_member(
+        &mut self, 
+        file: FileId,
+        module: ModId,
+        object: &Ast<TypeId>, 
+        field: Symbol
+    ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+        let obj_ty = self.ast_type(file, module, object)?;
+        if let TypeData::Struct { ref fields } = self.spark[obj_ty] {
+            let fields = fields.clone();
+            let struct_pv = self.gen_lval(file, module, object)?;
+
+            for (i, (_, name)) in fields.iter().enumerate() {
+                if *name == field {
+                    return Ok(self.builder.build_struct_gep(
+                            struct_pv, 
+                            i as u32, 
+                            "struct_field_access"
+                        ).unwrap()
+                    )
+                } 
+            }
+            Err(Diagnostic::error()
+                .with_message(format!(
+                        "Structure type {} has no field named {}",
+                        self.spark.get_type_name(obj_ty),
+                        field
+                    )
+                )
+                .with_labels(vec![
+                    Label::primary(file, object.span)
+                        .with_message(format!(
+                            "Expression of structure type {} encountered here",
+                            self.spark.get_type_name(obj_ty)
+                        ))
+                ])
+            )
+        } else {
+            Err(Diagnostic::error()
+                .with_message(format!(
+                    "Cannot access field {} of non-struct type {}",
+                    field,
+                    self.spark.get_type_name(obj_ty)
+                ))
+                .with_labels(vec![
+                    Label::primary(file, object.span)
+                        .with_message(format!(
+                            "Expression of type {} encountered here",
+                            self.spark.get_type_name(obj_ty)
+                        ))
+                ])
+            )
         }
     }
 
