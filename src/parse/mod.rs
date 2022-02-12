@@ -1,7 +1,6 @@
 use std::{borrow::Cow, convert::TryFrom, fmt};
 
 use crate::Symbol;
-use num_bigint::BigInt;
 use smallvec::SmallVec;
 
 use crate::{
@@ -1123,7 +1122,7 @@ impl<'src> Parser<'src> {
             TokenData::OpenBracket(BracketType::Square) => {
                 self.trace.push("array type length".into());
                 let len = match self.parse_numliteral()? {
-                    NumberLiteral::Integer(bigint, _) => u64::try_from(bigint).unwrap(),
+                    NumberLiteral::Integer(bigint, _) => bigint.val,
                     NumberLiteral::Float(floating, _) => floating as u64,
                 };
 
@@ -1315,9 +1314,9 @@ impl<'src> Parser<'src> {
                     None
                 };
 
-            Ok(match BigInt::parse_bytes(number.as_bytes(), base) {
-                Some(val) => NumberLiteral::Integer(val, annotation),
-                None => match number.parse::<f64>() {
+            Ok(match u64::from_str_radix(number, base) {
+                Ok(val) => NumberLiteral::Integer(val, annotation),
+                Err(_) => match number.parse::<f64>() {
                     Ok(val) => NumberLiteral::Float(val, annotation),
                     Err(_) => {
                         return Err(ParseError {

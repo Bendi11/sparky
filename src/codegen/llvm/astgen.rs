@@ -1,6 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::{types::IntType, IntPredicate, FloatPredicate, values::CallableValue};
-use num_bigint::Sign;
 
 use crate::{ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation}, parse::token::Op, util::files::FileId};
 
@@ -112,6 +111,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     );
                 }
 
+                self.placed_terminator = true;
+
                 if current_fun.ty.return_ty != SparkCtx::UNIT {
                     let returned = self.gen_expr(file, module, returned)?;
                     self.builder.build_return(Some(&returned));
@@ -120,34 +121,24 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 }
             },
             AstNode::PhiExpr(phi) => {
-                if let Some(break_data) = self.break_data {
-                    if let Some(phi_data) = break_data.phi_data {
-                        let phid_ty = self.ast_type(file, module, phi)?;
+                if let Some(phi_data) = self.phi_data {
+                    let phid_ty = self.ast_type(file, module, phi)?;
 
-                        if phid_ty != phi_data.phi_ty {
-                            return Err(Diagnostic::error()
-                                .with_message("Phi statement returns a value with type different to expected type")
-                                .with_labels(vec![
-                                    Label::primary(file, phi.span)
-                                        .with_message(format!("Phi statement of type '{}' encountered here", self.spark.get_type_name(phid_ty)))
-                                ])
-                            );
-                        }
-
-                        let phi_val = self.gen_expr(file, module, phi)?;
-                        self.builder.build_store(phi_data.alloca, phi_val);
-                        self.builder
-                            .build_unconditional_branch(break_data.break_bb);
-                    } else {
+                    if phid_ty != phi_data.phi_ty {
                         return Err(Diagnostic::error()
-                            .with_message("Phi statement encountered but not used")
-                            .with_labels(vec![Label::primary(file, ast.span)
-                                .with_message("Phi statement encountered here")])
-                            .with_notes(vec![
-                                "Replace with a break or continue statement if value is not used"
-                                    .to_owned(),
-                            ]));
+                            .with_message("Phi statement returns a value with type different to expected type")
+                            .with_labels(vec![
+                                Label::primary(file, phi.span)
+                                    .with_message(format!("Phi statement of type '{}' encountered here", self.spark.get_type_name(phid_ty)))
+                            ])
+                        );
                     }
+                    
+                    self.placed_terminator = true;
+                    let phi_val = self.gen_expr(file, module, phi)?;
+                    self.builder.build_store(phi_data.alloca, phi_val);
+                    self.builder
+                        .build_unconditional_branch(phi_data.break_bb);
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Phi statement not in a block")
@@ -155,8 +146,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 }
             },
             AstNode::Break => {
-                if let Some(break_data) = self.break_data {
-                    self.builder.build_unconditional_branch(break_data.break_bb);
+                if let Some(break_bb) = self.break_bb {
+                    self.placed_terminator = true;
+                    self.builder.build_unconditional_branch(break_bb);
                 } else {
                     return Err(Diagnostic::error()
                         .with_message("Break statement encountered while not in a block")
@@ -168,6 +160,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             },
             AstNode::Continue => {
                 if let Some(continue_bb) = self.continue_bb {
+                    self.placed_terminator = true;
                     self.builder.build_unconditional_branch(continue_bb);
                 } else {
                     return Err(Diagnostic::error()
@@ -261,8 +254,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     NumberLiteral::Integer(num, annot) => {
                         match annot {
                             Some(annot) => {
-                                let sign = num.to_u64_digits().0 == Sign::Plus;
-
                                 let n =
                                     match annot {
                                         NumberLiteralAnnotation::U8
@@ -276,11 +267,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                         NumberLiteralAnnotation::F32
                                         | NumberLiteralAnnotation::F64 => self.ctx.i64_type(),
                                     }
-                                    .const_int(num.to_u64_digits().1[0], sign);
+                                    .const_int(num.val, num.sign);
 
                                 match annot {
                                     NumberLiteralAnnotation::F32 => {
-                                        if sign {
+                                        if num.sign {
                                             self.builder
                                                 .build_signed_int_to_float(
                                                     n,
@@ -299,7 +290,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                         }
                                     }
                                     NumberLiteralAnnotation::F64 => {
-                                        if sign {
+                                        if num.sign {
                                             self.builder
                                                 .build_signed_int_to_float(
                                                     n,
@@ -324,8 +315,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                 .ctx
                                 .i32_type()
                                 .const_int(
-                                    num.to_u64_digits().1[0],
-                                    num.to_u64_digits().0 == Sign::Plus,
+                                    num.val,
+                                    num.sign,
                                 )
                                 .into(),
                         }
@@ -688,13 +679,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         let body_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "block");
         self.continue_bb = Some(body_bb);
         let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after");
-
+        self.break_bb = Some(after_bb);
         self.builder.position_at_end(start_bb);
         self.builder.build_unconditional_branch(body_bb);
                 
         self.builder.position_at_end(start_bb);
 
         let pv = self.gen_body(file, module, block, body_bb, after_bb)?;
+        self.builder.position_at_end(after_bb);
         self.continue_bb = old_continue;
         Ok(pv)
     }
@@ -990,6 +982,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
                     self.builder.position_at_end(start_bb);
                     self.builder.build_conditional_branch(cond, if_body_block, else_bb);
+                    self.builder.position_at_end(after_bb);
                     Ok(if_phi)
                 },
                 None => {
@@ -1109,6 +1102,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     let phi_alloca = self.builder.build_alloca(llvm_ty, "phi_alloca");
 
                     Some(PhiData {
+                        break_bb: after_bb,
                         phi_ty: ty,
                         alloca: phi_alloca
                     })
@@ -1118,28 +1112,32 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         };
         
-        let old_break_data = self.break_data;
+        let old_phi_data = self.phi_data;
         self.builder.position_at_end(to_bb);
 
-        self.break_data = Some(BreakData {
-            break_bb: after_bb,
-            phi_data,
-        });
+        self.phi_data = phi_data;
         
         self.current_scope.push_layer();
         
         for stmt in body.iter() {
             if let Err(e) = self.gen_stmt(file, module, stmt) {
-                self.break_data = old_break_data;
+                self.phi_data = old_phi_data;
                 self.current_scope.pop_layer();
                 self.builder.position_at_end(after_bb);
                 return Err(e)
             }
+            if self.placed_terminator {
+                break;
+            }
         }
 
-        self.break_data = old_break_data;
+        self.phi_data = old_phi_data;
         self.current_scope.pop_layer();
-        self.builder.build_unconditional_branch(after_bb);
+        if !self.placed_terminator {
+            self.builder.build_unconditional_branch(after_bb);
+        } else {
+            self.placed_terminator = false;
+        }
         self.builder.position_at_end(after_bb);
 
         Ok(phi_data.map(|d| d.alloca))

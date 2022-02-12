@@ -7,18 +7,14 @@ type testing_type = fun(i32) -> f32
 type test_enum = i32 | bool
 
 fun main(i32 argc, **u8 a) -> i32 {
+    mut b = 0
     {
-        mut a = 1
-        if a > 3 {
+        if b > 3 {
             break
         } else {
-            a = a + 1
-            continue
+            b = b + 1
         }
+        continue
     }
-    return test:() << 2
-}
-
-fun test() -> i32 {
-    return 0b00000010
+    return 2
 }

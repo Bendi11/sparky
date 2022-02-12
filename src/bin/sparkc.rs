@@ -188,8 +188,14 @@ fn main() {
     let root_id = lowerer.lower_module(&root_module);
 
     let mut llvm_ctx = Context::create();
-    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files, opts);
+    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files, opts.clone());
     let llvm_root = generator.codegen_module(root_id);
+    if let Err(e) = llvm_root.verify() {
+        eprintln!("Failure to verify generated LLVM module: {}", e);
+        if opts.out_type != OutputFileType::LLVMIR {
+            std::process::exit(-1);
+        }
+    }
     generator.finish(llvm_root);
     //llvm_root.print_to_stderr();
 }

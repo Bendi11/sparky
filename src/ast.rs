@@ -5,7 +5,6 @@ use std::fmt;
 use std::{cmp::Eq, collections::HashMap, hash::Hash};
 
 use bitflags::bitflags;
-use num_bigint::BigInt;
 
 use crate::Symbol;
 
@@ -341,10 +340,17 @@ impl ParsedModule {
 
 /// A number literal holding either a big integer or
 /// floating point value
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum NumberLiteral {
     Integer(BigInt, Option<NumberLiteralAnnotation>),
     Float(f64, Option<NumberLiteralAnnotation>),
+}
+
+/// A big integer that can hold any number literal expressed in spark source
+#[derive(Debug, Clone, Copy, PartialEq, Eq, )]
+pub struct BigInt {
+    pub val: u64,
+    pub sign: bool,
 }
 
 impl std::cmp::Eq for NumberLiteral {}

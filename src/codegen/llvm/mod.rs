@@ -52,20 +52,16 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
     target: TargetMachine,
     current_scope: ScopeMap<Symbol, ScopeDef<'ctx>>,
     current_fun: Option<(FunctionValue<'ctx>, FunId)>,
-    break_data: Option<BreakData<'ctx>>,
+    phi_data: Option<PhiData<'ctx>>,
     continue_bb: Option<BasicBlock<'ctx>>,
+    break_bb: Option<BasicBlock<'ctx>>,
+    placed_terminator: bool,
 }
 
 /// Data needed to use a phi / break / continue statement
 #[derive(Clone, Copy)]
-struct BreakData<'ctx> {
-    pub break_bb: BasicBlock<'ctx>,
-    pub phi_data: Option<PhiData<'ctx>>,
-}
-
-/// Data needed specifcally for a phi statement
-#[derive(Clone, Copy)]
 struct PhiData<'ctx> {
+    pub break_bb: BasicBlock<'ctx>,
     pub alloca: PointerValue<'ctx>,
     pub phi_ty: TypeId,
 }
@@ -84,8 +80,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             spark,
             diags: DiagnosticManager::new(files),
             llvm_funs: HashMap::new(),
-            break_data: None,
+            phi_data: None,
+            break_bb: None,
             continue_bb: None,
+            placed_terminator: false,
             target: Target::from_triple(&TargetMachine::get_default_triple())
                 .unwrap()
                 .create_target_machine(
@@ -173,6 +171,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         for (name, def) in defs.iter() {
             if let SparkDef::FunDef(file, fun) = def {
                 if let Some(ref body) = self.spark[*fun].body {
+                    self.placed_terminator = false;
                     let llvm_fun = *self.llvm_funs.get(fun).unwrap();
                     let entry = self.ctx.append_basic_block(llvm_fun, "entry_bb");
                     self.builder.position_at_end(entry);
