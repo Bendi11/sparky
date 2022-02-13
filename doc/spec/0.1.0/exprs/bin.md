@@ -12,8 +12,7 @@ order of operations in spark is left to right
 
 ## Valid Operators for Each Data Type
 
-> `(i|u)xx` \<op\> `(i|u)xx`: +, -, *, /, %, <<, >>, &, |, ^
-> `fxx` \<op\> `fxx`: +, -, *, /, %
-> `fxx` \<op\> `uxx`: <<, >>
-> 
+ - `(i|u)xx` \<op\> `(i|u)xx`: +, -, *, /, %, <<, >>, &, |, ^
+ - `fxx` \<op\> `fxx`: +, -, *, /, %
+ - `fxx` \<op\> `uxx`: <<, >>
 
