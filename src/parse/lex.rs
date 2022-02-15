@@ -61,7 +61,7 @@ impl<'src> Lexer<'src> {
             '%' => Token::new(start_loc, TokenData::Op(Op::Mod)),
             '!' => Token::new(start_loc, TokenData::Op(Op::LogicalNot)),
             '~' => Token::new(start_loc, TokenData::Op(Op::NOT)),
-            '^' => Token::new(start_loc, TokenData::Op(Op::XOR)), 
+            '^' => Token::new(start_loc, TokenData::Op(Op::XOR)),
             '$' => Token::new(start_loc, TokenData::Dollar),
             ':' => Token::new(start_loc, TokenData::Colon),
 

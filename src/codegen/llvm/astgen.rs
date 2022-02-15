@@ -2,7 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::{types::IntType, values::CallableValue, FloatPredicate, IntPredicate};
 
 use crate::{
-    ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation, Literal},
+    ast::{Ast, AstNode, ElseExpr, IfExpr, Literal, NumberLiteral, NumberLiteralAnnotation},
     parse::token::Op,
     util::files::FileId,
 };
@@ -26,10 +26,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
             AstNode::FunCall(called, args) => {
                 self.gen_call(file, module, called, args)?;
-            },
+            }
             AstNode::Match { matched, cases } => {
                 self.gen_match_expr(file, module, matched, cases, ast.span)?;
-            },
+            }
             AstNode::Assignment { lhs, rhs } => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
 
@@ -197,10 +197,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
-            AstNode::IfExpr(..) | AstNode::Block(..) | AstNode::Match{..} => {
+            AstNode::IfExpr(..) | AstNode::Block(..) | AstNode::Match { .. } => {
                 let phi = self.gen_lval(file, module, ast)?;
                 self.builder.build_load(phi, "load_phi")
-            },
+            }
             AstNode::MemberAccess(object, field) => {
                 let field_pv = self.gen_member(file, module, object, *field)?;
                 self.builder.build_load(field_pv, "load_struct_member")
@@ -253,7 +253,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             },
             AstNode::BinExpr(lhs, op, rhs) => {
                 return self.gen_bin_expr(file, module, lhs, *op, rhs)
-            },
+            }
             AstNode::Literal(literal) => self.gen_literal(file, module, literal, ast.span)?,
             _ => {
                 return Err(Diagnostic::error()
@@ -262,12 +262,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         })
     }
-    
+
     /// Generate code for a match expression, returning a pointer to the phi value if any
-    fn gen_match_expr(&mut self,
-        file: FileId, 
-        module: ModId, 
-        matched: &Ast<TypeId>, 
+    fn gen_match_expr(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        matched: &Ast<TypeId>,
         arms: &[(TypeId, Ast<TypeId>)],
         span: Span,
     ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
@@ -283,15 +284,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         if has_phi && !all_arms_have_phi {
             return Err(Diagnostic::error()
-                .with_message("Cannot use match statement as expression because not all arms have phi")
-                .with_labels(vec![
-                    Label::primary(file, span)
-                        .with_message("Match statement used as expression here")
-                ])
-            )
+                .with_message(
+                    "Cannot use match statement as expression because not all arms have phi",
+                )
+                .with_labels(vec![Label::primary(file, span)
+                    .with_message("Match statement used as expression here")]));
         }
-        
-        let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after_match");
+
+        let after_bb = self
+            .ctx
+            .append_basic_block(self.current_fun.unwrap().0, "after_match");
 
         let phi_data = if has_phi {
             let ty = self.ast_type(file, module, &arms[0].1)?;
@@ -304,75 +306,80 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         } else {
             None
         };
-            
+
         let old_phi_data = self.phi_data;
         self.phi_data = phi_data;
- 
+
         let matched_ty = self.ast_type(file, module, matched)?;
         let matched_ty = self.spark.unwrap_alias(matched_ty);
-        let matched_parts = if let TypeData::Enum{ref parts} = self.spark[matched_ty] {
+        let matched_parts = if let TypeData::Enum { ref parts } = self.spark[matched_ty] {
             parts.clone()
         } else {
             return Err(Diagnostic::error()
                 .with_message(format!(
-                        "Cannot match against non-enum type {}",
-                        self.spark.get_type_name(matched_ty)
-                    )
-                )
-                .with_labels(vec![
-                    Label::primary(file, matched.span)
-                ])
-            )
+                    "Cannot match against non-enum type {}",
+                    self.spark.get_type_name(matched_ty)
+                ))
+                .with_labels(vec![Label::primary(file, matched.span)]));
         };
 
         let matched = self.gen_lval(file, module, matched)?;
-        let discr = self.builder.build_struct_gep(matched, 0, "enum_match_discr").unwrap();
-        let discr = self.builder.build_load(discr, "enum_match_discr_load").into_int_value();
+        let discr = self
+            .builder
+            .build_struct_gep(matched, 0, "enum_match_discr")
+            .unwrap();
+        let discr = self
+            .builder
+            .build_load(discr, "enum_match_discr_load")
+            .into_int_value();
 
         let start_bb = self.builder.get_insert_block().unwrap();
 
-        let cases = arms.into_iter().map(|(ty, expr)| if let Some(idx) = matched_parts.iter().position(|part| *part == *ty) {
-            let arm_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "matcharm_bb");
-            self.builder.position_at_end(arm_bb);
-            match self.gen_stmt(file, module, expr) {
-                Ok(_) => {
-                    if !self.placed_terminator {
-                        self.builder.build_unconditional_branch(after_bb);
+        let cases = arms
+            .into_iter()
+            .map(|(ty, expr)| {
+                if let Some(idx) = matched_parts.iter().position(|part| *part == *ty) {
+                    let arm_bb = self
+                        .ctx
+                        .append_basic_block(self.current_fun.unwrap().0, "matcharm_bb");
+                    self.builder.position_at_end(arm_bb);
+                    match self.gen_stmt(file, module, expr) {
+                        Ok(_) => {
+                            if !self.placed_terminator {
+                                self.builder.build_unconditional_branch(after_bb);
+                            }
+                            Ok((self.ctx.i8_type().const_int(idx as u64, false), arm_bb))
+                        }
+                        Err(e) => Err(e),
                     }
-                    Ok((self.ctx.i8_type().const_int(idx as u64, false), arm_bb))
-                },
-                Err(e) => Err(e)
-            }
-        } else {
-            Err(Diagnostic::error()
-                .with_message(format!(
-                        "Cannot match type {} that is not contained in matched enum type {}",
-                        self.spark.get_type_name(*ty),
-                        self.spark.get_type_name(matched_ty)
-                    )
-                )
-                .with_labels(vec![
-                    Label::primary(file, expr.span)
-                ])
-            )
-        }).collect::<Result<Vec<_>, _>>()?;
+                } else {
+                    Err(Diagnostic::error()
+                        .with_message(format!(
+                            "Cannot match type {} that is not contained in matched enum type {}",
+                            self.spark.get_type_name(*ty),
+                            self.spark.get_type_name(matched_ty)
+                        ))
+                        .with_labels(vec![Label::primary(file, expr.span)]))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         self.builder.position_at_end(start_bb);
         self.builder.build_switch(discr, after_bb, &cases);
         self.builder.position_at_end(after_bb);
-        
+
         let phi_alloca = self.phi_data.map(|data| data.alloca);
         self.phi_data = old_phi_data;
         Ok(phi_alloca)
     }
- 
+
     /// Generate code for a literal
     fn gen_literal(
         &mut self,
         file: FileId,
         module: ModId,
         literal: &Literal<TypeId>,
-        span: Span
+        span: Span,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         Ok(match literal {
             Literal::Bool(b) => match b {
@@ -385,7 +392,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .builder
                     .build_global_string_ptr(s.as_str(), "const_str");
                 glob.as_pointer_value().into()
-            },
+            }
             Literal::Number(n) => {
                 match n {
                     NumberLiteral::Integer(num, annot) => {
@@ -531,9 +538,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         None => self.ctx.f64_type().const_float(*f).into(),
                     },
                 }
-            },
-            _ => unimplemented!()
-
+            }
+            _ => unimplemented!(),
         })
     }
 
@@ -768,15 +774,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         .with_message("Cannot use block without phi statement as expression")
                         .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            },
+            }
             AstNode::Match { matched, cases } => {
                 if let Some(pv) = self.gen_match_expr(file, module, matched, cases, ast.span)? {
                     pv
                 } else {
                     return Err(Diagnostic::error()
-                        .with_message("Cannot use match expression without phi nodes as an expression")
-                        .with_labels(vec![Label::primary(file, ast.span)])
-                    )
+                        .with_message(
+                            "Cannot use match expression without phi nodes as an expression",
+                        )
+                        .with_labels(vec![Label::primary(file, ast.span)]));
                 }
             }
             AstNode::IfExpr(if_expr) => {
@@ -787,8 +794,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         .with_message("Cannot use if block with no phi nodes as expression")
                         .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            },
-            AstNode::MemberAccess(object, field) => self.gen_member(file, module, object, *field)?,
+            }
+            AstNode::MemberAccess(object, field) => {
+                self.gen_member(file, module, object, *field)?
+            }
             _ => {
                 let expr = self.gen_expr(file, module, ast)?;
                 let alloca = self.builder.build_alloca(expr.get_type(), "lvalue_alloca");
@@ -856,7 +865,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         })
     }
-    
+
     /// Generate code for a cast expression
     fn gen_cast(
         &mut self,
@@ -912,13 +921,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
                 //let array_size = self.size_of_type(to_ty) - 1;
                 /*let rhs_ptr_bc = self
-                    .builder
-                    .build_bitcast(
-                        llvm_rhs,
-                        self.ctx.i8_type().ptr_type(AddressSpace::Generic),
-                        "enum_variant_store_bc",
-                    )
-                    .into_pointer_value();*/
+                .builder
+                .build_bitcast(
+                    llvm_rhs,
+                    self.ctx.i8_type().ptr_type(AddressSpace::Generic),
+                    "enum_variant_store_bc",
+                )
+                .into_pointer_value();*/
 
                 let variant = self
                     .builder
@@ -940,16 +949,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 //let src_align = next_pow(rhs_size);
 
                 /*self.builder
-                    .build_memcpy(
-                        variant_ptr,
-                        array_align,
-                        rhs_ptr_bc,
-                        src_align,
-                        self.ctx
-                            .ptr_sized_int_type(&self.target.get_target_data(), None)
-                            .const_int(rhs_size as u64, false),
-                    )
-                    .unwrap();*/
+                .build_memcpy(
+                    variant_ptr,
+                    array_align,
+                    rhs_ptr_bc,
+                    src_align,
+                    self.ctx
+                        .ptr_sized_int_type(&self.target.get_target_data(), None)
+                        .const_int(rhs_size as u64, false),
+                )
+                .unwrap();*/
 
                 let enum_literal_load = self.builder.build_load(enum_literal, "enum_lit_load");
                 return Ok(enum_literal_load.into());
@@ -965,31 +974,41 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     ))]));
             }
         }
-        
+
         //Generate a bitcast to the desired type if casting from enum
         if let TypeData::Enum { parts } = &self.spark[self.spark.unwrap_alias(rhs_ty)] {
             if let Some(_idx) = parts.iter().position(|part| *part == to_ty) {
                 let llvm_rhs = self.gen_lval(file, module, rhs)?;
                 let llvm_to_ty = BasicTypeEnum::try_from(self.llvm_ty(to_ty)).unwrap();
 
-                let variant = self.builder.build_struct_gep(llvm_rhs, 1, "enum_variant_ptr").unwrap();
+                let variant = self
+                    .builder
+                    .build_struct_gep(llvm_rhs, 1, "enum_variant_ptr")
+                    .unwrap();
 
-                let variant_bc = self.builder.build_bitcast(variant, llvm_to_ty.ptr_type(AddressSpace::Generic), "enum_load_cast").into_pointer_value();
-                if BasicTypeEnum::try_from(variant_bc.get_type().get_element_type()).unwrap() != llvm_to_ty {
+                let variant_bc = self
+                    .builder
+                    .build_bitcast(
+                        variant,
+                        llvm_to_ty.ptr_type(AddressSpace::Generic),
+                        "enum_load_cast",
+                    )
+                    .into_pointer_value();
+                if BasicTypeEnum::try_from(variant_bc.get_type().get_element_type()).unwrap()
+                    != llvm_to_ty
+                {
                     panic!("Casting to {:#?}", variant_bc.get_type());
                 }
 
-                return Ok(self.builder.build_load(variant_bc, "enum_data_load"))
+                return Ok(self.builder.build_load(variant_bc, "enum_data_load"));
             } else {
                 return Err(Diagnostic::error()
                     .with_message(format!(
-                            "Cannot cast enum type {} to type {}",
-                            self.spark.get_type_name(self.spark.unwrap_alias(rhs_ty)),
-                            self.spark.get_type_name(to_ty)
-                        )
-                    )
-                    .with_labels(vec![Label::primary(file, rhs.span)])
-                )
+                        "Cannot cast enum type {} to type {}",
+                        self.spark.get_type_name(self.spark.unwrap_alias(rhs_ty)),
+                        self.spark.get_type_name(to_ty)
+                    ))
+                    .with_labels(vec![Label::primary(file, rhs.span)]));
             }
         }
 
@@ -1186,14 +1205,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 ]));
         }
     }
-    
+
     /// Generate code for a single member access
     fn gen_member(
-        &mut self, 
+        &mut self,
         file: FileId,
         module: ModId,
-        object: &Ast<TypeId>, 
-        field: Symbol
+        object: &Ast<TypeId>,
+        field: Symbol,
     ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
         let obj_ty = self.ast_type(file, module, object)?;
         if let TypeData::Struct { ref fields } = self.spark[obj_ty] {
@@ -1202,29 +1221,24 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
             for (i, (_, name)) in fields.iter().enumerate() {
                 if *name == field {
-                    return Ok(self.builder.build_struct_gep(
-                            struct_pv, 
-                            i as u32, 
-                            "struct_field_access"
-                        ).unwrap()
-                    )
-                } 
+                    return Ok(self
+                        .builder
+                        .build_struct_gep(struct_pv, i as u32, "struct_field_access")
+                        .unwrap());
+                }
             }
             Err(Diagnostic::error()
                 .with_message(format!(
-                        "Structure type {} has no field named {}",
-                        self.spark.get_type_name(obj_ty),
-                        field
-                    )
-                )
-                .with_labels(vec![
-                    Label::primary(file, object.span)
-                        .with_message(format!(
-                            "Expression of structure type {} encountered here",
-                            self.spark.get_type_name(obj_ty)
-                        ))
-                ])
-            )
+                    "Structure type {} has no field named {}",
+                    self.spark.get_type_name(obj_ty),
+                    field
+                ))
+                .with_labels(vec![Label::primary(file, object.span).with_message(
+                    format!(
+                        "Expression of structure type {} encountered here",
+                        self.spark.get_type_name(obj_ty)
+                    ),
+                )]))
         } else {
             Err(Diagnostic::error()
                 .with_message(format!(
@@ -1232,14 +1246,12 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     field,
                     self.spark.get_type_name(obj_ty)
                 ))
-                .with_labels(vec![
-                    Label::primary(file, object.span)
-                        .with_message(format!(
-                            "Expression of type {} encountered here",
-                            self.spark.get_type_name(obj_ty)
-                        ))
-                ])
-            )
+                .with_labels(vec![Label::primary(file, object.span).with_message(
+                    format!(
+                        "Expression of type {} encountered here",
+                        self.spark.get_type_name(obj_ty)
+                    ),
+                )]))
         }
     }
 
@@ -1412,7 +1424,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     }
                 }
             },
-            AstNode::Literal(Literal::String(_)) => self.spark.new_type(TypeData::Pointer(SparkCtx::U8)),
+            AstNode::Literal(Literal::String(_)) => {
+                self.spark.new_type(TypeData::Pointer(SparkCtx::U8))
+            }
             AstNode::Literal(Literal::Bool(_)) => SparkCtx::BOOL,
             AstNode::Literal(Literal::Tuple(parts)) => {
                 let part_types = parts

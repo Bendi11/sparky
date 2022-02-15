@@ -1,6 +1,9 @@
 use std::{borrow::Cow, convert::TryFrom, fmt};
 
-use crate::{ast::{BigInt, Literal}, Symbol};
+use crate::{
+    ast::{BigInt, Literal},
+    Symbol,
+};
 use smallvec::SmallVec;
 
 use crate::{
@@ -412,7 +415,7 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: AstNode::IfExpr(if_stmt),
                 })
-            },
+            }
             TokenData::Ident("match") => self.parse_match(),
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
@@ -524,7 +527,7 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: AstNode::IfExpr(if_expr),
                 }
-            },
+            }
             TokenData::Ident("match") => self.parse_match()?,
             TokenData::Ident("true") => {
                 self.toks.next();
@@ -645,11 +648,15 @@ impl<'src> Parser<'src> {
 
         self.parse_expr_rhs(expr)
     }
-    
+
     /// Parse a single string literal, inserting escaped characters
     fn parse_string_literal(&mut self) -> ParseResult<'src, String> {
         let next_tok = self.next_tok(&[TokenData::String("string literal")])?;
-        let (src, span) = if let Token { span, data: TokenData::String(src) } = next_tok {
+        let (src, span) = if let Token {
+            span,
+            data: TokenData::String(src),
+        } = next_tok
+        {
             (src, span)
         } else {
             return Err(ParseError {
@@ -657,9 +664,9 @@ impl<'src> Parser<'src> {
                 backtrace: self.trace.clone(),
                 error: ParseErrorKind::UnexpectedToken {
                     found: next_tok,
-                    expecting: ExpectingOneOf(&[TokenData::String("string literal")])
-                }
-            })
+                    expecting: ExpectingOneOf(&[TokenData::String("string literal")]),
+                },
+            });
         };
 
         let mut unescaped = String::with_capacity(src.len());
@@ -678,9 +685,7 @@ impl<'src> Parser<'src> {
                             return Err(ParseError {
                                 highlighted_span: Some(span),
                                 backtrace: self.trace.clone(),
-                                error: ParseErrorKind::ExpectingEscapeSeq {
-                                    literal: src,
-                                },
+                                error: ParseErrorKind::ExpectingEscapeSeq { literal: src },
                             })
                         }
                     };
@@ -729,7 +734,7 @@ impl<'src> Parser<'src> {
             Ok(lhs)
         }
     }
-            
+
     /// Parse a match expression from the token stream
     fn parse_match(&mut self) -> ParseResult<'src, Ast> {
         self.expect_next_ident(&[TokenData::Ident("match")])?;
@@ -739,12 +744,15 @@ impl<'src> Parser<'src> {
         self.expect_next(&[TokenData::OpenBracket(BracketType::Curly)])?;
         let mut cases = vec![];
         let end_span = loop {
-            let next = self.peek_tok(&[TokenData::CloseBracket(BracketType::Curly), TokenData::Ident("typename")])?;
+            let next = self.peek_tok(&[
+                TokenData::CloseBracket(BracketType::Curly),
+                TokenData::Ident("typename"),
+            ])?;
             match next.data {
                 TokenData::CloseBracket(BracketType::Curly) => {
                     let tok = self.toks.next().unwrap();
-                    break tok.span.to
-                },
+                    break tok.span.to;
+                }
                 _ => {
                     let ty = self.parse_typename()?;
                     self.expect_next(&[TokenData::Arrow])?;
@@ -758,8 +766,8 @@ impl<'src> Parser<'src> {
             span: (start_span, end_span).into(),
             node: AstNode::Match {
                 matched: Box::new(matched),
-                cases
-            }
+                cases,
+            },
         })
     }
 

@@ -2,8 +2,8 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::{
     ast::{
-        Ast, AstNode, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule,
-        UnresolvedType, Literal,
+        Ast, AstNode, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, Literal, ParsedModule,
+        UnresolvedType,
     },
     error::DiagnosticManager,
     util::{
@@ -217,7 +217,9 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     lhs: Box::new(self.lower_ast(module, lhs, file)),
                     rhs: Box::new(self.lower_ast(module, rhs, file)),
                 },
-                AstNode::Literal(l) => AstNode::Literal(self.lower_literal(module, ast.span, l, file)),           //AstNode:: => AstNode::UnitLiteral,
+                AstNode::Literal(l) => {
+                    AstNode::Literal(self.lower_literal(module, ast.span, l, file))
+                } //AstNode:: => AstNode::UnitLiteral,
                 AstNode::Continue => AstNode::Continue,
                 AstNode::Break => AstNode::Break,
                 AstNode::BinExpr(lhs, op, rhs) => AstNode::BinExpr(
@@ -262,9 +264,15 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             },
         }
     }
-    
+
     /// Lower a literal AST
-    fn lower_literal(&mut self, module: ModId, span: Span, literal: &Literal<UnresolvedType>, file: FileId) -> Literal<TypeId> {
+    fn lower_literal(
+        &mut self,
+        module: ModId,
+        span: Span,
+        literal: &Literal<UnresolvedType>,
+        file: FileId,
+    ) -> Literal<TypeId> {
         match literal {
             Literal::Array(elems) => Literal::Array(
                 elems
@@ -276,7 +284,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             Literal::Number(num) => Literal::Number(num.clone()),
             Literal::Bool(b) => Literal::Bool(*b),
             Literal::Tuple(elems) => Literal::Tuple(
-                elems 
+                elems
                     .iter()
                     .map(|elem| self.lower_ast(module, elem, file))
                     .collect(),
