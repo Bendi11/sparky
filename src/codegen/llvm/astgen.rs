@@ -392,7 +392,63 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .builder
                     .build_global_string_ptr(s.as_str(), "const_str");
                 glob.as_pointer_value().into()
-            }
+            },
+            Literal::Array(elems) => {
+                if elems.len() == 0 {
+                    return Err(Diagnostic::error()
+                        .with_message("Cannot create array literal with zero elements")
+                        .with_labels(vec![
+                            Label::primary(file, span)
+                        ])
+                    )
+                }
+
+                let elem_ty = self.ast_type(file, module, &elems[0])?;
+                for elem in elems.iter() {
+                    let ty = self.ast_type(file, module, elem)?;
+                    if ty != elem_ty {
+                        return Err(Diagnostic::error()
+                            .with_message("Creating array literal with mismatched element types")
+                            .with_labels(vec![
+                                Label::primary(file, elem.span)
+                                    .with_message(format!(
+                                        "This element has type {}",
+                                        self.spark.get_type_name(ty)
+                                    )),
+                                Label::primary(file, elems[0].span)
+                                    .with_message(format!(
+                                        "First element has type {}",
+                                        self.spark.get_type_name(elem_ty)
+                                    ))
+                            ])
+                        )
+                    } 
+                }
+
+                let llvm_elem_type = BasicTypeEnum::try_from(self.llvm_ty(elem_ty)).unwrap();
+
+                let array_alloca = self.builder.build_alloca(
+                    llvm_elem_type.array_type(elems.len() as u32),
+                    "array_literal_alloca"
+                );
+
+                for (i, elem) in elems.iter().enumerate() {
+                    let elem = self.gen_expr(file, module, elem)?;
+                    let elem_ptr = unsafe {
+                        self.builder.build_in_bounds_gep(
+                            array_alloca,
+                            &[
+                                self.ctx.i64_type().const_int(0, false),
+                                self.ctx.i64_type().const_int(i as u64, false)
+                            ],
+                            "array_literal_gep"
+                        )
+                    };
+                    self.builder.build_store(elem_ptr, elem);
+                }
+
+                self.builder.build_load(array_alloca, "array_literal_load")
+            },
             Literal::Number(n) => {
                 match n {
                     NumberLiteral::Integer(num, annot) => {
@@ -774,7 +830,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         .with_message("Cannot use block without phi statement as expression")
                         .with_labels(vec![Label::primary(file, ast.span)]));
                 }
-            }
+            },
             AstNode::Match { matched, cases } => {
                 if let Some(pv) = self.gen_match_expr(file, module, matched, cases, ast.span)? {
                     pv
