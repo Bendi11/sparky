@@ -365,8 +365,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         self.phi_data = old_phi_data;
         Ok(phi_alloca)
     }
-
-    
+ 
     /// Generate code for a literal
     fn gen_literal(
         &mut self,
@@ -826,7 +825,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         Ok(pv)
     }
 
-    /// Generate LLVM IR for a single symbol access
+    /// Generate LLVM IR for a symbol access
     fn gen_access(
         &mut self,
         file: FileId,
@@ -857,7 +856,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         })
     }
-
+    
+    /// Generate code for a cast expression
     fn gen_cast(
         &mut self,
         file: FileId,
@@ -868,7 +868,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         let rhs_ty = self
             .ast_type(file, module, rhs)
             .map_err(|d| d.with_notes(vec!["In cast expression".to_owned()]))?;
-
         let to = self.spark[to_ty].clone();
         let from = self.spark[rhs_ty].clone();
 
@@ -961,6 +960,28 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         self.spark.get_type_name(rhs_ty),
                         self.spark.get_type_name(to_ty)
                     ))]));
+            }
+        }
+        
+        //Generate a bitcast to the desired type if casting from enum
+        if let TypeData::Enum { parts } = &self.spark[self.spark.unwrap_alias(rhs_ty)] {
+            if let Some(_idx) = parts.iter().position(|part| *part == to_ty) {
+                let llvm_rhs = self.gen_lval(file, module, rhs)?;
+                let llvm_to_ty = BasicTypeEnum::try_from(self.llvm_ty(to_ty)).unwrap();
+
+                let data = self.builder.build_struct_gep(llvm_rhs, 1, "enum_unwrap_data").unwrap();
+                let data_cast = self.builder.build_pointer_cast(data, llvm_to_ty.ptr_type(AddressSpace::Generic), "enum_data_bc");
+                return Ok(self.builder.build_load(data_cast, "enum_data_load"))
+            } else {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                            "Cannot cast enum type {} to type {}",
+                            self.spark.get_type_name(self.spark.unwrap_alias(rhs_ty)),
+                            self.spark.get_type_name(to_ty)
+                        )
+                    )
+                    .with_labels(vec![Label::primary(file, rhs.span)])
+                )
             }
         }
 
