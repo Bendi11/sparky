@@ -60,7 +60,8 @@
 
 <user-typename> ::= <path> ( "|" ( (<typename> "," )* <typename>? ) "|" )?
 
-<literal> ::= <string-literal> | <bool-literal> | <char-literal> | <number-literal>
+<literal> ::= <string-literal> | <bool-literal> | <char-literal> | <number-literal> | <array-literal>
+            | <array-literal> | <tuple-literal> | <struct-literal>
 
 <string-literal> ::= "\"" ( . | ( "\\" . ) )* "\""
 <bool-literal> ::= "true" | "false"

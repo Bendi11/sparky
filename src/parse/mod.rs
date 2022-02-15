@@ -630,7 +630,66 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: AstNode::Literal(Literal::Number(num)),
                 }
-            }
+            },
+            TokenData::Pound => {
+                const EXPECTING_AFTER_POUND: &[TokenData<'static>] = &[
+                    TokenData::Ident("typename"), TokenData::OpenBracket(BracketType::Curly)
+                ];
+                const EXPECTING_AFTER_BRACE: &[TokenData<'static>] = &[
+                    TokenData::Ident("field name"), TokenData::CloseBracket(BracketType::Curly)
+                ];
+
+                let start_loc = peeked.span.from;
+
+                self.trace.push("struct literal".into());
+                self.toks.next();
+                let after = self.peek_tok(EXPECTING_AFTER_POUND)?;
+                let typename = match after.data {
+                    TokenData::OpenBracket(BracketType::Curly) => None,
+                    _ => Some(self.parse_typename()?),
+                };
+
+                self.expect_next(&[TokenData::OpenBracket(BracketType::Curly)])?;
+                let mut fields = vec![];
+                let end_loc = loop {
+                    let next = self.next_tok(EXPECTING_AFTER_BRACE)?;
+                    match &next.data {
+                        TokenData::CloseBracket(BracketType::Curly) => {
+                            break next.span.to
+                        },
+                        TokenData::Ident(name) => {
+                            let name = self.symbol(name);
+                            self.expect_next(&[TokenData::Assign])?;
+                            let expr = self.parse_expr()?;
+                            if let TokenData::Comma = self.peek_tok(&[
+                                TokenData::CloseBracket(BracketType::Curly),
+                                TokenData::Comma
+                            ])?.data {
+                                    self.toks.next();
+                                }
+                            fields.push((name, expr));
+                        },
+                        _ => return Err(ParseError {
+                            highlighted_span: Some(next.span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::UnexpectedToken {
+                                found: next,
+                                expecting: ExpectingOneOf(EXPECTING_AFTER_BRACE)
+                            }
+                        })
+                    }
+                };
+
+                self.trace.pop();
+
+                Ast {
+                    span: (start_loc, end_loc).into(),
+                    node: AstNode::Literal(Literal::Struct {
+                        ty: typename,
+                        fields: fields,
+                    })
+                }
+            },
             TokenData::OpenBracket(BracketType::Smooth)
             | TokenData::Ident(_)
             | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr()?,
@@ -1481,29 +1540,8 @@ impl fmt::Display for ExpectingOneOf {
             }
             first = false;
 
-            match expecting {
-                TokenData::Arrow => write!(f, "'->'"),
-                TokenData::Assign => write!(f, "':='"),
-                TokenData::Char(_) => write!(f, "character literal"),
-                TokenData::Colon => write!(f, "':'"),
-                TokenData::Comma => write!(f, "','"),
-                TokenData::Period => write!(f, "'.'"),
-                TokenData::Op(op) => op.fmt(f),
-                TokenData::Ident(ident) => write!(f, "identifier: {}", ident),
-                TokenData::Number(num) => write!(f, "number literal: {}", num),
-                TokenData::String(string) => write!(f, "string literal: {}", string),
-                TokenData::OpenBracket(ty) => match ty {
-                    BracketType::Curly => write!(f, "'{{'"),
-                    BracketType::Smooth => write!(f, "'('"),
-                    BracketType::Square => write!(f, "'['"),
-                },
-                TokenData::CloseBracket(ty) => match ty {
-                    BracketType::Curly => write!(f, "'}}'"),
-                    BracketType::Smooth => write!(f, "')'"),
-                    BracketType::Square => write!(f, "']'"),
-                },
-                TokenData::Dollar => write!(f, "$"),
-            }?;
+            expecting.fmt(f)?;
+
         }
 
         Ok(())

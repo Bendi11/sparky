@@ -290,6 +290,16 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     .collect(),
             ),
             Literal::Unit => Literal::Unit,
+            Literal::Struct {
+                ty,
+                fields
+            } => Literal::Struct {
+                    ty: ty.as_ref().map(|ty| self.lower_type(module, Some(span), ty, file)),
+                    fields: fields
+                        .iter()
+                        .map(|(name, field)| (name.clone(), self.lower_ast(module, field, file)))
+                        .collect()
+                }
         }
     }
 

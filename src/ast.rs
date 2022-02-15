@@ -244,6 +244,10 @@ pub enum Literal<T: Clone + Hash + Eq> {
     Bool(bool),
     Tuple(Vec<Ast<T>>),
     Array(Vec<Ast<T>>),
+    Struct {
+        ty: Option<T>,
+        fields: Vec<(Symbol, Ast<T>)>,
+    },
     Unit,
 }
 
@@ -478,7 +482,8 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                     write!(w, "{:?}, ", element.node)?;
                 }
                 write!(w, " )")
-            }
+            },
+            Self::Literal(Literal::Struct{..}) => write!(w, "STRUCT LITERAL"),
             Self::Literal(Literal::Unit) => write!(w, "UNIT LITERAL ()"),
             Self::Return(expr) => {
                 write!(w, "RETURN {:?}", expr.node)

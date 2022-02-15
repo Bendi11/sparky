@@ -51,6 +51,8 @@ pub enum TokenData<'src> {
     Dollar,
     /// =
     Assign,
+    /// #
+    Pound,
 }
 
 impl fmt::Display for TokenData<'_> {
@@ -85,6 +87,7 @@ impl fmt::Display for TokenData<'_> {
             Self::Colon => write!(f, "':'"),
             Self::Dollar => write!(f, "'$'"),
             Self::Assign => write!(f, "'='"),
+            Self::Pound => write!(f, "'#'"),
         }
     }
 }

@@ -67,6 +67,7 @@ impl<'src> Lexer<'src> {
 
             '.' => Token::new(start_loc, TokenData::Period),
             ',' => Token::new(start_loc, TokenData::Comma),
+            '#' => Token::new(start_loc, TokenData::Pound),
 
             // Multi or single character tokens
             '&' | '|' | '>' | '<' | ':' | '-' | '=' => {

@@ -393,6 +393,83 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .build_global_string_ptr(s.as_str(), "const_str");
                 glob.as_pointer_value().into()
             },
+            Literal::Struct {
+                ty,
+                fields
+            } => {
+                    let typedata = ty.map(|ty| {
+                        let ty = self.spark.unwrap_alias(ty);
+                        self.spark[ty].clone()
+                    });
+                    let field_types = match typedata {
+                        Some(TypeData::Struct{fields}) => fields,
+                        None => fields.iter()
+                            .map(|(name, expr)| match self.ast_type(file, module, expr) {
+                                Ok(ty) => Ok((ty, name.clone())),
+                                Err(e) => Err(e),
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                        Some(_) => return Err(Diagnostic::error()
+                            .with_message(format!(
+                                    "Cannot create structure literal with non-struct type {}",
+                                    self.spark.get_type_name(ty.unwrap())
+                                )
+                            )
+                            .with_labels(vec![
+                                Label::primary(file, span)
+                                    .with_message("Structure literal encountered here")
+                            ])
+                        )
+                    };
+                    let ty = self.spark.new_type(TypeData::Struct{fields: field_types.clone()});
+
+                    let llvm_ty = self.llvm_ty(ty).into_struct_type();
+                    let struct_alloca = self.builder.build_alloca(llvm_ty, "struct_literal_alloca");
+                    
+                    for (name, fieldexpr) in fields {
+                        if let Some(idx) = field_types.iter().position(|(_ty, fname)| fname == name) {
+                            let field_ty = self.ast_type(file, module, fieldexpr)?;
+                            if field_ty != field_types[idx].0 {
+                                return Err(Diagnostic::error()
+                                    .with_message(format!(
+                                            "Assigning value of type {} to non-compatible field type {}",
+                                            self.spark.get_type_name(field_ty),
+                                            self.spark.get_type_name(field_types[idx].0)
+                                        )
+                                    )
+                                    .with_labels(vec![
+                                        Label::primary(file, fieldexpr.span)
+                                            .with_message("Assignment to field here")
+                                    ])
+                                )
+                            }
+
+                            let fieldexpr_llvm = self.gen_expr(file, module, fieldexpr)?;
+                            let structfield_ptr = self.builder.build_struct_gep(
+                                struct_alloca,
+                                idx as u32,
+                                "struct_literal_field"
+                            ).unwrap();
+
+                            self.builder.build_store(structfield_ptr, fieldexpr_llvm);
+                        } else {
+                            return Err(Diagnostic::error()
+                                .with_message(format!(
+                                        "Assigning to field {} not contained in structure type {}",
+                                        name,
+                                        self.spark.get_type_name(ty)
+                                    )
+                                )
+                                .with_labels(vec![
+                                    Label::primary(file, fieldexpr.span)
+                                        .with_message("Field assigned here")
+                                ])
+                            )
+                        }
+                    }
+                    
+                    self.builder.build_load(struct_alloca, "struct_literal_load")
+                }
             Literal::Tuple(parts) => {
                 let part_types = parts
                     .iter()
@@ -1482,6 +1559,21 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match &ast.node {
+            AstNode::Literal(Literal::Struct {
+                ty,
+                fields
+            }) => match ty {
+                    Some(ty) => *ty,
+                    None => {
+                        let fields = fields.iter()
+                            .map(|(name, field)| match self.ast_type(file, module, field) {
+                                Ok(ty) => Ok((ty, name.clone())),
+                                Err(e) => Err(e)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        self.spark.new_type(TypeData::Struct {fields})
+                    }
+                }
             AstNode::Literal(Literal::Unit) => SparkCtx::UNIT,
             AstNode::Literal(Literal::Number(num)) => match num.annotation() {
                 Some(ann) => match ann {
