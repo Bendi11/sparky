@@ -1,6 +1,6 @@
 use std::{borrow::Cow, convert::TryFrom, fmt};
 
-use crate::{ast::BigInt, Symbol};
+use crate::{ast::{BigInt, Literal}, Symbol};
 use smallvec::SmallVec;
 
 use crate::{
@@ -528,14 +528,14 @@ impl<'src> Parser<'src> {
                 self.toks.next();
                 Ast {
                     span: peeked.span,
-                    node: AstNode::BooleanLiteral(true),
+                    node: AstNode::Literal(Literal::Bool(true)),
                 }
             }
             TokenData::Ident("false") => {
                 self.toks.next();
                 Ast {
                     span: peeked.span,
-                    node: AstNode::BooleanLiteral(false),
+                    node: AstNode::Literal(Literal::Bool(false)),
                 }
             }
             TokenData::Dollar => {
@@ -609,62 +609,13 @@ impl<'src> Parser<'src> {
                     } else {
                         peeked.span
                     },
-                    node: AstNode::ArrayLiteral(elements),
+                    node: AstNode::Literal(Literal::Array(elements)),
                 }
             }
-            TokenData::String(data) => {
-                self.toks.next();
-                self.trace.push("string literal".into());
-                let mut unescaped = String::with_capacity(data.len());
-                let mut escaped_chars = data.chars();
-                loop {
-                    let next = match escaped_chars.next() {
-                        Some(c) => c,
-                        None => break,
-                    };
-
-                    match next {
-                        '\\' => {
-                            let after_backslash = match escaped_chars.next() {
-                                Some(c) => c,
-                                None => {
-                                    return Err(ParseError {
-                                        highlighted_span: Some(peeked.span),
-                                        backtrace: self.trace.clone(),
-                                        error: ParseErrorKind::ExpectingEscapeSeq {
-                                            literal: *data,
-                                        },
-                                    })
-                                }
-                            };
-
-                            match after_backslash {
-                                '\\' => unescaped.push('\\'),
-                                'n' => unescaped.push('\n'),
-                                't' => unescaped.push('\t'),
-                                'r' => unescaped.push('\r'),
-                                other => {
-                                    return Err(ParseError {
-                                        highlighted_span: Some(peeked.span),
-                                        backtrace: self.trace.clone(),
-                                        error: ParseErrorKind::UnknownEscapeSeq {
-                                            escaped: other,
-                                            literal: *data,
-                                        },
-                                    })
-                                }
-                            }
-                        }
-                        _ => unescaped.push(next),
-                    }
-                }
-                self.trace.pop();
-
-                Ast {
-                    span: peeked.span,
-                    node: AstNode::StringLiteral(unescaped),
-                }
-            }
+            TokenData::String(data) => Ast {
+                span: peeked.span,
+                node: AstNode::Literal(Literal::String(self.parse_string_literal()?)),
+            },
 
             TokenData::Number(_) => {
                 self.trace.push("number literal".into());
@@ -672,7 +623,7 @@ impl<'src> Parser<'src> {
                 self.trace.pop();
                 Ast {
                     span: peeked.span,
-                    node: AstNode::NumberLiteral(num),
+                    node: AstNode::Literal(Literal::Number(num)),
                 }
             }
             TokenData::OpenBracket(BracketType::Smooth)
@@ -691,6 +642,69 @@ impl<'src> Parser<'src> {
         };
 
         self.parse_expr_rhs(expr)
+    }
+    
+    /// Parse a single string literal, inserting escaped characters
+    fn parse_string_literal(&mut self) -> ParseResult<'src, String> {
+        let next_tok = self.next_tok(&[TokenData::String("string literal")])?;
+        let (src, span) = if let Token { span, data: TokenData::String(src) } = next_tok {
+            (src, span)
+        } else {
+            return Err(ParseError {
+                highlighted_span: Some(next_tok.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next_tok,
+                    expecting: ExpectingOneOf(&[TokenData::String("string literal")])
+                }
+            })
+        };
+
+        let mut unescaped = String::with_capacity(src.len());
+        let mut escaped_chars = src.chars();
+        loop {
+            let next = match escaped_chars.next() {
+                Some(c) => c,
+                None => break,
+            };
+
+            match next {
+                '\\' => {
+                    let after_backslash = match escaped_chars.next() {
+                        Some(c) => c,
+                        None => {
+                            return Err(ParseError {
+                                highlighted_span: Some(span),
+                                backtrace: self.trace.clone(),
+                                error: ParseErrorKind::ExpectingEscapeSeq {
+                                    literal: src,
+                                },
+                            })
+                        }
+                    };
+
+                    match after_backslash {
+                        '\\' => unescaped.push('\\'),
+                        'n' => unescaped.push('\n'),
+                        't' => unescaped.push('\t'),
+                        'r' => unescaped.push('\r'),
+                        other => {
+                            return Err(ParseError {
+                                highlighted_span: Some(next_tok.span),
+                                backtrace: self.trace.clone(),
+                                error: ParseErrorKind::UnknownEscapeSeq {
+                                    escaped: other,
+                                    literal: src,
+                                },
+                            })
+                        }
+                    }
+                }
+                _ => unescaped.push(next),
+            }
+        }
+
+        Ok(unescaped)
     }
 
     /// Parse the right hand side of an expression if there is one
@@ -793,7 +807,7 @@ impl<'src> Parser<'src> {
                     let close = self.toks.next().unwrap();
                     return Ok(Ast {
                         span: close.span,
-                        node: AstNode::UnitLiteral,
+                        node: AstNode::Literal(Literal::Unit),
                     });
                 }
 
@@ -840,7 +854,7 @@ impl<'src> Parser<'src> {
                     self.trace.pop();
                     Ast {
                         span: (old_expr_from, tuple_elements.last().unwrap().span.to).into(),
-                        node: AstNode::TupleLiteral(tuple_elements),
+                        node: AstNode::Literal(Literal::Tuple(tuple_elements)),
                     }
                 } else {
                     self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;

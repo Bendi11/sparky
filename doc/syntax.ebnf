@@ -21,7 +21,7 @@
 <matchcase> ::= <user-typename>  <ident>?
               | <literal>
 
-<matcharm> ::= <matchcase>? "->" ( <body> | <expr> | <phistmt> )
+<matcharm> ::= <matchcase>? "->" ( <expr> )
 <matchexpr> ::= "match" <expr> "{" ( <matcharm> "," )* <matcharm>? "}"
 
 <retstmt> ::= "return" <expr>?

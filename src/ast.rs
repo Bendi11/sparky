@@ -219,17 +219,8 @@ where
     Return(Box<Ast<T>>),
     /// Casting an expression to a type
     CastExpr(T, Box<Ast<T>>),
-    /// A floating or fixed point number literal
-    NumberLiteral(NumberLiteral),
-    /// A string literal value
-    StringLiteral(String),
-    /// A literal boolean value
-    BooleanLiteral(bool),
-    /// A tuple made up of multiple expressions
-    TupleLiteral(Vec<Ast<T>>),
-    /// An array literal with list of expressions for array elements
-    ArrayLiteral(Vec<Ast<T>>),
-    UnitLiteral,
+    /// A single constant literal
+    Literal(Literal<T>),
     /// Breaking out of a loop
     Break,
     /// Continuing in a loop
@@ -241,8 +232,19 @@ where
         //The expression being matched
         matched: Box<Ast<T>>,
         //The possible cases being tested for
-        cases: Vec<(Ast<T>, Ast<T>)>,
+        cases: Vec<(T, Ast<T>)>,
     },
+}
+
+/// An enumeration of all parseable literals
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Literal<T: Clone + Hash + Eq> {
+    Number(NumberLiteral),
+    String(String),
+    Bool(bool),
+    Tuple(Vec<Ast<T>>),
+    Array(Vec<Ast<T>>),
+    Unit,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -459,7 +461,7 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                 }
                 write!(w, "}}")
             }
-            Self::ArrayLiteral(parts) => {
+            Self::Literal(Literal::Array(parts)) => {
                 write!(w, "ARRAY [ ")?;
                 for part in parts.iter() {
                     write!(w, "{:?}, ", part.node)?;
@@ -468,16 +470,16 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
             }
             Self::Break => write!(w, "BREAK"),
             Self::Continue => write!(w, "CONTINUE"),
-            Self::NumberLiteral(num) => write!(w, "NUMBER LITERAL {:?}", num),
-            Self::StringLiteral(string) => write!(w, "STRING LITERAL {:?}", string),
-            Self::TupleLiteral(tuple) => {
+            Self::Literal(Literal::Number(num)) => write!(w, "NUMBER LITERAL {:?}", num),
+            Self::Literal(Literal::String(string)) => write!(w, "STRING LITERAL {:?}", string),
+            Self::Literal(Literal::Tuple(tuple)) => {
                 write!(w, "TUPLE LITERAL ( ")?;
                 for element in tuple {
                     write!(w, "{:?}, ", element.node)?;
                 }
                 write!(w, " )")
             }
-            Self::UnitLiteral => write!(w, "UNIT LITERAL ()"),
+            Self::Literal(Literal::Unit) => write!(w, "UNIT LITERAL ()"),
             Self::Return(expr) => {
                 write!(w, "RETURN {:?}", expr.node)
             }
@@ -487,7 +489,7 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
             Self::CastExpr(cast, casted) => {
                 write!(w, "CAST ${:?} {:?}", cast, casted.node)
             }
-            Self::BooleanLiteral(boolean) => write!(w, "BOOL {}", boolean),
+            Self::Literal(Literal::Bool(boolean)) => write!(w, "BOOL {}", boolean),
             Self::Assignment { lhs, rhs } => {
                 write!(w, "ASSIGN {:?}", lhs.node)?;
                 write!(w, " = {:?}", rhs.node)

@@ -3,7 +3,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use crate::{
     ast::{
         Ast, AstNode, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, ParsedModule,
-        UnresolvedType,
+        UnresolvedType, Literal,
     },
     error::DiagnosticManager,
     util::{
@@ -217,22 +217,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     lhs: Box::new(self.lower_ast(module, lhs, file)),
                     rhs: Box::new(self.lower_ast(module, rhs, file)),
                 },
-                AstNode::ArrayLiteral(elems) => AstNode::ArrayLiteral(
-                    elems
-                        .iter()
-                        .map(|elem| self.lower_ast(module, elem, file))
-                        .collect(),
-                ),
-                AstNode::StringLiteral(s) => AstNode::StringLiteral(s.clone()),
-                AstNode::NumberLiteral(num) => AstNode::NumberLiteral(num.clone()),
-                AstNode::BooleanLiteral(b) => AstNode::BooleanLiteral(*b),
-                AstNode::TupleLiteral(elems) => AstNode::TupleLiteral(
-                    elems
-                        .iter()
-                        .map(|elem| self.lower_ast(module, elem, file))
-                        .collect(),
-                ),
-                //AstNode:: => AstNode::UnitLiteral,
+                AstNode::Literal(l) => AstNode::Literal(self.lower_literal(module, ast.span, l, file)),           //AstNode:: => AstNode::UnitLiteral,
                 AstNode::Continue => AstNode::Continue,
                 AstNode::Break => AstNode::Break,
                 AstNode::BinExpr(lhs, op, rhs) => AstNode::BinExpr(
@@ -262,9 +247,9 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     matched: Box::new(self.lower_ast(module, matched, file)),
                     cases: cases
                         .iter()
-                        .map(|(constant, case)| {
+                        .map(|(arm, case)| {
                             (
-                                self.lower_ast(module, constant, file),
+                                self.lower_type(module, Some(ast.span), arm, file),
                                 self.lower_ast(module, case, file),
                             )
                         })
@@ -273,8 +258,30 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 AstNode::IfExpr(if_expr) => {
                     AstNode::IfExpr(self.lower_if_ast(module, if_expr, file))
                 }
-                AstNode::UnitLiteral => AstNode::UnitLiteral,
+                AstNode::Literal(Literal::Unit) => AstNode::Literal(Literal::Unit),
             },
+        }
+    }
+    
+    /// Lower a literal AST
+    fn lower_literal(&mut self, module: ModId, span: Span, literal: &Literal<UnresolvedType>, file: FileId) -> Literal<TypeId> {
+        match literal {
+            Literal::Array(elems) => Literal::Array(
+                elems
+                    .iter()
+                    .map(|elem| self.lower_ast(module, elem, file))
+                    .collect(),
+            ),
+            Literal::String(s) => Literal::String(s.clone()),
+            Literal::Number(num) => Literal::Number(num.clone()),
+            Literal::Bool(b) => Literal::Bool(*b),
+            Literal::Tuple(elems) => Literal::Tuple(
+                elems 
+                    .iter()
+                    .map(|elem| self.lower_ast(module, elem, file))
+                    .collect(),
+            ),
+            Literal::Unit => Literal::Unit,
         }
     }
 

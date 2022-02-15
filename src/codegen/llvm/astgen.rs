@@ -2,7 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::{types::IntType, values::CallableValue, FloatPredicate, IntPredicate};
 
 use crate::{
-    ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation},
+    ast::{Ast, AstNode, ElseExpr, IfExpr, NumberLiteral, NumberLiteralAnnotation, Literal},
     parse::token::Op,
     util::files::FileId,
 };
@@ -250,19 +250,135 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             },
             AstNode::BinExpr(lhs, op, rhs) => {
                 return self.gen_bin_expr(file, module, lhs, *op, rhs)
+            },
+            AstNode::Literal(literal) => self.gen_literal(file, module, literal, ast.span)?,
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message("Expression not yet implemented")
+                    .with_labels(vec![Label::primary(file, ast.span)]))
             }
-            AstNode::BooleanLiteral(b) => match b {
+        })
+    }
+    
+    /// Generate code for a match expression, returning a pointer to the phi value if any
+    fn gen_match_expr(&mut self,
+        file: FileId, 
+        module: ModId, 
+        matched: &Ast<TypeId>, 
+        arms: &[(TypeId, Ast<TypeId>)],
+        span: Span,
+    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+        let mut has_phi = false;
+        let mut all_arms_have_phi = true;
+        for (_, expr) in arms {
+            if let AstNode::PhiExpr(_) = expr.node {
+                has_phi = true;
+            } else {
+                all_arms_have_phi = false;
+            }
+        }
+
+        if has_phi && !all_arms_have_phi {
+            return Err(Diagnostic::error()
+                .with_message("Cannot use match statement as expression because not all arms have phi")
+                .with_labels(vec![
+                    Label::primary(file, span)
+                        .with_message("Match statement used as expression here")
+                ])
+            )
+        }
+        
+        let after_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "after_match");
+
+        let phi_data = if has_phi {
+            let ty = self.ast_type(file, module, &arms[0].1)?;
+            let llvm_ty = BasicTypeEnum::try_from(self.llvm_ty(ty)).unwrap();
+            Some(PhiData {
+                alloca: self.builder.build_alloca(llvm_ty, "match_phi"),
+                break_bb: after_bb,
+                phi_ty: ty,
+            })
+        } else {
+            None
+        };
+            
+        let old_phi_data = self.phi_data;
+        self.phi_data = phi_data;
+ 
+        let matched_ty = self.ast_type(file, module, matched)?;
+        let matched_ty = self.spark.unwrap_alias(matched_ty);
+        let matched_parts = if let TypeData::Enum{ref parts} = self.spark[matched_ty] {
+            parts.clone()
+        } else {
+            return Err(Diagnostic::error()
+                .with_message(format!(
+                        "Cannot match against non-enum type {}",
+                        self.spark.get_type_name(matched_ty)
+                    )
+                )
+                .with_labels(vec![
+                    Label::primary(file, matched.span)
+                ])
+            )
+        };
+
+        let matched = self.gen_lval(file, module, matched)?;
+        let discr = self.builder.build_struct_gep(matched, 0, "enum_match_discr").unwrap();
+        let discr = self.builder.build_load(discr, "enum_match_discr_load").into_int_value();
+
+        let start_bb = self.builder.get_insert_block().unwrap();
+
+        let cases = arms.into_iter().map(|(ty, expr)| if let Some(idx) = matched_parts.iter().position(|part| *part == *ty) {
+            let arm_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "matcharm_bb");
+            self.builder.position_at_end(arm_bb);
+            match self.gen_stmt(file, module, expr) {
+                Ok(_) => Ok((self.ctx.i8_type().const_int(idx as u64, false), arm_bb)),
+                Err(e) => Err(e)
+            }
+        } else {
+            Err(Diagnostic::error()
+                .with_message(format!(
+                        "Cannot match type {} that is not contained in matched enum type {}",
+                        self.spark.get_type_name(*ty),
+                        self.spark.get_type_name(matched_ty)
+                    )
+                )
+                .with_labels(vec![
+                    Label::primary(file, expr.span)
+                ])
+            )
+        }).collect::<Result<Vec<_>, _>>()?;
+
+        self.builder.position_at_end(start_bb);
+        self.builder.build_switch(discr, after_bb, &cases);
+        
+        let phi_alloca = self.phi_data.map(|data| data.alloca);
+        self.phi_data = old_phi_data;
+        Ok(phi_alloca)
+    }
+
+    
+    /// Generate code for a literal
+    fn gen_literal(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        literal: &Literal<TypeId>,
+        span: Span
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+        Ok(match literal {
+            Literal::Bool(b) => match b {
                 true => self.ctx.bool_type().const_all_ones(),
                 false => self.ctx.bool_type().const_zero(),
             }
             .into(),
-            AstNode::StringLiteral(s) => {
+            Literal::String(s) => {
                 let glob = self
                     .builder
                     .build_global_string_ptr(s.as_str(), "const_str");
                 glob.as_pointer_value().into()
-            }
-            AstNode::NumberLiteral(n) => {
+            },
+            Literal::Number(n) => {
                 match n {
                     NumberLiteral::Integer(num, annot) => {
                         match annot {
@@ -407,12 +523,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         None => self.ctx.f64_type().const_float(*f).into(),
                     },
                 }
-            }
-            _ => {
-                return Err(Diagnostic::error()
-                    .with_message("Expression not yet implemented")
-                    .with_labels(vec![Label::primary(file, ast.span)]))
-            }
+            },
+            _ => unimplemented!()
+
         })
     }
 
@@ -1229,8 +1342,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match &ast.node {
-            AstNode::UnitLiteral => SparkCtx::UNIT,
-            AstNode::NumberLiteral(num) => match num.annotation() {
+            AstNode::Literal(Literal::Unit) => SparkCtx::UNIT,
+            AstNode::Literal(Literal::Number(num)) => match num.annotation() {
                 Some(ann) => match ann {
                     NumberLiteralAnnotation::I8 => SparkCtx::I8,
                     NumberLiteralAnnotation::I16 => SparkCtx::I16,
@@ -1251,16 +1364,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     }
                 }
             },
-            AstNode::StringLiteral(_) => self.spark.new_type(TypeData::Pointer(SparkCtx::U8)),
-            AstNode::BooleanLiteral(_) => SparkCtx::BOOL,
-            AstNode::TupleLiteral(parts) => {
+            AstNode::Literal(Literal::String(_)) => self.spark.new_type(TypeData::Pointer(SparkCtx::U8)),
+            AstNode::Literal(Literal::Bool(_)) => SparkCtx::BOOL,
+            AstNode::Literal(Literal::Tuple(parts)) => {
                 let part_types = parts
                     .iter()
                     .map(|part| self.ast_type(file, module, part))
                     .collect::<Result<Vec<_>, _>>()?;
                 self.spark.new_type(TypeData::Tuple(part_types))
             }
-            AstNode::ArrayLiteral(parts) => {
+            AstNode::Literal(Literal::Array(parts)) => {
                 let first_type = self.ast_type(file, module, parts.first().ok_or_else(||
                     Diagnostic::error()
                         .with_message("Failed to infer type of array literal because there are no elements")
