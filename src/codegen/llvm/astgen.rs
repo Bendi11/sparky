@@ -393,6 +393,30 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .build_global_string_ptr(s.as_str(), "const_str");
                 glob.as_pointer_value().into()
             },
+            Literal::Tuple(parts) => {
+                let part_types = parts
+                    .iter()
+                    .map(|part| self.ast_type(file, module, part))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let ty = self.spark.new_type(TypeData::Tuple(part_types));
+                let llvm_ty = self.llvm_ty(ty).into_struct_type();
+                let tuple_alloca = self.builder.build_alloca(
+                    llvm_ty,
+                    "tuple_literal_alloca"
+                );
+                for (i, part) in parts.iter().enumerate() {
+                    let part_expr = self.gen_expr(file, module, part)?;
+                    let part_ptr = self.builder.build_struct_gep(
+                        tuple_alloca,
+                        i as u32,
+                        "tuple_literal_part"
+                    ).unwrap();
+                    self.builder.build_store(part_ptr, part_expr);
+                }
+
+                self.builder.build_load(tuple_alloca, "tuple_literal_load").into()
+            },
             Literal::Array(elems) => {
                 if elems.len() == 0 {
                     return Err(Diagnostic::error()
