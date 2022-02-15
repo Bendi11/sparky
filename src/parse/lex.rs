@@ -61,15 +61,15 @@ impl<'src> Lexer<'src> {
             '%' => Token::new(start_loc, TokenData::Op(Op::Mod)),
             '!' => Token::new(start_loc, TokenData::Op(Op::LogicalNot)),
             '~' => Token::new(start_loc, TokenData::Op(Op::NOT)),
-            '^' => Token::new(start_loc, TokenData::Op(Op::XOR)),
-            '=' => Token::new(start_loc, TokenData::Assign),
+            '^' => Token::new(start_loc, TokenData::Op(Op::XOR)), 
             '$' => Token::new(start_loc, TokenData::Dollar),
+            ':' => Token::new(start_loc, TokenData::Colon),
 
             '.' => Token::new(start_loc, TokenData::Period),
             ',' => Token::new(start_loc, TokenData::Comma),
 
             // Multi or single character tokens
-            '&' | '|' | '>' | '<' | ':' | '-' => {
+            '&' | '|' | '>' | '<' | ':' | '-' | '=' => {
                 let peek = self.chars.peek().map(|(_, peek)| *peek);
                 match (next, peek) {
                     ('>', Some('=')) => {
@@ -98,7 +98,6 @@ impl<'src> Lexer<'src> {
                         self.next_char();
                         Token::new(startpos..startpos + 1, TokenData::Op(Op::Eq))
                     }
-                    (':', _) => Token::new(start_loc, TokenData::Colon),
 
                     ('<', Some('<')) => {
                         self.next_char();
@@ -114,6 +113,7 @@ impl<'src> Lexer<'src> {
                     ('<', _) => Token::new(start_loc, TokenData::Op(Op::Less)),
                     ('>', _) => Token::new(start_loc, TokenData::Op(Op::Greater)),
                     ('-', _) => Token::new(start_loc, TokenData::Op(Op::Sub)),
+                    ('=', _) => Token::new(start_loc, TokenData::Assign),
 
                     (next, peek) => unreachable!(
                         "Not possible, checked all options of next, next is {}, peek is {:?}",

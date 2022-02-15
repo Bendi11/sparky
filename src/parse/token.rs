@@ -49,7 +49,7 @@ pub enum TokenData<'src> {
     Colon,
     // $
     Dollar,
-    /// :=
+    /// =
     Assign,
 }
 

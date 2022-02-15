@@ -887,7 +887,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
             if let Some(idx) = idx {
                 let rhs_size = self.size_of_type(rhs_ty);
-                let llvm_rhs = self.gen_lval(file, module, rhs)?;
+                let llvm_rhs = self.gen_expr(file, module, rhs)?;
+                let llvm_rhs_ty = BasicTypeEnum::try_from(self.llvm_ty(rhs_ty)).unwrap();
 
                 //Round a number up to the nearest multiple of two
                 let next_pow = |num: u32| {
@@ -909,15 +910,15 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 self.builder
                     .build_store(discrim, self.ctx.i8_type().const_int(idx as u64, false));
 
-                let array_size = self.size_of_type(to_ty) - 1;
-                let rhs_ptr_bc = self
+                //let array_size = self.size_of_type(to_ty) - 1;
+                /*let rhs_ptr_bc = self
                     .builder
                     .build_bitcast(
                         llvm_rhs,
                         self.ctx.i8_type().ptr_type(AddressSpace::Generic),
                         "enum_variant_store_bc",
                     )
-                    .into_pointer_value();
+                    .into_pointer_value();*/
 
                 let variant = self
                     .builder
@@ -928,15 +929,17 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .builder
                     .build_bitcast(
                         variant,
-                        self.ctx.i8_type().ptr_type(AddressSpace::Generic),
+                        llvm_rhs_ty.ptr_type(AddressSpace::Generic),
                         "enum_variant_bc",
                     )
                     .into_pointer_value();
 
-                let array_align = next_pow(array_size);
-                let src_align = next_pow(rhs_size);
+                self.builder.build_store(variant_ptr, llvm_rhs);
 
-                self.builder
+                //let array_align = next_pow(array_size);
+                //let src_align = next_pow(rhs_size);
+
+                /*self.builder
                     .build_memcpy(
                         variant_ptr,
                         array_align,
@@ -946,7 +949,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             .ptr_sized_int_type(&self.target.get_target_data(), None)
                             .const_int(rhs_size as u64, false),
                     )
-                    .unwrap();
+                    .unwrap();*/
 
                 let enum_literal_load = self.builder.build_load(enum_literal, "enum_lit_load");
                 return Ok(enum_literal_load.into());
@@ -969,9 +972,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 let llvm_rhs = self.gen_lval(file, module, rhs)?;
                 let llvm_to_ty = BasicTypeEnum::try_from(self.llvm_ty(to_ty)).unwrap();
 
-                let data = self.builder.build_struct_gep(llvm_rhs, 1, "enum_unwrap_data").unwrap();
-                let data_cast = self.builder.build_pointer_cast(data, llvm_to_ty.ptr_type(AddressSpace::Generic), "enum_data_bc");
-                return Ok(self.builder.build_load(data_cast, "enum_data_load"))
+                let variant = self.builder.build_struct_gep(llvm_rhs, 1, "enum_variant_ptr").unwrap();
+
+                let variant_bc = self.builder.build_bitcast(variant, llvm_to_ty.ptr_type(AddressSpace::Generic), "enum_load_cast").into_pointer_value();
+                if BasicTypeEnum::try_from(variant_bc.get_type().get_element_type()).unwrap() != llvm_to_ty {
+                    panic!("Casting to {:#?}", variant_bc.get_type());
+                }
+
+                return Ok(self.builder.build_load(variant_bc, "enum_data_load"))
             } else {
                 return Err(Diagnostic::error()
                     .with_message(format!(

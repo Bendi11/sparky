@@ -8,17 +8,8 @@ type testing_type = fun(i32) -> f32
 type test_enum = i32 | bool
 
 fun ext main(i32 argc, **u8 a) -> i32 {
-    let(i32 | bool) a = $(i32 | bool) 5
-    let b = match a {
-        i32 -> phi $(f64 | bool) false
-        bool -> phi $(f64 | bool) 100.3
-    }
-    if $bool b {
-        return 101
-    } else {
-        return 500
-    }
-    return 11
+    let a = $(i32 | bool) 101
+    return $i32 a
 }
 
 fun ext __chkstk() {
