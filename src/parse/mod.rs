@@ -381,10 +381,10 @@ impl<'src> Parser<'src> {
             TokenData::Ident("let"),
             TokenData::Ident("mut"),
             TokenData::Ident("phi"),
+            TokenData::Ident("match"),
             TokenData::Ident("return"),
             TokenData::Ident("break"),
             TokenData::Ident("continue"),
-            TokenData::Ident("loop"),
             TokenData::Ident("variable / function name"),
             TokenData::OpenBracket(BracketType::Smooth),
         ];
@@ -412,7 +412,8 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: AstNode::IfExpr(if_stmt),
                 })
-            }
+            },
+            TokenData::Ident("match") => self.parse_match(),
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
                     TokenData::Ident("variable name"),
@@ -523,7 +524,8 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: AstNode::IfExpr(if_expr),
                 }
-            }
+            },
+            TokenData::Ident("match") => self.parse_match()?,
             TokenData::Ident("true") => {
                 self.toks.next();
                 Ast {
@@ -726,6 +728,39 @@ impl<'src> Parser<'src> {
         } else {
             Ok(lhs)
         }
+    }
+            
+    /// Parse a match expression from the token stream
+    fn parse_match(&mut self) -> ParseResult<'src, Ast> {
+        self.expect_next_ident(&[TokenData::Ident("match")])?;
+        let matched = self.parse_expr()?;
+        let start_span = matched.span.from;
+
+        self.expect_next(&[TokenData::OpenBracket(BracketType::Curly)])?;
+        let mut cases = vec![];
+        let end_span = loop {
+            let next = self.peek_tok(&[TokenData::CloseBracket(BracketType::Curly), TokenData::Ident("typename")])?;
+            match next.data {
+                TokenData::CloseBracket(BracketType::Curly) => {
+                    let tok = self.toks.next().unwrap();
+                    break tok.span.to
+                },
+                _ => {
+                    let ty = self.parse_typename()?;
+                    self.expect_next(&[TokenData::Arrow])?;
+                    let stmt = self.parse_stmt()?;
+                    cases.push((ty, stmt));
+                }
+            }
+        };
+
+        Ok(Ast {
+            span: (start_span, end_span).into(),
+            node: AstNode::Match {
+                matched: Box::new(matched),
+                cases
+            }
+        })
     }
 
     /// Parse an if statement

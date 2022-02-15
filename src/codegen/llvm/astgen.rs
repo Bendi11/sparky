@@ -26,7 +26,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
             AstNode::FunCall(called, args) => {
                 self.gen_call(file, module, called, args)?;
-            }
+            },
+            AstNode::Match { matched, cases } => {
+                self.gen_match_expr(file, module, matched, cases, ast.span)?;
+            },
             AstNode::Assignment { lhs, rhs } => {
                 let rhs_ty = self.ast_type(file, module, rhs)?;
 
@@ -194,7 +197,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         ast: &Ast<TypeId>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
         Ok(match &ast.node {
-            AstNode::IfExpr(..) | AstNode::Block(..) => {
+            AstNode::IfExpr(..) | AstNode::Block(..) | AstNode::Match{..} => {
                 let phi = self.gen_lval(file, module, ast)?;
                 self.builder.build_load(phi, "load_phi")
             },
@@ -332,7 +335,12 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             let arm_bb = self.ctx.append_basic_block(self.current_fun.unwrap().0, "matcharm_bb");
             self.builder.position_at_end(arm_bb);
             match self.gen_stmt(file, module, expr) {
-                Ok(_) => Ok((self.ctx.i8_type().const_int(idx as u64, false), arm_bb)),
+                Ok(_) => {
+                    if !self.placed_terminator {
+                        self.builder.build_unconditional_branch(after_bb);
+                    }
+                    Ok((self.ctx.i8_type().const_int(idx as u64, false), arm_bb))
+                },
                 Err(e) => Err(e)
             }
         } else {
@@ -351,6 +359,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         self.builder.position_at_end(start_bb);
         self.builder.build_switch(discr, after_bb, &cases);
+        self.builder.position_at_end(after_bb);
         
         let phi_alloca = self.phi_data.map(|data| data.alloca);
         self.phi_data = old_phi_data;
@@ -759,6 +768,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     return Err(Diagnostic::error()
                         .with_message("Cannot use block without phi statement as expression")
                         .with_labels(vec![Label::primary(file, ast.span)]));
+                }
+            },
+            AstNode::Match { matched, cases } => {
+                if let Some(pv) = self.gen_match_expr(file, module, matched, cases, ast.span)? {
+                    pv
+                } else {
+                    return Err(Diagnostic::error()
+                        .with_message("Cannot use match expression without phi nodes as an expression")
+                        .with_labels(vec![Label::primary(file, ast.span)])
+                    )
                 }
             }
             AstNode::IfExpr(if_expr) => {
