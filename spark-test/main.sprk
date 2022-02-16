@@ -12,22 +12,21 @@ type test_ty2 = {
 type testing_type = fun(i32) -> f32
 type test_enum = i32 | bool
 
-fun ext printf(*u8 fmt, i32 args)
+fun ext printf(*u8 fmt, *u8 args)
 
 fun test([2]i32 t) {
     return ()
 }
 
 fun ext main(i32 argc, **u8 a) -> i32 {
-    mut([2]i32) a = [5, 3]
     let b = (5, [51])
-    let testing = if false { phi 5 } else { phi 1 }
+    let testing = if false { phi 5 } else { phi 16 }
     let bc = #test_ty2 {
         a = 5,
         b = testing
     }
     test:([5, 2])
-    printf:("(1 << 2) = %d\n", (1 << 2))
+    printf:("bc.b > 5 = %s\n", if bc.b > 5 { phi "true" } else { phi "false" })
     return bc.b
 }
 
