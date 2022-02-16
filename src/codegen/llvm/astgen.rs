@@ -1453,8 +1453,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     return Err(Diagnostic::error()
                         .with_message(format!(
                             "Passing invalid argument type '{}', expecting '{}'",
-                            /*self.spark.get_type_name*/ (passed_ty),
-                            /*self.spark.get_type_name*/ (expecting_ty)
+                            self.spark.get_type_name(passed_ty),
+                            self.spark.get_type_name(expecting_ty)
                         ))
                         .with_labels(vec![Label::primary(file, passed_span)]));
                 }
