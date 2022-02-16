@@ -19,13 +19,13 @@ fun test([2]i32 t) {
 fun ext main(i32 argc, **u8 a) -> i32 {
     mut([2]i32) a = [5, 3]
     let b = (5, [51])
-    let testing = if true { phi 5 } else { phi 1 }
+    let testing = if false { phi 5 } else { phi 1 }
     let bc = #test_ty2 {
         a = 5,
         b = testing
     }
     test:([5, 2])
-    return 101
+    return bc.b
 }
 
 fun ext __chkstk() {

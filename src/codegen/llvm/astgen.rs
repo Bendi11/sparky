@@ -1377,6 +1377,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         field: Symbol,
     ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
         let obj_ty = self.ast_type(file, module, object)?;
+        let obj_ty = self.spark.unwrap_alias(obj_ty);
         if let TypeData::Struct { ref fields } = self.spark[obj_ty] {
             let fields = fields.clone();
             let struct_pv = self.gen_lval(file, module, object)?;
@@ -1677,6 +1678,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
             AstNode::MemberAccess(lhs, name) => {
                 let lhs_ty = self.ast_type(file, module, lhs)?;
+                let lhs_ty = self.spark.unwrap_alias(lhs_ty);
                 if let TypeData::Struct { fields } = &self.spark[lhs_ty] {
                     fields.iter().find_map(|(ty, field_name)| if name == field_name {
                         Some(*ty)
