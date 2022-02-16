@@ -988,7 +988,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         self.builder.position_at_end(after_bb);
         self.continue_bb = old_continue;
-        Ok(pv)
+        Ok(pv.map(|phi| phi.alloca))
     }
 
     /// Generate LLVM IR for a symbol access
@@ -1311,6 +1311,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
                     let if_phi =
                         self.gen_body(file, module, &if_expr.body, if_body_block, after_bb)?;
+                    let old_phi_data = self.phi_data;
+                    self.phi_data = if_phi;
 
                     match else_expr {
                         ElseExpr::ElseIf(elif_expr) => {
@@ -1318,25 +1320,28 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             let else_phi = self.gen_if_expr(file, module, elif_expr)?;
                             if let (Some(if_pv), Some(else_pv)) = (if_phi, else_phi) {
                                 let else_phi = self.builder.build_load(else_pv, "elif_phi");
-                                self.builder.build_store(if_pv, else_phi);
+                                self.builder.build_store(if_pv.alloca, else_phi);
                             }
                         }
                         ElseExpr::Else(else_body) => {
-                            if let (Some(if_pv), Some(pv)) = (
+                            self.builder.position_at_end(start_bb);
+                            self.gen_body_no_phi(file, module, else_body, else_bb, after_bb)?;
+                            /*if let (Some(if_pv), Some(pv)) = (
                                 if_phi,
-                                self.gen_body(file, module, else_body, else_bb, after_bb)?,
+                                self.gen_body_no_phi(file, module, else_body, else_bb, after_bb)?,
                             ) {
                                 let else_phi = self.builder.build_load(pv, "else_expr_phi");
                                 self.builder.build_store(if_pv, else_phi);
-                            }
+                            }*/
                         }
                     }
+                    self.phi_data = old_phi_data;
 
                     self.builder.position_at_end(start_bb);
                     self.builder
                         .build_conditional_branch(cond, if_body_block, else_bb);
                     self.builder.position_at_end(after_bb);
-                    Ok(if_phi)
+                    Ok(if_phi.map(|phi| phi.alloca))
                 }
                 None => {
                     let after_bb = self
@@ -1348,7 +1353,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     self.builder
                         .build_conditional_branch(cond, if_body_block, after_bb);
                     self.builder.position_at_end(after_bb);
-                    Ok(if_phi)
+                    Ok(if_phi.map(|phi| phi.alloca))
                 }
             }
         } else {
@@ -1482,16 +1487,16 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 ),
             )]))
     }
-
-    /// Generate LLVM IR for a block of statements
+    
+    /// Generate a body, creating a phi alloca automatically
     fn gen_body(
         &mut self,
         file: FileId,
         module: ModId,
         body: &[Ast<TypeId>],
         to_bb: BasicBlock<'ctx>,
-        after_bb: BasicBlock<'ctx>,
-    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+        after_bb: BasicBlock<'ctx>
+    ) -> Result<Option<PhiData<'ctx>>, Diagnostic<FileId>> {
         let phi_data = match Self::phi_node(file, body) {
             Err(_) => None,
             Ok(phi_node) => {
@@ -1509,17 +1514,36 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 }
             }
         };
-
         let old_phi_data = self.phi_data;
-        self.builder.position_at_end(to_bb);
-
         self.phi_data = phi_data;
+
+        self.gen_body_no_phi(
+            file,
+            module,
+            body,
+            to_bb,
+            after_bb,
+        )?;
+ 
+        self.phi_data = old_phi_data;
+        Ok(phi_data)
+    }
+
+    /// Generate LLVM IR for a block of statements
+    fn gen_body_no_phi(
+        &mut self,
+        file: FileId,
+        module: ModId,
+        body: &[Ast<TypeId>],
+        to_bb: BasicBlock<'ctx>,
+        after_bb: BasicBlock<'ctx>,
+    ) -> Result<(), Diagnostic<FileId>> {
+        self.builder.position_at_end(to_bb);
 
         self.current_scope.push_layer();
 
         for stmt in body.iter() {
             if let Err(e) = self.gen_stmt(file, module, stmt) {
-                self.phi_data = old_phi_data;
                 self.current_scope.pop_layer();
                 self.builder.position_at_end(after_bb);
                 return Err(e);
@@ -1529,7 +1553,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         }
 
-        self.phi_data = old_phi_data;
         self.current_scope.pop_layer();
         if !self.placed_terminator {
             self.builder.build_unconditional_branch(after_bb);
@@ -1538,7 +1561,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         }
         self.builder.position_at_end(after_bb);
 
-        Ok(phi_data.map(|d| d.alloca))
+        Ok(())
     }
 
     /// Generate an LLVM integer type to match an IR integer type
