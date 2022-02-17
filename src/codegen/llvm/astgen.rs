@@ -1037,6 +1037,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         let to = self.spark[to_ty].clone();
         let from = self.spark[rhs_ty].clone();
 
+        if self.spark.unwrap_alias(to_ty) == self.spark.unwrap_alias(rhs_ty) {
+            return self.gen_expr(file, module, rhs)
+        }
+
         //Generate an enum literal from a cast to an enum that contains the casted
         //type as a variant
         if let TypeData::Enum { parts } = &self.spark[self.spark.unwrap_alias(to_ty)] {

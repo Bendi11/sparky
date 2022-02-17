@@ -21,9 +21,13 @@ fun test([2]i32 t) {
 fun ext main(i32 argc, **u8 a) -> i32 {
     let b = (5, [51])
     let testing = if false { phi 5 } else { phi 16 }
-    let bc = #test_ty2 {
+    let bc = $test_ty2 #{
         a = 5,
         b = testing
+    }
+    {
+        let other = "test"
+        printf:("Testing message: %s\n", other)
     }
     test:([5, 2])
     printf:("bc.b > 5 = %s\n", if bc.b > 5 { phi "true" } else { phi "false" })
