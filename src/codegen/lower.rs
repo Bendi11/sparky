@@ -260,7 +260,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 AstNode::IfExpr(if_expr) => {
                     AstNode::IfExpr(self.lower_if_ast(module, if_expr, file))
                 }
-                AstNode::Literal(Literal::Unit) => AstNode::Literal(Literal::Unit),
             },
         }
     }

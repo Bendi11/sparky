@@ -12,7 +12,7 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine},
+    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType, BasicMetadataTypeEnum},
     values::{BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
@@ -199,11 +199,14 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Codegen LLVM IR from a type-lowered module
-    pub fn codegen_module(&mut self, module: ModId) -> Module<'ctx> {
+    pub fn codegen_module(&mut self, module: ModId) -> Result<Module<'ctx>, Diagnostic<FileId>> {
         let mut llvm_mod = self.ctx.create_module(self.spark[module].name.as_str());
-        self.forward_funs(module, &mut llvm_mod);
+        if let Err(e) = self.forward_funs(module, &mut llvm_mod) {
+            self.diags.emit(e.clone());
+            return Err(e)
+        }
         self.codegen_defs(module);
-        return llvm_mod;
+        Ok(llvm_mod)
     }
 
     /// Generate code for all function prototypes
@@ -233,7 +236,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
         for child in defs.iter() {
             if let SparkDef::ModDef(child) = child.1 {
-                self.forward_funs(*child, llvm);
+                self.forward_funs(*child, llvm)?;
             }
         }
 

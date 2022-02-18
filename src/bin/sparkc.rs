@@ -189,7 +189,7 @@ fn main() {
 
     let mut llvm_ctx = Context::create();
     let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files, opts.clone());
-    let llvm_root = generator.codegen_module(root_id);
+    let llvm_root = generator.codegen_module(root_id).unwrap_or_else(|_| std::process::exit(-1));
     if let Err(e) = llvm_root.verify() {
         eprintln!("Failure to verify generated LLVM module: {}", e);
         if opts.out_type != OutputFileType::LLVMIR {

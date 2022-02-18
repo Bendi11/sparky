@@ -70,7 +70,7 @@ impl<'src> Lexer<'src> {
             '#' => Token::new(start_loc, TokenData::Pound),
 
             // Multi or single character tokens
-            '&' | '|' | '>' | '<' | ':' | '-' | '=' => {
+            '&' | '|' | '>' | '<' | '-' | '=' => {
                 let peek = self.chars.peek().map(|(_, peek)| *peek);
                 match (next, peek) {
                     ('>', Some('=')) => {

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, convert::TryFrom, fmt};
+use std::{borrow::Cow, fmt};
 
 use crate::{
     ast::{BigInt, Literal},
@@ -617,7 +617,7 @@ impl<'src> Parser<'src> {
                     node: AstNode::Literal(Literal::Array(elements)),
                 }
             }
-            TokenData::String(data) => Ast {
+            TokenData::String(_data) => Ast {
                 span: peeked.span,
                 node: AstNode::Literal(Literal::String(self.parse_string_literal()?)),
             },
@@ -686,7 +686,7 @@ impl<'src> Parser<'src> {
                     span: (start_loc, end_loc).into(),
                     node: AstNode::Literal(Literal::Struct {
                         ty: typename,
-                        fields: fields,
+                        fields,
                     })
                 }
             },
