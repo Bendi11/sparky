@@ -5,7 +5,7 @@ use quickscope::ScopeMap;
 use crate::{
     arena::{Arena, Index, Interner},
     ast::{Ast, FunFlags, IntegerWidth, PathIter, SymbolPath},
-    util::files::FileId,
+    util::{files::FileId, loc::Span},
     Symbol,
 };
 
@@ -52,12 +52,14 @@ impl SparkCtx {
         ty: FunctionType,
         flags: FunFlags,
         arg_names: Vec<Option<Symbol>>,
+        span: Span,
     ) -> FunId {
         self.funs.insert_with(|id| Function {
             id,
             name,
             ty,
             flags,
+            span,
             arg_names,
             body: None,
         })
@@ -121,14 +123,6 @@ impl SparkCtx {
                     .map(|(field, name)| format!("{} {}", self.get_type_name(*field), name))
                     .collect::<Vec<_>>()
                     .join(" ")
-            )),
-            TypeData::Tuple(parts) => Symbol::from(&format!(
-                "( {} )",
-                parts
-                    .iter()
-                    .map(|part| self.get_type_name(*part).to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
             )),
             TypeData::Array { element, len } => {
                 Symbol::from(&format!("[{}]{}", len, self.get_type_name(*element)))
@@ -258,6 +252,7 @@ pub struct Function {
     pub name: Symbol,
     pub flags: FunFlags,
     pub ty: FunctionType,
+    pub span: Span,
     pub arg_names: Vec<Option<Symbol>>,
     pub body: Option<Vec<Ast<TypeId>>>,
 }
@@ -279,7 +274,6 @@ pub enum TypeData {
         element: TypeId,
         len: u64,
     },
-    Tuple(Vec<TypeId>),
     Struct {
         fields: Vec<(TypeId, Symbol)>,
     },

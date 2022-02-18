@@ -354,6 +354,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 .iter()
                 .map(|(name, _)| Some(name.clone()))
                 .collect(),
+            span,
         )
     }
 

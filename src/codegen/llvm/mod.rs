@@ -13,7 +13,7 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine},
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType},
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType as InkwellFunctionType, BasicMetadataTypeEnum},
     values::{BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
 };
@@ -46,6 +46,8 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
     pub spark: SparkCtx,
     pub diags: DiagnosticManager<'files>,
     pub opts: CompileOpts,
+    /// The currently compiled file
+    pub file: FileId,
     llvm_funs: HashMap<FunId, FunctionValue<'ctx>>,
     target: TargetMachine,
     current_scope: ScopeMap<Symbol, ScopeDef<'ctx>>,
@@ -81,6 +83,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             builder: ctx.create_builder(),
             ctx,
             spark,
+            file: unsafe { FileId::from_raw(0) },
             diags: DiagnosticManager::new(files),
             llvm_funs: HashMap::new(),
             phi_data: None,
@@ -116,7 +119,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     /// Find a name in the current scope
     fn find_in_scope(
         &self,
-        file: FileId,
         span: Span,
         path: &SymbolPath,
     ) -> Result<ScopeDef<'ctx>, Diagnostic<FileId>> {
@@ -137,7 +139,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                             .map_err(|name| {
                                 Diagnostic::error()
                                     .with_message(format!("'{}' not found in current scope", name))
-                                    .with_labels(vec![Label::primary(file, span)])
+                                    .with_labels(vec![Label::primary(self.file, span)])
                             }),
                         _ => Err(Diagnostic::error()
                             .with_message(format!(
@@ -146,16 +148,17 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                                     .collect::<Vec<_>>()
                                     .join(":")
                             ))
-                            .with_labels(vec![Label::primary(file, span)])),
+                            .with_labels(vec![Label::primary(self.file, span)])),
                     }
                 }
             }
             None => Err(Diagnostic::error()
                 .with_message(format!("Symbol '{}' not found in the current scope", first))
-                .with_labels(vec![Label::primary(file, span)])),
+                .with_labels(vec![Label::primary(self.file, span)])),
         }
     }
-
+    
+    /// Generate code for definitions
     fn codegen_defs(&mut self, module: ModId) {
         let defs = self.spark[module].defs.clone();
 
@@ -168,6 +171,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         let defs = self.spark[module].defs.clone();
         for (name, def) in defs.iter() {
             if let SparkDef::FunDef(file, fun) = def {
+                self.file = *file;
                 if let Some(ref body) = self.spark[*fun].body {
                     self.placed_terminator = false;
                     let llvm_fun = *self.llvm_funs.get(fun).unwrap();
@@ -176,7 +180,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
 
                     self.current_fun = Some((llvm_fun, *fun));
                     for stmt in body.clone() {
-                        if let Err(e) = self.gen_stmt(*file, module, &stmt) {
+                        if let Err(e) = self.gen_stmt(module, &stmt) {
                             self.diags
                                 .emit(e.with_notes(vec![format!("In function {}", name)]));
                         }
@@ -203,7 +207,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Generate code for all function prototypes
-    fn forward_funs(&mut self, module: ModId, llvm: &mut Module<'ctx>) {
+    fn forward_funs(&mut self, module: ModId, llvm: &mut Module<'ctx>) -> Result<(), Diagnostic<FileId>> {
         let defs = self.spark[module].defs.clone();
 
         for fun_id in defs.iter().filter_map(|(_, def)| {
@@ -214,7 +218,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             }
         }) {
             let fun = self.spark[fun_id].clone();
-            let llvm_fun_ty = self.gen_fun_ty(&fun.ty);
+            let llvm_fun_ty = self.gen_fun_ty(fun.span, &fun.ty)?;
             let llvm_fun = if fun.flags.contains(FunFlags::EXTERN) {
                 llvm.add_function(fun.name.as_str(), llvm_fun_ty, Some(Linkage::External))
             } else {
@@ -232,11 +236,13 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 self.forward_funs(*child, llvm);
             }
         }
+
+        Ok(())
     }
 
     /// Create an LLVM type from a type ID
-    fn llvm_ty(&mut self, id: TypeId) -> AnyTypeEnum<'ctx> {
-        match self.spark[id].clone() {
+    fn llvm_ty(&mut self, span: Span, id: TypeId) -> Result<AnyTypeEnum<'ctx>, Diagnostic<FileId>> {
+        Ok(match self.spark[id].clone() {
             TypeData::Integer { signed: _, width } => match width {
                 IntegerWidth::Eight => self.ctx.i8_type().into(),
                 IntegerWidth::Sixteen => self.ctx.i16_type().into(),
@@ -244,31 +250,28 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 IntegerWidth::SixtyFour => self.ctx.i64_type().into(),
             },
             TypeData::Bool => self.ctx.bool_type().into(),
-            TypeData::Tuple(elems) => {
-                let elems = elems
-                    .iter()
-                    .map(|id| BasicTypeEnum::try_from(self.llvm_ty(*id)).unwrap())
-                    .collect::<Vec<_>>();
-                self.ctx.struct_type(&elems, false).into()
-            }
             TypeData::Struct { fields } => {
                 let fields = fields
                     .iter()
-                    .map(|(id, _)| BasicTypeEnum::try_from(self.llvm_ty(*id)).unwrap())
-                    .collect::<Vec<_>>();
+                    .map(|(id, _)| match self.llvm_ty(span, *id) {
+                        Ok(ty) => Ok(BasicTypeEnum::try_from(ty).ok()),
+                        Err(e) => Err(e)
+                    })
+                    .filter_map(|i| match i {
+                        Ok(Some(e)) => Some(Ok(e)),
+                        Err(e) => Some(Err(e)),
+                        _ => None
+                    }) //Filter None out
+                    .collect::<Result<Vec<_>, _>>()?;
                 self.ctx.struct_type(&fields, false).into()
             }
-            TypeData::Alias(_, id) => self.llvm_ty(id),
+            TypeData::Alias(_, id) => self.llvm_ty(span, id)?,
             TypeData::Pointer(id) => {
-                let pointee = self.llvm_ty(id);
+                let pointee = Self::require_basictype(self.file, span, self.llvm_ty(span, id)?)?;
 
-                match BasicTypeEnum::try_from(pointee) {
-                    Ok(b) => b.ptr_type(AddressSpace::Generic).into(),
-                    Err(_) => unimplemented!(),
-                }
+                pointee.ptr_type(AddressSpace::Generic).into()
             }
-            TypeData::Array { element, len } => BasicTypeEnum::try_from(self.llvm_ty(element))
-                .unwrap()
+            TypeData::Array { element, len } => Self::require_basictype(self.file, span, self.llvm_ty(span, element)?)?
                 .array_type(len as u32)
                 .into(),
             TypeData::Unit => self.ctx.void_type().into(),
@@ -277,7 +280,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 true => self.ctx.f64_type().into(),
                 false => self.ctx.f32_type().into(),
             },
-            TypeData::Function(ty) => self.gen_fun_ty(&ty).ptr_type(AddressSpace::Generic).into(),
+            TypeData::Function(ty) => self.gen_fun_ty(span, &ty)?.ptr_type(AddressSpace::Generic).into(),
             TypeData::Enum { parts } => {
                 let max = parts
                     .iter()
@@ -301,23 +304,26 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         .into()
                 }
             }
-        }
+        })
     }
 
     /// Create an LLVM function type from a spark IR function type
-    fn gen_fun_ty(&mut self, ty: &FunctionType) -> InkwellFunctionType<'ctx> {
-        let return_ty = self.llvm_ty(ty.return_ty);
+    fn gen_fun_ty(&mut self, span: Span, ty: &FunctionType) -> Result<InkwellFunctionType<'ctx>, Diagnostic<FileId>> {
+        let return_ty = self.llvm_ty(span, ty.return_ty)?;
         let args = ty
             .args
             .iter()
-            .map(|ty| BasicTypeEnum::try_from(self.llvm_ty(*ty)).unwrap().into())
-            .collect::<Vec<_>>();
-        match return_ty {
+            .map(|ty| match self.llvm_ty(span, *ty) {
+                Ok(ty) => Self::require_basictype(self.file, span, ty).map(BasicMetadataTypeEnum::from),
+                Err(e) => Err(e),
+            }).collect::<Result<Vec<_>, _>>()?;
+        
+        Ok(match return_ty {
             AnyTypeEnum::VoidType(return_ty) => return_ty.fn_type(&args, false),
             _ => BasicTypeEnum::try_from(return_ty)
                 .unwrap()
                 .fn_type(&args, false),
-        }
+        })
     }
 
     /// Get the size of a type in bytes from a type ID
@@ -326,19 +332,11 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             TypeData::Integer { width, .. } => (*width as u8 / 8) as u32,
             TypeData::Float { doublewide: true } => 8,
             TypeData::Float { doublewide: false } => 4,
-            TypeData::Enum { parts } => {
-                let max = parts
-                    .iter()
-                    .map(|part| self.size_of_type(*part))
-                    .max()
-                    .unwrap_or(0);
-                max + 1
-            }
+            TypeData::Enum { parts } => self.biggest_size(parts),
             TypeData::Bool => 1,
             TypeData::Struct { fields } => {
                 fields.iter().map(|field| self.size_of_type(field.0)).sum()
             }
-            TypeData::Tuple(elems) => elems.iter().map(|elem| self.size_of_type(*elem)).sum(),
             TypeData::Unit => 0,
             TypeData::Pointer(_) => self.ptr_size(),
             TypeData::Array { element, len } => self.size_of_type(*element) * *len as u32,
@@ -347,9 +345,31 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
             TypeData::Invalid => unreachable!(),
         }
     }
+            
+    /// Get the largest type of a list of types
+    fn biggest_size(&self, types: &[TypeId]) -> u32 {
+        types
+            .iter()
+            .map(|ty| self.size_of_type(*ty))
+            .max()
+            .unwrap_or(0)
+    }
 
     /// Get the size in bytes of a pointer on the target platform
     fn ptr_size(&self) -> u32 {
         self.target.get_target_data().get_pointer_byte_size(None)
+    }
+    
+    /// Require a given type to not be a zero-sized type
+    fn require_basictype(file: FileId, span: Span, ty: AnyTypeEnum<'ctx>) -> Result<BasicTypeEnum<'ctx>, Diagnostic<FileId>> {
+        BasicTypeEnum::try_from(ty)
+            .map_err(|_| {
+                Diagnostic::error()
+                    .with_message("Cannot use zero-sized type here")
+                    .with_labels(vec![
+                        Label::primary(file, span)
+                            .with_message("This is a zero-sized type")
+                    ])
+            })
     }
 }
