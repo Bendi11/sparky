@@ -179,12 +179,23 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     self.builder.position_at_end(entry);
 
                     self.current_fun = Some((llvm_fun, *fun));
+                    self.current_scope.push_layer();
+                    for (arg, (arg_name, arg_ty)) in self.llvm_funs[fun].get_param_iter()
+                        .zip(self.spark[*fun].arg_names.iter().zip(self.spark[*fun].ty.args.iter())) {
+                        if let Some(arg_name) = arg_name {
+                            let arg_alloca = self.builder.build_alloca(arg.get_type(), "arg_alloca");
+                            self.builder.build_store(arg_alloca, arg);
+                            self.current_scope.define(*arg_name, ScopeDef::Value(*arg_ty, arg_alloca));
+                        }
+                    }
+
                     for stmt in body.clone() {
                         if let Err(e) = self.gen_stmt(module, &stmt) {
                             self.diags
                                 .emit(e.with_notes(vec![format!("In function {}", name)]));
                         }
                     }
+                    self.current_scope.pop_layer();
                 }
             }
         }

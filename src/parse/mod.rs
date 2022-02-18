@@ -377,7 +377,8 @@ impl<'src> Parser<'src> {
         };
         Ok((body, Span::new(start_loc, end_loc)))
     }
-
+    
+    /// Parse a statement from the token stream
     fn parse_stmt(&mut self) -> ParseResult<'src, Ast> {
         const EXPECTING_FOR_STMT: &[TokenData<'static>] = &[
             TokenData::Ident("if"),
@@ -486,9 +487,15 @@ impl<'src> Parser<'src> {
                     node: AstNode::Return(Box::new(returned)),
                 })
             }
+            TokenData::Period => {
+                self.toks.next();
+                self.trace.push("prefix expression".into());
+                let expr = self.parse_prefix_expr()?;
+                self.trace.pop();
+                Ok(expr)
+            },
             //Parse an assignment expression
             TokenData::Ident(_)
-            | TokenData::OpenBracket(BracketType::Smooth)
             | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr(),
             _ => Err(ParseError {
                 highlighted_span: Some(peeked.span),
@@ -974,11 +981,10 @@ impl<'src> Parser<'src> {
                 })
             }
             //Function call
-            TokenData::Colon => {
+            TokenData::OpenBracket(BracketType::Smooth) => {
                 self.trace.push("function call".into());
 
                 self.toks.next();
-                self.expect_next(&[TokenData::OpenBracket(BracketType::Smooth)])?;
 
                 let mut args = vec![];
 

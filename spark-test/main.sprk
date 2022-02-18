@@ -2,12 +2,16 @@ type none = ()
 type some = i32
 type option = some | none
 
-fun ext main(i32 argc, **u8 a) -> i32 {
-    let a = $option $some 1000
+fun test(option a) -> i32 {
     return match a {
         none -> phi 101
-        some -> phi $i32 $some a
+        some -> phi $i32 $some a 
     }
+}
+
+fun ext main(i32 argc, **u8 a) -> i32 {
+    let a = $option $some 1000
+    return test(a)
 }
 
 fun ext __chkstk() {
