@@ -1023,9 +1023,6 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 );
 
             if let Some(idx) = idx {
-                let llvm_rhs = self.gen_expr(module, rhs)?;
-                let llvm_rhs_ty = Self::require_basictype(self.file, rhs.span, self.llvm_ty(rhs.span, rhs_ty)?)?;
-
                 let enum_ty = Self::require_basictype(self.file, rhs.span, self.llvm_ty(rhs.span, to_ty)?)?;
 
                 let enum_literal = self.builder.build_alloca(enum_ty, "enum_literal_alloca");
@@ -1038,6 +1035,8 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     .build_store(discrim, self.ctx.i8_type().const_int(idx as u64, false));
                 
                 if self.size_of_type(rhs_ty) != 0 {
+                    let llvm_rhs = self.gen_expr(module, rhs)?;
+                    let llvm_rhs_ty = Self::require_basictype(self.file, rhs.span, self.llvm_ty(rhs.span, rhs_ty)?)?;
                     let variant = self
                         .builder
                         .build_struct_gep(enum_literal, 1, "enum_literal_get_variant")
@@ -1055,7 +1054,9 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                     self.builder.build_store(variant_ptr, llvm_rhs);
 
                     let enum_literal_load = self.builder.build_load(enum_literal, "enum_lit_load");
-                    return Ok(enum_literal_load.into());
+                    return Ok(enum_literal_load.into())
+                } else {
+                    return Ok(self.builder.build_load(enum_literal, "enum_lit_load_no_variant"))
                 }
             } else {
                 return Err(Diagnostic::error()
@@ -1586,6 +1587,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                         .spark
                         .new_type(TypeData::Function(self.spark[f].ty.clone())),
                     ScopeDef::Value(ty, _) => ty,
+                    ScopeDef::Def(SparkDef::TypeDef(_file, ty)) if self.size_of_type(ty) == 0 => ty,
                     _ => {
                         return Err(Diagnostic::error()
                             .with_message("Cannot infer type of definition")
