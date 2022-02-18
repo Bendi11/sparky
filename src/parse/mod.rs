@@ -293,6 +293,8 @@ impl<'src> Parser<'src> {
                     flags,
                 };
 
+                self.trace.pop();
+
                 if let Ok(TokenData::OpenBracket(BracketType::Curly)) =
                     self.peek_tok(EXPECTING_AFTER_ARGS).map(|a| a.data.clone())
                 {
@@ -505,6 +507,7 @@ impl<'src> Parser<'src> {
             self.trace.push("assignment statement".into());
             self.toks.next();
             let assigned = self.parse_expr()?;
+            self.trace.pop();
             Ok(Ast {
                 span: (stmt.span.from, assigned.span.to).into(),
                 node: AstNode::Assignment {
