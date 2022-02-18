@@ -914,55 +914,6 @@ impl<'src> Parser<'src> {
                 }
 
                 let expr = self.parse_expr()?;
-
-                //Check for a tuple literal
-                let expr = if let Some(TokenData::Comma) = self.toks.peek().map(|tok| &tok.data) {
-                    self.toks.next(); //Consume the first comma
-                    const EXPECTING_AFTER_TUPLE_EXPR: &[TokenData<'static>] = &[
-                        TokenData::CloseBracket(BracketType::Smooth),
-                        TokenData::Comma,
-                    ];
-
-                    let old_expr_from = expr.span.from;
-
-                    let mut tuple_elements = vec![expr];
-                    self.trace.push("tuple literal".into());
-                    loop {
-                        if self.toks.peek().map(|tok| &tok.data)
-                            == Some(&TokenData::CloseBracket(BracketType::Smooth))
-                        {
-                            self.toks.next();
-                            break;
-                        }
-
-                        let tuple_element = self.parse_expr()?;
-                        tuple_elements.push(tuple_element);
-                        let next = self.next_tok(EXPECTING_AFTER_TUPLE_EXPR)?;
-                        match next.data {
-                            TokenData::CloseBracket(BracketType::Smooth) => break,
-                            TokenData::Comma => continue,
-                            _ => {
-                                return Err(ParseError {
-                                    highlighted_span: Some((old_expr_from, next.span.to).into()),
-                                    backtrace: self.trace.clone(),
-                                    error: ParseErrorKind::UnexpectedToken {
-                                        found: next,
-                                        expecting: ExpectingOneOf(EXPECTING_AFTER_TUPLE_EXPR),
-                                    },
-                                })
-                            }
-                        }
-                    }
-                    self.trace.pop();
-                    Ast {
-                        span: (old_expr_from, tuple_elements.last().unwrap().span.to).into(),
-                        node: AstNode::Literal(Literal::Tuple(tuple_elements)),
-                    }
-                } else {
-                    self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-                    expr
-                };
-
                 expr
             }
             _ => {
@@ -1068,30 +1019,6 @@ impl<'src> Parser<'src> {
     fn parse_typename(&mut self) -> ParseResult<'src, UnresolvedType> {
         let first = self.parse_first_typename()?;
         match self.toks.peek().map(|tok| &tok.data) {
-            Some(TokenData::Comma) => {
-                const EXPECTING_AFTER_TUPLE_TYPENAME: &[TokenData<'static>] = &[
-                    TokenData::Comma,
-                    TokenData::CloseBracket(BracketType::Smooth),
-                ];
-
-                self.toks.next();
-                let mut tuple_types = vec![first];
-                loop {
-                    let element_type = self.parse_first_typename()?;
-                    tuple_types.push(element_type);
-                    let after_typename = self.peek_tok(EXPECTING_AFTER_TUPLE_TYPENAME)?;
-                    match after_typename.data {
-                        TokenData::Comma => {
-                            self.toks.next();
-                            continue;
-                        }
-                        _ => break,
-                    }
-                }
-                Ok(UnresolvedType::Tuple {
-                    elements: tuple_types,
-                })
-            }
             Some(TokenData::Op(Op::OR)) => {
                 let mut variants = vec![first];
 

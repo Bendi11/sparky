@@ -283,12 +283,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             Literal::String(s) => Literal::String(s.clone()),
             Literal::Number(num) => Literal::Number(num.clone()),
             Literal::Bool(b) => Literal::Bool(*b),
-            Literal::Tuple(elems) => Literal::Tuple(
-                elems
-                    .iter()
-                    .map(|elem| self.lower_ast(module, elem, file))
-                    .collect(),
-            ),
             Literal::Unit => Literal::Unit,
             Literal::Struct {
                 ty,
@@ -424,13 +418,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             UnresolvedType::Array { elements, len } => {
                 let element = self.lower_type(module, span, elements, file);
                 self.ctx.new_type(TypeData::Array { element, len: *len })
-            }
-            UnresolvedType::Tuple { elements } => {
-                let elements = elements
-                    .iter()
-                    .map(|ty| self.lower_type(module, span, ty, file))
-                    .collect();
-                self.ctx.new_type(TypeData::Tuple(elements))
             }
             UnresolvedType::UserDefined { name } => match self.ctx.get_def(module, name) {
                 Ok(SparkDef::TypeDef(_, type_id)) => type_id,

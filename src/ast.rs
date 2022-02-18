@@ -242,7 +242,6 @@ pub enum Literal<T: Clone + Hash + Eq> {
     Number(NumberLiteral),
     String(String),
     Bool(bool),
-    Tuple(Vec<Ast<T>>),
     Array(Vec<Ast<T>>),
     Struct {
         ty: Option<T>,
@@ -419,11 +418,6 @@ pub enum UnresolvedType {
     },
     /// Unit type with only one value, like void in C or () in rust
     Unit,
-    /// Tuple made up of multiple arbitrary types
-    Tuple {
-        /// The element types contained in the tuple
-        elements: Vec<UnresolvedType>,
-    },
     /// A structure with named members
     Struct {
         fields: Vec<(UnresolvedType, Symbol)>,
@@ -476,13 +470,6 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
             Self::Continue => write!(w, "CONTINUE"),
             Self::Literal(Literal::Number(num)) => write!(w, "NUMBER LITERAL {:?}", num),
             Self::Literal(Literal::String(string)) => write!(w, "STRING LITERAL {:?}", string),
-            Self::Literal(Literal::Tuple(tuple)) => {
-                write!(w, "TUPLE LITERAL ( ")?;
-                for element in tuple {
-                    write!(w, "{:?}, ", element.node)?;
-                }
-                write!(w, " )")
-            },
             Self::Literal(Literal::Struct{..}) => write!(w, "STRUCT LITERAL"),
             Self::Literal(Literal::Unit) => write!(w, "UNIT LITERAL ()"),
             Self::Return(expr) => {
