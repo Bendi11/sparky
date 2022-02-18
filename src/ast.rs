@@ -293,6 +293,8 @@ pub enum DefData {
         name: Symbol,
         /// The aliased type
         aliased: UnresolvedType,
+        /// A list of template parameter names
+        tparams: Option<Vec<Symbol>>
     },
     /// An imported module definition
     ImportDef { name: SymbolPath },
@@ -430,6 +432,8 @@ pub enum UnresolvedType {
     UserDefined {
         /// The name of the user-defined type
         name: SymbolPath,
+        /// Template argument value list
+        targs: Vec<UnresolvedType>
     },
 }
 

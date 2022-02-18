@@ -5,12 +5,9 @@
 <fundef> ::= <fundecl> <body>
 <fundecl> ::= "fun" <ident> ( <typename> <ident> "," )* ( <typename> <ident> )? ( "->" <typename> )? "extern"?
 
-<typedef> ::= <typedecl> <structfields>
-            | <typedecl> <typename>
-            | <typedecl> <typename> ( "|" <typename> )+
 <structfields> ::= "{" ( <typename> <ident> "," )* ( <typename> <ident>? ) "}"
 
-<typedecl> ::= "type" <ident> "=" (
+<typedef> ::= "type" ( "<" ( <ident> "," )* <ident>? ">" )? <ident> "=" (
     "{" ( <typename> <ident> "," )* ( <typename> <ident> )? "}",
     <typename>
     <typename> ( "|" <typename> )+
@@ -56,7 +53,7 @@
 
 <array-typename> ::= "[" <digit>+? "]" <typename>
 
-<user-typename> ::= <path> ( "|" ( (<typename> "," )* <typename>? ) "|" )?
+<user-typename> ::= <path> ( "<" ( (<typename> "," )* <typename>? ) ">" )?
 
 <literal> ::= <string-literal> | <bool-literal> | <char-literal> | <number-literal> | <array-literal>
             | <array-literal> | <tuple-literal> | <struct-literal>
