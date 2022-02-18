@@ -487,16 +487,10 @@ impl<'src> Parser<'src> {
                     node: AstNode::Return(Box::new(returned)),
                 })
             }
-            TokenData::Period => {
-                self.toks.next();
-                self.trace.push("prefix expression".into());
-                let expr = self.parse_prefix_expr()?;
-                self.trace.pop();
-                Ok(expr)
-            },
             //Parse an assignment expression
             TokenData::Ident(_)
-            | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr(),
+            | TokenData::OpenBracket(BracketType::Curly)
+            | TokenData::OpenBracket(BracketType::Smooth) => self.parse_prefix_expr(),
             _ => Err(ParseError {
                 highlighted_span: Some(peeked.span),
                 backtrace: self.trace.clone(),
@@ -921,6 +915,8 @@ impl<'src> Parser<'src> {
                 }
 
                 let expr = self.parse_expr()?;
+                self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+
                 expr
             }
             _ => {
@@ -953,16 +949,65 @@ impl<'src> Parser<'src> {
         let peeked = self.peek_tok(ACCESS_EXPECTING)?.clone();
         match peeked.data {
             TokenData::Period => {
-                self.toks.next(); //Eat the period character
-                self.trace.push("member access".into());
-                let item = self.expect_next_ident(&[TokenData::Ident("member name")])?;
-                self.trace.pop();
+                const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] = &[
+                    TokenData::Ident("structure field name"),
+                    TokenData::OpenBracket(BracketType::Smooth)
+                ];
 
-                let symbol = self.symbol(item);
-                self.parse_access(Ast {
-                    span: (accessing.span.from, peeked.span.to).into(),
-                    node: AstNode::MemberAccess(Box::new(accessing), symbol),
-                })
+                self.toks.next(); //Eat the period character
+                self.trace.push("member access or function call".into());
+                let next = self.next_tok(EXPECTING_AFTER_PERIOD)?;
+                match next.data {
+                    TokenData::OpenBracket(BracketType::Smooth) => {
+                        let mut args = vec![];
+
+                        loop {
+                            let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+                            match next_in_args.data {
+                                TokenData::Comma => {
+                                    self.next_tok(&[TokenData::Comma])?;
+                                }
+                                TokenData::CloseBracket(BracketType::Smooth) => {
+                                    self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                                    break;
+                                }
+                                _ => {
+                                    self.trace.push("function call argument".into());
+                                    args.push(self.parse_expr()?);
+                                    self.trace.pop();
+                                }
+                            }
+                        }
+
+                        self.trace.pop();
+
+                        Ok(Ast {
+                            span: if let Some(last) = args.last() {
+                                (peeked.span.from, last.span.to).into()
+                            } else {
+                                peeked.span
+                            },
+                            node: AstNode::FunCall(Box::new(accessing), args),
+                        })
+                    },
+                    TokenData::Ident(item) => {
+                        self.trace.pop();
+
+                        let symbol = self.symbol(item);
+                        self.parse_access(Ast {
+                            span: (accessing.span.from, peeked.span.to).into(),
+                            node: AstNode::MemberAccess(Box::new(accessing), symbol),
+                        })
+                    },
+                    _ => return Err(ParseError {
+                        highlighted_span: Some(next.span),
+                        backtrace: self.trace.clone(),
+                        error: ParseErrorKind::UnexpectedToken {
+                            found: next,
+                            expecting: ExpectingOneOf(EXPECTING_AFTER_PERIOD)
+                        }
+                    })
+                }
             }
             TokenData::OpenBracket(BracketType::Square) => {
                 self.toks.next();
@@ -978,43 +1023,6 @@ impl<'src> Parser<'src> {
                         object: Box::new(accessing),
                         index: Box::new(index),
                     },
-                })
-            }
-            //Function call
-            TokenData::OpenBracket(BracketType::Smooth) => {
-                self.trace.push("function call".into());
-
-                self.toks.next();
-
-                let mut args = vec![];
-
-                loop {
-                    let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
-                    match next_in_args.data {
-                        TokenData::Comma => {
-                            self.next_tok(&[TokenData::Comma])?;
-                        }
-                        TokenData::CloseBracket(BracketType::Smooth) => {
-                            self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-                            break;
-                        }
-                        _ => {
-                            self.trace.push("function call argument".into());
-                            args.push(self.parse_expr()?);
-                            self.trace.pop();
-                        }
-                    }
-                }
-
-                self.trace.pop();
-
-                Ok(Ast {
-                    span: if let Some(last) = args.last() {
-                        (peeked.span.from, last.span.to).into()
-                    } else {
-                        peeked.span
-                    },
-                    node: AstNode::FunCall(Box::new(accessing), args),
                 })
             }
             _ => Ok(accessing),
