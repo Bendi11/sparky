@@ -1,19 +1,24 @@
 type none = ()
-type some = i32
-type option = some | none
+type<T> some = T
+type<T> opt = T | none
 
-fun test(option a) -> i32 {
+fun test(opt<i32> a) -> i32 {
     return match a {
         none -> phi 101
-        some -> phi $i32 $some a 
+        some<i32> -> phi $i32 a
     }
 }
 
+fun ext printf(*u8 fmt, i32 a)
+
 fun ext main(i32 argc, **u8 a) -> i32 {
-    let a = $option $some 1000
-    test.($option none)
-    (a) = $option $some 5
-    return test.(a)
+    let testing = $opt<i32> 1000
+    printf.("Optional: %d", $i32 testing)
+    testing = $opt<i32> none
+    return match testing {
+        none -> phi 101
+        some<i32> -> phi $i32 testing
+    }
 }
 
 fun ext __chkstk() {

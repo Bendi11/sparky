@@ -37,7 +37,7 @@
 
 <prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")" | <block>
 
-<callexpr> ::= <prefixexpr> ":" "(" <exprlist> ")"
+<callexpr> ::= <prefixexpr> "." "(" <exprlist> ")"
 <varaccessexpr> ::= <path>
                   | <prefixexpr> "[" <expr> "]"
                   | <prefixexpr> "." <ident>

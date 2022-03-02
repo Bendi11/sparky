@@ -136,7 +136,7 @@ impl SparkCtx {
                     .join(", "),
                 self.get_type_name(f_ty.return_ty),
             )),
-            TypeData::Invalid => unreachable!(),
+            TypeData::Invalid => Symbol::from("INVALID TYPE"),
         }
     }
 

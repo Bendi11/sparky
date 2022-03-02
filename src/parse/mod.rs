@@ -316,7 +316,53 @@ impl<'src> Parser<'src> {
                 }
             }
             TokenData::Ident("type") => {
-                let name = self.expect_next_ident(&[TokenData::Ident("type name")])?;
+                const EXPECTING_AFTER_TYPE: &[TokenData<'static>] = &[
+                    TokenData::Ident("alias type name"),
+                    TokenData::Op(Op::Less)
+                ];
+                
+                let after_type = self.next_tok(EXPECTING_AFTER_TYPE)?;
+                let (name, tparams) = match after_type.data {
+                    TokenData::Op(Op::Less) => {
+                        const EXPECTING_TPARAMS: &[TokenData<'static>] = &[
+                            TokenData::Ident("template parameter name"),
+                            TokenData::Op(Op::Greater)
+                        ];
+
+                        let mut tparams = vec![];
+                        loop {
+                            let next = self.next_tok(EXPECTING_TPARAMS)?;
+                            match next.data {
+                                TokenData::Ident(tparam) => {
+                                    tparams.push(self.symbol(tparam));
+                                    if let Some(TokenData::Comma) = self.toks.peek().map(|t| &t.data) {
+                                        self.toks.next();
+                                    }
+                                },
+                                TokenData::Op(Op::Greater) => break,
+                                _ => return Err(ParseError {
+                                    highlighted_span: Some(next.span),
+                                    backtrace: self.trace.clone(),
+                                    error: ParseErrorKind::UnexpectedToken {
+                                        found: next,
+                                        expecting: ExpectingOneOf(EXPECTING_TPARAMS)
+                                    }
+                                })
+                            }
+                        }
+                        let name = self.expect_next_ident(&[TokenData::Ident("aliased type name")])?;
+                        (name, Some(tparams))
+                    },
+                    TokenData::Ident(name) => (name, None),
+                    _ => return Err(ParseError {
+                        highlighted_span: Some(after_type.span),
+                        backtrace: self.trace.clone(),
+                        error: ParseErrorKind::UnexpectedToken {
+                            found: after_type,
+                            expecting: ExpectingOneOf(EXPECTING_AFTER_TYPE)
+                        }
+                    })
+                };
 
                 self.trace
                     .push(format!("type definition '{}'", name).into());
@@ -330,6 +376,7 @@ impl<'src> Parser<'src> {
                     data: DefData::AliasDef {
                         name: self.symbol(name),
                         aliased,
+                        tparams
                     },
                     file,
                 })
@@ -1175,11 +1222,45 @@ impl<'src> Parser<'src> {
                 _ => {
                     self.trace.push("user-defined typename".into());
                     let name = self.symbol(name);
+                    let name = self.expect_next_path_with(
+                        &[TokenData::Ident("typename path part")],
+                        name,
+                    )?;
+                    
+                    let targs = if let Some(TokenData::Op(Op::Less)) = self.toks.peek().map(|t| &t.data) {
+                        let mut targs = vec![];
+                        const EXPECTING_TARGS: &[TokenData<'static>] = &[
+                            TokenData::Ident("argument typename"),
+                            TokenData::Op(Op::Greater)
+                        ];
+                        self.toks.next();
+
+                        loop {
+                            let peek = self.peek_tok(EXPECTING_TARGS)?.clone();
+                            match peek.data {
+
+                                TokenData::Op(Op::Greater) => {
+                                    self.toks.next();
+                                    break
+                                },
+                                _ => {
+                                    let targ = self.parse_first_typename()?;
+                                    targs.push(targ);
+                                    if let Some(TokenData::Comma) = self.toks.peek().map(|t| &t.data) {
+                                        self.toks.next();
+                                    }
+                                }
+                            }
+                        }
+
+                        Some(targs)
+                    } else {
+                        None
+                    };
+
                     let ty = UnresolvedType::UserDefined {
-                        name: self.expect_next_path_with(
-                            &[TokenData::Ident("typename path part")],
-                            name,
-                        )?,
+                        name,
+                        targs,
                     };
                     self.trace.pop();
                     Ok(ty)
