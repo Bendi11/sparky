@@ -1,26 +1,14 @@
-type none = ()
-type<T> some = T
-type<T> opt = T | none
+imp mod:puts
+type str = *u8
+type strbuf = *str
 
-fun test(opt<i32> a) -> i32 {
-    return match a {
-        none -> phi 101
-        some<i32> -> phi $i32 a
-    }
-}
-
-fun ext printf(*u8 fmt, i32 a)
+fun ext printf(str fmt, *u8 a)
 
 fun ext main(i32 argc, **u8 a) -> i32 {
-    let testing = $opt<i32> 1000
-    printf.("Optional: %d", $i32 testing)
-    testing = $opt<i32> none
-    return match testing {
-        none -> phi 101
-        some<i32> -> phi $i32 testing
-    }
-}
-
-fun ext __chkstk() {
-    return ()
+    puts.("Test spark program")
+    printf.("Hello World %s\n", if argc > 1 {
+            phi *( $**u8 ($u64 a) + 8u64)
+        } else { phi *a } 
+    )
+    return argc
 }

@@ -18,7 +18,7 @@ use inkwell::{
     AddressSpace, OptimizationLevel,
 };
 use quickscope::ScopeMap;
-
+use hashbrown::HashSet;
 use crate::{
     ast::{FunFlags, IntegerWidth, SymbolPath},
     codegen::ir::{FunId, FunctionType, ModId, SparkCtx, SparkDef, TypeData, TypeId},
@@ -56,6 +56,7 @@ pub struct LlvmCodeGenerator<'ctx, 'files> {
     continue_bb: Option<BasicBlock<'ctx>>,
     break_bb: Option<BasicBlock<'ctx>>,
     placed_terminator: bool,
+    codegened_funs: HashSet<FunId>,
 }
 
 /// Data needed to use a phi / break / continue statement
@@ -113,6 +114,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 )
                 .unwrap(),
             opts,
+            codegened_funs: HashSet::new()
         }
     }
 
@@ -231,6 +233,10 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
                 None
             }
         }) {
+            if self.codegened_funs.contains(&fun_id) {
+                    continue
+            }
+            self.codegened_funs.insert(fun_id);
             let fun = self.spark[fun_id].clone();
             let llvm_fun_ty = self.gen_fun_ty(fun.span, &fun.ty)?;
             let llvm_fun = if fun.flags.contains(FunFlags::EXTERN) {
