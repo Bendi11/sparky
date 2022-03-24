@@ -1,7 +1,7 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use hashbrown::HashMap;
 
-use crate::{Symbol, ast::{
+
+use crate::{ast::{
         Ast, AstNode, DefData, ElseExpr, FunProto, IfExpr, IntegerWidth, Literal, ParsedModule,
         UnresolvedType,
     }, error::DiagnosticManager, util::{
@@ -15,15 +15,8 @@ use super::ir::{FunId, FunctionType, ModId, SparkCtx, SparkDef, TypeData, TypeId
 pub struct Lowerer<'ctx, 'files> {
     ctx: &'ctx mut SparkCtx,
     diags: DiagnosticManager<'files>,
-    templates: HashMap<TypeId, TemplateData>,
 }
 
-/// Template data including template instantiations and original type
-#[derive(Clone, Debug)]
-pub struct TemplateData {
-    original: UnresolvedType,
-    tparams: Vec<Symbol>,
-}
 
 impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     /// Create a new AST lowerer
@@ -31,7 +24,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         Self {
             ctx,
             diags: DiagnosticManager::new(files),
-            templates: HashMap::new(),
         }
     }
 
@@ -53,17 +45,15 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                         .collect();
                     self.ctx[fun].body = Some(body);
                 }
-                DefData::AliasDef { name, aliased, tparams } => {
+                DefData::AliasDef { name, aliased } => {
                     let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap()
                     {
                         *id
                     } else {
                         unreachable!()
                     };
-                    if tparams.is_none() {
-                        let aliased = self.lower_type(id, Some(def.span), aliased, def.file, None);
-                        self.ctx[ty] = TypeData::Alias(*name, aliased);
-                    }
+                    let aliased = self.lower_type(id, Some(def.span), aliased, def.file);
+                    self.ctx[ty] = TypeData::Alias(*name, aliased);
                 }
                 _ => continue,
             }
@@ -115,17 +105,11 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
 
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
-                DefData::AliasDef { name, tparams, aliased } => {
+                DefData::AliasDef { name, aliased: _ } => {
                     let ty = self.ctx.new_empty_type();
                     self.ctx[module_id]
                         .defs
                         .define(name.clone(), SparkDef::TypeDef(def.file, ty));
-                    if let Some(tparams) = tparams {
-                        self.templates.insert(ty, TemplateData {
-                            original: aliased.clone(),
-                            tparams: tparams.clone(),
-                        });
-                    }
                 }
                 _ => continue,
             }
@@ -224,7 +208,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     name: name.clone(),
                     ty: ty
                         .as_ref()
-                        .map(|ty| self.lower_type(module, Some(ast.span), ty, file, None)),
+                        .map(|ty| self.lower_type(module, Some(ast.span), ty, file)),
                     mutable: *mutable,
                 },
                 AstNode::Assignment { lhs, rhs } => AstNode::Assignment {
@@ -245,7 +229,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     AstNode::UnaryExpr(*op, Box::new(self.lower_ast(module, rhs, file)))
                 }
                 AstNode::CastExpr(ty, rhs) => AstNode::CastExpr(
-                    self.lower_type(module, Some(ast.span), ty, file, None),
+                    self.lower_type(module, Some(ast.span), ty, file),
                     Box::new(self.lower_ast(module, rhs, file)),
                 ),
                 AstNode::PhiExpr(expr) => {
@@ -265,7 +249,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                         .iter()
                         .map(|(arm, case)| {
                             (
-                                self.lower_type(module, Some(ast.span), arm, file, None),
+                                self.lower_type(module, Some(ast.span), arm, file),
                                 self.lower_ast(module, case, file),
                             )
                         })
@@ -301,7 +285,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 ty,
                 fields
             } => Literal::Struct {
-                    ty: ty.as_ref().map(|ty| self.lower_type(module, Some(span), ty, file, None)),
+                    ty: ty.as_ref().map(|ty| self.lower_type(module, Some(span), ty, file)),
                     fields: fields
                         .iter()
                         .map(|(name, field)| (name.clone(), self.lower_ast(module, field, file)))
@@ -350,11 +334,11 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         file: FileId,
     ) -> FunId {
         let fun_ty = FunctionType {
-            return_ty: self.lower_type(module, Some(span), &proto.return_ty, file, None),
+            return_ty: self.lower_type(module, Some(span), &proto.return_ty, file),
             args: proto
                 .args
                 .iter()
-                .map(|(_, ty)| self.lower_type(module, Some(span), ty, file, None))
+                .map(|(_, ty)| self.lower_type(module, Some(span), ty, file))
                 .collect(),
         };
 
@@ -379,20 +363,19 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         span: Option<Span>,
         ty: &UnresolvedType,
         file: FileId,
-        targs: Option<&HashMap<Symbol, TypeId>>,
     ) -> TypeId {
         match ty {
             UnresolvedType::Struct { fields } => {
                 let fields = fields
                     .iter()
-                    .map(|(ty, name)| (self.lower_type(module, span, ty, file, targs), name.clone()))
+                    .map(|(ty, name)| (self.lower_type(module, span, ty, file), name.clone()))
                     .collect();
                 self.ctx.new_type(TypeData::Struct { fields })
             }
             UnresolvedType::Enum { variants } => {
                 let parts = variants
                     .iter()
-                    .map(|ty| self.lower_type(module, span, ty, file, targs))
+                    .map(|ty| self.lower_type(module, span, ty, file))
                     .collect();
                 self.ctx.new_type(TypeData::Enum { parts })
             }
@@ -417,34 +400,25 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
             UnresolvedType::Unit => SparkCtx::UNIT,
             UnresolvedType::Bool => SparkCtx::BOOL,
             UnresolvedType::Fun(ty) => {
-                let return_ty = self.lower_type(module, span, &ty.return_ty, file, targs);
+                let return_ty = self.lower_type(module, span, &ty.return_ty, file);
                 let args = ty
                     .arg_tys
                     .iter()
-                    .map(|ty| self.lower_type(module, span, ty, file, targs))
+                    .map(|ty| self.lower_type(module, span, ty, file))
                     .collect();
                 self.ctx
                     .new_type(TypeData::Function(FunctionType { return_ty, args }))
             }
             UnresolvedType::Pointer(ty) => {
-                let pointee = self.lower_type(module, span, ty, file, targs);
+                let pointee = self.lower_type(module, span, ty, file);
                 self.ctx.new_type(TypeData::Pointer(pointee))
             }
             UnresolvedType::Array { elements, len } => {
-                let element = self.lower_type(module, span, elements, file, targs);
+                let element = self.lower_type(module, span, elements, file);
                 self.ctx.new_type(TypeData::Array { element, len: *len })
             }
-            UnresolvedType::UserDefined { name, targs: targuments } => match self.ctx.get_def(module, name) {
-                Ok(SparkDef::TypeDef(_, type_id)) => {
-                    let targuments = targuments
-                        .clone()
-                        .map(|e| e
-                            .iter()
-                            .map(|arg| self.lower_type(module, span, arg, file, targs))
-                            .collect::<Vec<_>>()
-                        );
-                    self.get_template_type(module, file, span, type_id, targuments)
-                },
+            UnresolvedType::UserDefined { name } => match self.ctx.get_def(module, name) {
+                Ok(SparkDef::TypeDef(_, type_id)) => type_id,
                 Ok(..) => {
                     self.diags.emit({
                         let diag = Diagnostic::error()
@@ -457,15 +431,12 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     });
                     std::process::exit(-1);
                 }
-                Err(_) => if let Some(targ) = targs.map(|targs| targs.get(&name.last())).flatten() {
-                    *targ 
-                } else {
+                Err(_) => {
                     self.diags.emit({
                         let diag =
                             Diagnostic::error().with_message(format!(
-                                "type '{}' not found (generics: {:#?})",
+                                "type '{}' not found",
                                 name,
-                                targs
                             ));
                         if let Some(span) = span {
                             diag.with_labels(vec![Label::primary(file, span)])
@@ -473,52 +444,9 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                             diag
                         }
                     });
-                    std::process::exit(-1);
+                    std::process::exit(-1)
                 }
             },
-        }
-    }
-    
-    /// Get a new template instantiation of a type or return a stored one
-    pub fn get_template_type(
-        &mut self, 
-        module: ModId,
-        file: FileId,
-        span: Option<Span>,
-        ty: TypeId, 
-        targs: Option<Vec<TypeId>>
-    ) -> TypeId {
-        match targs {
-            Some(targs) => match self.templates.get(&ty) {
-                Some(tdata) => {
-                    let tdata = tdata.clone();
-
-                    let targuments = tdata.tparams
-                        .iter()
-                        .copied()
-                        .zip(targs.into_iter())
-                        .collect::<HashMap<_, _>>();
-
-                    self.lower_type(module, span, &tdata.original, file, Some(&targuments))
-                },
-                //Create a new template type
-                None => {
-                    let diag = Diagnostic::error()
-                        .with_message(format!(
-                                "Cannot use template arguments with non-template type {}",
-                                self.ctx.get_type_name(ty),
-                            )
-                        );
-                    let diag = if let Some(span) = span {
-                        diag.with_labels(vec![
-                            Label::primary(file, span)
-                        ])
-                    } else { diag };
-                    self.diags.emit(diag);
-                    std::process::exit(-1);
-                }
-            },
-            None => ty,
         }
     }
 }
