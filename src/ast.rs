@@ -432,8 +432,6 @@ pub enum UnresolvedType {
     UserDefined {
         /// The name of the user-defined type
         name: SymbolPath,
-        /// Template argument value list
-        targs: Option<Vec<UnresolvedType>>
     },
 }
 

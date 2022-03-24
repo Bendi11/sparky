@@ -1226,41 +1226,9 @@ impl<'src> Parser<'src> {
                         &[TokenData::Ident("typename path part")],
                         name,
                     )?;
-                    
-                    let targs = if let Some(TokenData::Op(Op::Less)) = self.toks.peek().map(|t| &t.data) {
-                        let mut targs = vec![];
-                        const EXPECTING_TARGS: &[TokenData<'static>] = &[
-                            TokenData::Ident("argument typename"),
-                            TokenData::Op(Op::Greater)
-                        ];
-                        self.toks.next();
-
-                        loop {
-                            let peek = self.peek_tok(EXPECTING_TARGS)?.clone();
-                            match peek.data {
-
-                                TokenData::Op(Op::Greater) => {
-                                    self.toks.next();
-                                    break
-                                },
-                                _ => {
-                                    let targ = self.parse_first_typename()?;
-                                    targs.push(targ);
-                                    if let Some(TokenData::Comma) = self.toks.peek().map(|t| &t.data) {
-                                        self.toks.next();
-                                    }
-                                }
-                            }
-                        }
-
-                        Some(targs)
-                    } else {
-                        None
-                    };
-
+                     
                     let ty = UnresolvedType::UserDefined {
                         name,
-                        targs,
                     };
                     self.trace.pop();
                     Ok(ty)

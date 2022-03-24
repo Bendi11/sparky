@@ -15,15 +15,8 @@ use super::ir::{FunId, FunctionType, ModId, SparkCtx, SparkDef, TypeData, TypeId
 pub struct Lowerer<'ctx, 'files> {
     ctx: &'ctx mut SparkCtx,
     diags: DiagnosticManager<'files>,
-    templates: HashMap<TypeId, TemplateData>,
 }
 
-/// Template data including template instantiations and original type
-#[derive(Clone, Debug)]
-pub struct TemplateData {
-    original: UnresolvedType,
-    tparams: Vec<Symbol>,
-}
 
 impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     /// Create a new AST lowerer
@@ -31,7 +24,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
         Self {
             ctx,
             diags: DiagnosticManager::new(files),
-            templates: HashMap::new(),
         }
     }
 
@@ -120,12 +112,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     self.ctx[module_id]
                         .defs
                         .define(name.clone(), SparkDef::TypeDef(def.file, ty));
-                    if let Some(tparams) = tparams {
-                        self.templates.insert(ty, TemplateData {
-                            original: aliased.clone(),
-                            tparams: tparams.clone(),
-                        });
-                    }
                 }
                 _ => continue,
             }
@@ -434,17 +420,8 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                 let element = self.lower_type(module, span, elements, file, targs);
                 self.ctx.new_type(TypeData::Array { element, len: *len })
             }
-            UnresolvedType::UserDefined { name, targs: targuments } => match self.ctx.get_def(module, name) {
-                Ok(SparkDef::TypeDef(_, type_id)) => {
-                    let targuments = targuments
-                        .clone()
-                        .map(|e| e
-                            .iter()
-                            .map(|arg| self.lower_type(module, span, arg, file, targs))
-                            .collect::<Vec<_>>()
-                        );
-                    self.get_template_type(module, file, span, type_id, targuments)
-                },
+            UnresolvedType::UserDefined { name } => match self.ctx.get_def(module, name) {
+                Ok(SparkDef::TypeDef(_, type_id)) => type_id,
                 Ok(..) => {
                     self.diags.emit({
                         let diag = Diagnostic::error()
@@ -476,49 +453,6 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                     std::process::exit(-1);
                 }
             },
-        }
-    }
-    
-    /// Get a new template instantiation of a type or return a stored one
-    pub fn get_template_type(
-        &mut self, 
-        module: ModId,
-        file: FileId,
-        span: Option<Span>,
-        ty: TypeId, 
-        targs: Option<Vec<TypeId>>
-    ) -> TypeId {
-        match targs {
-            Some(targs) => match self.templates.get(&ty) {
-                Some(tdata) => {
-                    let tdata = tdata.clone();
-
-                    let targuments = tdata.tparams
-                        .iter()
-                        .copied()
-                        .zip(targs.into_iter())
-                        .collect::<HashMap<_, _>>();
-
-                    self.lower_type(module, span, &tdata.original, file, Some(&targuments))
-                },
-                //Create a new template type
-                None => {
-                    let diag = Diagnostic::error()
-                        .with_message(format!(
-                                "Cannot use template arguments with non-template type {}",
-                                self.ctx.get_type_name(ty),
-                            )
-                        );
-                    let diag = if let Some(span) = span {
-                        diag.with_labels(vec![
-                            Label::primary(file, span)
-                        ])
-                    } else { diag };
-                    self.diags.emit(diag);
-                    std::process::exit(-1);
-                }
-            },
-            None => ty,
         }
     }
 }
