@@ -376,7 +376,6 @@ impl<'src> Parser<'src> {
                     data: DefData::AliasDef {
                         name: self.symbol(name),
                         aliased,
-                        tparams
                     },
                     file,
                 })

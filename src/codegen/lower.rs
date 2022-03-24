@@ -45,17 +45,13 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
                         .collect();
                     self.ctx[fun].body = Some(body);
                 }
-                DefData::AliasDef { name, aliased, tparams } => {
+                DefData::AliasDef { name, aliased } => {
                     let ty = if let SparkDef::TypeDef(_, id) = self.ctx[id].defs.get(name).unwrap()
                     {
                         *id
                     } else {
                         unreachable!()
                     };
-                    if tparams.is_none() {
-                        let aliased = self.lower_type(id, Some(def.span), aliased, def.file, None);
-                        self.ctx[ty] = TypeData::Alias(*name, aliased);
-                    }
                 }
                 _ => continue,
             }
@@ -107,7 +103,7 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
 
         for def in parsed.defs.iter().map(|(_, v)| v) {
             match &def.data {
-                DefData::AliasDef { name, tparams, aliased } => {
+                DefData::AliasDef { name, aliased } => {
                     let ty = self.ctx.new_empty_type();
                     self.ctx[module_id]
                         .defs
