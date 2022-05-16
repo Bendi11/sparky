@@ -1,16 +1,16 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Literal, Let, Match},
+    ast::{BigInt, Let, Literal, Match},
     Symbol,
 };
 use smallvec::SmallVec;
 
 use crate::{
     ast::{
-        Expr, ExprNode, Stmt, StmtNode, Def, DefData, ElseExpr, FunFlags, FunProto, If, IntegerWidth,
-        NumberLiteral, NumberLiteralAnnotation, ParsedModule, SymbolPath, UnresolvedFunType,
-        UnresolvedType,
+        Def, DefData, ElseExpr, Expr, ExprNode, FunFlags, FunProto, If, IntegerWidth,
+        NumberLiteral, NumberLiteralAnnotation, ParsedModule, Stmt, StmtNode, SymbolPath,
+        UnresolvedFunType, UnresolvedType,
     },
     parse::token::Op,
     util::{files::FileId, loc::Span},
@@ -82,16 +82,21 @@ impl<'src> Parser<'src> {
             trace: SmallVec::new(),
         }
     }
-    
+
     /// Shorthand create a new [ParseError] from an unexpected token
     #[inline]
-    fn unexpected(&self, span: Span, found: Token<'src>, expecting: &'static[TokenData<'static>]) -> ParseError<'src> {
+    fn unexpected(
+        &self,
+        span: Span,
+        found: Token<'src>,
+        expecting: &'static [TokenData<'static>],
+    ) -> ParseError<'src> {
         ParseError {
             backtrace: self.trace.clone(),
             highlighted_span: Some(span),
             error: ParseErrorKind::UnexpectedToken {
                 found,
-                expecting: ExpectingOneOf(expecting)
+                expecting: ExpectingOneOf(expecting),
             },
         }
     }
@@ -391,7 +396,7 @@ impl<'src> Parser<'src> {
         };
         Ok((body, Span::new(start_loc, end_loc)))
     }
-    
+
     /// Parse a statement from the token stream
     fn parse_stmt(&mut self) -> ParseResult<'src, Stmt> {
         const EXPECTING_FOR_STMT: &[TokenData<'static>] = &[
@@ -435,9 +440,9 @@ impl<'src> Parser<'src> {
                 let (m, span) = self.parse_match()?;
                 Ok(Stmt {
                     span,
-                    node: StmtNode::Match(m)
+                    node: StmtNode::Match(m),
                 })
-            },
+            }
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
                     TokenData::Ident("expression"),
@@ -459,20 +464,27 @@ impl<'src> Parser<'src> {
                         var_type = Some(typename);
 
                         self.parse_expr()?
-                    },
+                    }
                     _ => self.parse_expr()?,
                 };
 
                 self.trace.pop();
-                
-                let assigned = if self.toks.peek().map(|tok| tok.data == TokenData::Assign).unwrap_or(false) {
+
+                let assigned = if self
+                    .toks
+                    .peek()
+                    .map(|tok| tok.data == TokenData::Assign)
+                    .unwrap_or(false)
+                {
                     self.toks.next(); //Consume the assignment operator
-                    Some(Box::new(self.parse_expr()?)) 
-                } else { None };
+                    Some(Box::new(self.parse_expr()?))
+                } else {
+                    None
+                };
 
                 Ok(Stmt {
                     span: next.span,
-                    node: StmtNode::Let(Let{
+                    node: StmtNode::Let(Let {
                         ty: var_type,
                         let_expr: Box::new(expr),
                         assigned,
@@ -502,7 +514,7 @@ impl<'src> Parser<'src> {
                     node: StmtNode::Return(Box::new(returned)),
                 })
             }
-            _ => Err(self.unexpected(peeked.span, peeked.clone(), EXPECTING_FOR_STMT))
+            _ => Err(self.unexpected(peeked.span, peeked.clone(), EXPECTING_FOR_STMT)),
         }?;
 
         Ok(stmt)
@@ -524,9 +536,9 @@ impl<'src> Parser<'src> {
                 let (m, span) = self.parse_match()?;
                 Expr {
                     span,
-                    node: ExprNode::Match(m)
+                    node: ExprNode::Match(m),
                 }
-            },
+            }
             TokenData::Ident("true") => {
                 self.toks.next();
                 Expr {
@@ -589,12 +601,20 @@ impl<'src> Parser<'src> {
                         match next.data {
                             TokenData::Comma => continue,
                             TokenData::CloseBracket(BracketType::Square) => break elements,
-                            _ => return Err(self.unexpected(
-                                    (peeked.span.from, elements.last().map(|last| last.span.to).unwrap_or(peeked.span.to)).into(),
+                            _ => {
+                                return Err(self.unexpected(
+                                    (
+                                        peeked.span.from,
+                                        elements
+                                            .last()
+                                            .map(|last| last.span.to)
+                                            .unwrap_or(peeked.span.to),
+                                    )
+                                        .into(),
                                     next,
-                                    EXPECTING_FOR_ARRAY
-                                )
-                            )
+                                    EXPECTING_FOR_ARRAY,
+                                ))
+                            }
                         }
                     }
                 };
@@ -622,13 +642,15 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: ExprNode::Literal(Literal::Number(num)),
                 }
-            },
+            }
             TokenData::Pound => {
                 const EXPECTING_AFTER_POUND: &[TokenData<'static>] = &[
-                    TokenData::Ident("typename"), TokenData::OpenBracket(BracketType::Curly)
+                    TokenData::Ident("typename"),
+                    TokenData::OpenBracket(BracketType::Curly),
                 ];
                 const EXPECTING_AFTER_BRACE: &[TokenData<'static>] = &[
-                    TokenData::Ident("field name"), TokenData::CloseBracket(BracketType::Curly)
+                    TokenData::Ident("field name"),
+                    TokenData::CloseBracket(BracketType::Curly),
                 ];
 
                 let start_loc = peeked.span.from;
@@ -646,22 +668,23 @@ impl<'src> Parser<'src> {
                 let end_loc = loop {
                     let next = self.next_tok(EXPECTING_AFTER_BRACE)?;
                     match &next.data {
-                        TokenData::CloseBracket(BracketType::Curly) => {
-                            break next.span.to
-                        },
+                        TokenData::CloseBracket(BracketType::Curly) => break next.span.to,
                         TokenData::Ident(name) => {
                             let name = self.symbol(name);
                             self.expect_next(&[TokenData::Assign])?;
                             let expr = self.parse_expr()?;
-                            if let TokenData::Comma = self.peek_tok(&[
-                                TokenData::CloseBracket(BracketType::Curly),
-                                TokenData::Comma
-                            ])?.data {
-                                    self.toks.next();
-                                }
+                            if let TokenData::Comma = self
+                                .peek_tok(&[
+                                    TokenData::CloseBracket(BracketType::Curly),
+                                    TokenData::Comma,
+                                ])?
+                                .data
+                            {
+                                self.toks.next();
+                            }
                             fields.push((name, expr));
-                        },
-                        _ => return Err(self.unexpected(next.span, next, EXPECTING_AFTER_BRACE))
+                        }
+                        _ => return Err(self.unexpected(next.span, next, EXPECTING_AFTER_BRACE)),
                     }
                 };
 
@@ -672,13 +695,13 @@ impl<'src> Parser<'src> {
                     node: ExprNode::Literal(Literal::Struct {
                         ty: typename,
                         fields,
-                    })
+                    }),
                 }
-            },
+            }
             TokenData::OpenBracket(BracketType::Smooth)
             | TokenData::Ident(_)
             | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr()?,
-            _ => return Err(self.unexpected(peeked.span, peeked, Self::EXPECTED_FOR_EXPRESSION))
+            _ => return Err(self.unexpected(peeked.span, peeked, Self::EXPECTED_FOR_EXPRESSION)),
         };
 
         self.parse_expr_rhs(expr)
@@ -802,7 +825,7 @@ impl<'src> Parser<'src> {
                 matched: Box::new(matched),
                 cases,
             },
-            (start_span, end_span).into()
+            (start_span, end_span).into(),
         ))
     }
 
@@ -926,7 +949,7 @@ impl<'src> Parser<'src> {
             TokenData::Period => {
                 const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] = &[
                     TokenData::Ident("structure field name"),
-                    TokenData::OpenBracket(BracketType::Smooth)
+                    TokenData::OpenBracket(BracketType::Smooth),
                 ];
 
                 self.toks.next(); //Eat the period character
@@ -964,7 +987,7 @@ impl<'src> Parser<'src> {
                             },
                             node: ExprNode::Call(Box::new(accessing), args),
                         })
-                    },
+                    }
                     TokenData::Ident(item) => {
                         self.trace.pop();
 
@@ -973,15 +996,17 @@ impl<'src> Parser<'src> {
                             span: (accessing.span.from, peeked.span.to).into(),
                             node: ExprNode::Member(Box::new(accessing), symbol),
                         })
-                    },
-                    _ => return Err(ParseError {
-                        highlighted_span: Some(next.span),
-                        backtrace: self.trace.clone(),
-                        error: ParseErrorKind::UnexpectedToken {
-                            found: next,
-                            expecting: ExpectingOneOf(EXPECTING_AFTER_PERIOD)
-                        }
-                    })
+                    }
+                    _ => {
+                        return Err(ParseError {
+                            highlighted_span: Some(next.span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::UnexpectedToken {
+                                found: next,
+                                expecting: ExpectingOneOf(EXPECTING_AFTER_PERIOD),
+                            },
+                        })
+                    }
                 }
             }
             TokenData::OpenBracket(BracketType::Square) => {
@@ -994,10 +1019,7 @@ impl<'src> Parser<'src> {
 
                 self.parse_access(Expr {
                     span: (accessing.span.from, peeked.span.to).into(),
-                    node: ExprNode::Index(
-                        Box::new(accessing),
-                        Box::new(index),
-                    ),
+                    node: ExprNode::Index(Box::new(accessing), Box::new(index)),
                 })
             }
             _ => Ok(accessing),
@@ -1147,14 +1169,10 @@ impl<'src> Parser<'src> {
                 _ => {
                     self.trace.push("user-defined typename".into());
                     let name = self.symbol(name);
-                    let name = self.expect_next_path_with(
-                        &[TokenData::Ident("typename path part")],
-                        name,
-                    )?;
-                     
-                    let ty = UnresolvedType::UserDefined {
-                        name,
-                    };
+                    let name = self
+                        .expect_next_path_with(&[TokenData::Ident("typename path part")], name)?;
+
+                    let ty = UnresolvedType::UserDefined { name };
                     self.trace.pop();
                     Ok(ty)
                 }
@@ -1459,7 +1477,6 @@ impl fmt::Display for ExpectingOneOf {
             first = false;
 
             expecting.fmt(f)?;
-
         }
 
         Ok(())

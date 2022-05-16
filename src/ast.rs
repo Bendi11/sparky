@@ -174,21 +174,21 @@ pub struct FunProto {
     pub return_ty: UnresolvedType,
 }
 
-/// A let statement that either assigns a value to an expression or 
+/// A let statement that either assigns a value to an expression or
 /// creates a new variable
 #[derive(Clone, PartialEq, Eq)]
 pub struct Let {
     /// If this let expression was declared with the `mut` keyword
     pub mutable: bool,
-    
+
     /// Type optionally used to aid inference
     pub ty: Option<UnresolvedType>,
-    
+
     /// The expression that the let statement contains
     pub let_expr: Box<Expr>,
-    
+
     /// Optional value being assigned to the expression
-    pub assigned: Option<Box<Expr>>
+    pub assigned: Option<Box<Expr>>,
 }
 
 /// A match expression that matches an enum expression based on its type
@@ -198,7 +198,6 @@ pub struct Match {
     pub matched: Box<Expr>,
     //The possible cases being tested for
     pub cases: Vec<(UnresolvedType, Stmt)>,
-
 }
 
 /// A statement at the top level of a function
@@ -210,15 +209,15 @@ pub enum StmtNode {
     Block(Vec<Stmt>),
     /// Matching an enum based on its type
     Match(Match),
-    
+
     /// Break from something with a value
     Phi(Box<Expr>),
     /// Return a value from the currently defined function
     Return(Box<Expr>),
-    
+
     /// Assignment or variable declaration
     Let(Let),
-    
+
     /// Control flow keyword used to break from a loop
     Break,
     /// Control flow keyword used to continue to the next iteration of a loop
