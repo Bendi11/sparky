@@ -234,7 +234,7 @@ pub enum AstNode {
 }
 
 /// An enumeration of all parseable literals
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Literal<T: Clone + Hash + Eq> {
     Number(NumberLiteral),
     String(String),
@@ -247,7 +247,7 @@ pub enum Literal<T: Clone + Hash + Eq> {
     Unit,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct IfExpr {
     /// Conditional expression
     pub cond: Box<Ast>,
@@ -258,7 +258,7 @@ pub struct IfExpr {
 }
 
 /// Enum representing what can come after an if expression's body
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ElseExpr {
     ElseIf(Box<IfExpr>),
     Else(Vec<Ast>),
@@ -266,7 +266,7 @@ pub enum ElseExpr {
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Ast {
     /// The AST node's data
     pub node: AstNode,
@@ -275,7 +275,7 @@ pub struct Ast {
 }
 
 /// An enum representing all parseable definitions
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum DefData {
     /// A function definition with body and prototype
     FunDef(FunProto<UnresolvedType>, Vec<Ast>),
@@ -304,7 +304,7 @@ impl DefData {
 
 /// A structure holding both [DefData] and metadata
 /// used for error messages like location in source
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Def {
     pub data: DefData,
     pub span: Span,
@@ -313,7 +313,7 @@ pub struct Def {
 
 /// Structure representing a fully parsed module with easy access
 /// to all defined types and functions
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ParsedModule {
     /// A map of names to all definitions in the module
     pub defs: HashMap<Symbol, Def>,
@@ -435,121 +435,4 @@ pub enum IntegerWidth {
     Sixteen = 16,
     ThirtyTwo = 32,
     SixtyFour = 64,
-}
-
-impl std::fmt::Debug for AstNode {
-    fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Match { matched, cases: _ } => {
-                write!(w, "MATCH {:?}", matched.node)?;
-                writeln!(w, " {{")?;
-                //for (literal, case_expr) in cases.iter() {}
-                write!(w, "}}")
-            }
-            Self::Block(stmts) => {
-                writeln!(w, "BLOCK {{")?;
-                for stmt in stmts {
-                    writeln!(w, "{:?}", stmt.node)?;
-                }
-                write!(w, "}}")
-            }
-            Self::Literal(Literal::Array(parts)) => {
-                write!(w, "ARRAY [ ")?;
-                for part in parts.iter() {
-                    write!(w, "{:?}, ", part.node)?;
-                }
-                write!(w, " ]")
-            }
-            Self::Break => write!(w, "BREAK"),
-            Self::Continue => write!(w, "CONTINUE"),
-            Self::Literal(Literal::Number(num)) => write!(w, "NUMBER LITERAL {:?}", num),
-            Self::Literal(Literal::String(string)) => write!(w, "STRING LITERAL {:?}", string),
-            Self::Literal(Literal::Struct{..}) => write!(w, "STRUCT LITERAL"),
-            Self::Literal(Literal::Unit) => write!(w, "UNIT LITERAL ()"),
-            Self::Return(expr) => {
-                write!(w, "RETURN {:?}", expr.node)
-            }
-            Self::PhiExpr(expr) => {
-                write!(w, "PHI {:?}", expr.node)
-            }
-            Self::CastExpr(cast, casted) => {
-                write!(w, "CAST ${:?} {:?}", cast, casted.node)
-            }
-            Self::Literal(Literal::Bool(boolean)) => write!(w, "BOOL {}", boolean),
-            Self::Assignment { lhs, rhs } => {
-                write!(w, "ASSIGN {:?}", lhs.node)?;
-                write!(w, " = {:?}", rhs.node)
-            }
-            Self::UnaryExpr(op, expr) => {
-                write!(w, "UNARY {} {:?}", op, expr.node)
-            }
-            Self::VarDeclaration { name, ty, mutable } => write!(
-                w,
-                "VARDEC {} ({:?}) {}",
-                if *mutable { "mut" } else { "let" },
-                ty,
-                name
-            ),
-            Self::Access(path) => {
-                write!(w, "ACCESSS ")?;
-                for part in path.iter() {
-                    write!(w, "{}:", part)?;
-                }
-                Ok(())
-            }
-            Self::FunCall(called, args) => {
-                write!(w, "FUNCALL {:?}", called.node)?;
-
-                write!(w, "( ")?;
-                for arg in args {
-                    write!(w, "{:?}, ", arg.node)?;
-                }
-                write!(w, " )")
-            }
-            Self::MemberAccess(lhs, index) => {
-                write!(w, "MEMBERACCESS {:?}", lhs.node)?;
-                write!(w, ".")?;
-                write!(w, "{}", index)
-            }
-            Self::BinExpr(lhs, op, rhs) => {
-                write!(w, "BIN {:?}", lhs.node)?;
-                write!(w, " {} ", op)?;
-                write!(w, "{:?}", rhs.node)
-            }
-            Self::IfExpr(ifexpr) => {
-                fn display_if(
-                    ifexpr: &IfExpr,
-                    w: &mut std::fmt::Formatter<'_>,
-                ) -> std::fmt::Result {
-                    write!(w, "IF {:?}", ifexpr.cond.node)?;
-                    writeln!(w, " {{")?;
-                    for expr in ifexpr.body.iter() {
-                        writeln!(w, "{:?}", expr.node)?;
-                    }
-                    write!(w, "}}")?;
-
-                    if let Some(ref else_expr) = ifexpr.else_expr {
-                        match else_expr {
-                            ElseExpr::ElseIf(another_if) => display_if(&*another_if, w),
-                            ElseExpr::Else(stmts) => {
-                                for expr in stmts.iter() {
-                                    writeln!(w, "{:?}", expr.node)?;
-                                }
-                                write!(w, "}}")
-                            }
-                        }?
-                    }
-                    Ok(())
-                }
-
-                display_if(ifexpr, w)
-            }
-            Self::Index { object, index } => {
-                write!(w, "INDEX {:?}", object.node)?;
-                write!(w, " [ ")?;
-                write!(w, "{:?}", index.node)?;
-                write!(w, " ]")
-            }
-        }
-    }
 }
