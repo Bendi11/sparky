@@ -176,63 +176,60 @@ pub struct FunProto<T: Clone + Hash + Eq> {
 
 /// A node in an Abstract Syntax Tree
 #[derive(Clone, PartialEq, Eq)]
-pub enum AstNode<T = UnresolvedType>
-where
-    T: Clone + Hash + Eq,
-{
+pub enum AstNode {
     /// A variable / enum / constant / function access by name
     Access(SymbolPath),
     /// Member item access with the '.' operator
-    MemberAccess(Box<Ast<T>>, Symbol),
+    MemberAccess(Box<Ast>, Symbol),
     /// An array-like index expression using '[' ']'
     Index {
-        object: Box<Ast<T>>,
-        index: Box<Ast<T>>,
+        object: Box<Ast>,
+        index: Box<Ast>,
     },
     /// Function call with argument expressions
-    FunCall(Box<Ast<T>>, Vec<Ast<T>>),
+    FunCall(Box<Ast>, Vec<Ast>),
     /// If statement / expression
-    IfExpr(IfExpr<T>),
+    IfExpr(IfExpr),
     /// A variable declaration using the `let` or `mut` keywords
     VarDeclaration {
         /// The name of the variable being declared
         name: Symbol,
         /// Optionally specified type of the variable
-        ty: Option<T>,
+        ty: Option<UnresolvedType>,
         /// If the variable is mutable
         mutable: bool,
     },
     /// A value is being assigned to another value
     Assignment {
         /// The left hand side of the assignment expression
-        lhs: Box<Ast<T>>,
+        lhs: Box<Ast>,
         /// The value being assigned to the left hand side
-        rhs: Box<Ast<T>>,
+        rhs: Box<Ast>,
     },
     /// A binary expression with LHS, operator, and RHS
-    BinExpr(Box<Ast<T>>, Op, Box<Ast<T>>),
+    BinExpr(Box<Ast>, Op, Box<Ast>),
     /// A unary expression with only operator and RHS
-    UnaryExpr(Op, Box<Ast<T>>),
+    UnaryExpr(Op, Box<Ast>),
     /// Phi returning a value from the current block
-    PhiExpr(Box<Ast<T>>),
+    PhiExpr(Box<Ast>),
     /// Returning an optional expression from a function
-    Return(Box<Ast<T>>),
+    Return(Box<Ast>),
     /// Casting an expression to a type
-    CastExpr(T, Box<Ast<T>>),
+    CastExpr(UnresolvedType, Box<Ast>),
     /// A single constant literal
-    Literal(Literal<T>),
+    Literal(Literal<UnresolvedType>),
     /// Breaking out of a loop
     Break,
     /// Continuing in a loop
     Continue,
     /// A block of statements
-    Block(Vec<Ast<T>>),
+    Block(Vec<Ast>),
     /// A match statement
     Match {
         //The expression being matched
-        matched: Box<Ast<T>>,
+        matched: Box<Ast>,
         //The possible cases being tested for
-        cases: Vec<(T, Ast<T>)>,
+        cases: Vec<(UnresolvedType, Ast)>,
     },
 }
 
@@ -242,40 +239,37 @@ pub enum Literal<T: Clone + Hash + Eq> {
     Number(NumberLiteral),
     String(String),
     Bool(bool),
-    Array(Vec<Ast<T>>),
+    Array(Vec<Ast>),
     Struct {
         ty: Option<T>,
-        fields: Vec<(Symbol, Ast<T>)>,
+        fields: Vec<(Symbol, Ast)>,
     },
     Unit,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IfExpr<T: Clone + Hash + Eq> {
+pub struct IfExpr {
     /// Conditional expression
-    pub cond: Box<Ast<T>>,
+    pub cond: Box<Ast>,
     /// The body of the if statement
-    pub body: Vec<Ast<T>>,
+    pub body: Vec<Ast>,
     /// Either another if statement or a body
-    pub else_expr: Option<ElseExpr<T>>,
+    pub else_expr: Option<ElseExpr>,
 }
 
 /// Enum representing what can come after an if expression's body
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ElseExpr<T: Clone + Hash + Eq> {
-    ElseIf(Box<IfExpr<T>>),
-    Else(Vec<Ast<T>>),
+pub enum ElseExpr {
+    ElseIf(Box<IfExpr>),
+    Else(Vec<Ast>),
 }
 
 /// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
 /// error messages later in the compiler
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Ast<T = UnresolvedType>
-where
-    T: Clone + Hash + Eq,
-{
+pub struct Ast {
     /// The AST node's data
-    pub node: AstNode<T>,
+    pub node: AstNode,
     /// The span of the source string that this AST node occupies
     pub span: Span,
 }
@@ -443,7 +437,7 @@ pub enum IntegerWidth {
     SixtyFour = 64,
 }
 
-impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
+impl std::fmt::Debug for AstNode {
     fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Match { matched, cases: _ } => {
@@ -523,8 +517,8 @@ impl<T: std::fmt::Debug + Clone + Hash + Eq> std::fmt::Debug for AstNode<T> {
                 write!(w, "{:?}", rhs.node)
             }
             Self::IfExpr(ifexpr) => {
-                fn display_if<T: Clone + Eq + Hash + std::fmt::Debug>(
-                    ifexpr: &IfExpr<T>,
+                fn display_if(
+                    ifexpr: &IfExpr,
                     w: &mut std::fmt::Formatter<'_>,
                 ) -> std::fmt::Result {
                     write!(w, "IF {:?}", ifexpr.cond.node)?;

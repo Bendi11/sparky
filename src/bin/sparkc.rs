@@ -5,7 +5,6 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use inkwell::context::Context;
 use spark::{
     ast::ParsedModule,
-    codegen::{ir::SparkCtx, llvm::LlvmCodeGenerator, lower::Lowerer},
     error::DiagnosticManager,
     parse::{ParseError, Parser},
     util::files::{CompiledFile, FileId, Files},
@@ -181,23 +180,6 @@ fn main() {
             root
         }
     };
-
-    let mut ctx = SparkCtx::new();
-    let mut lowerer = Lowerer::new(&mut ctx, &files);
-
-    let root_id = lowerer.lower_module(&root_module).unwrap_or_else(|_| std::process::exit(-1));
-    let mut llvm_ctx = Context::create();
-    let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files, opts.clone());
-    let llvm_root = generator.codegen_module(root_id).unwrap_or_else(|_| std::process::exit(-1));
-    if let Err(e) = llvm_root.verify() {
-        eprintln!("Failure to verify generated LLVM module: {}", e);
-        if opts.out_type != OutputFileType::LLVMIR {
-            std::process::exit(-1);
-        }
-    }
-
-    generator.finish(llvm_root);
-    //llvm_root.print_to_stderr();
 }
 
 fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {
