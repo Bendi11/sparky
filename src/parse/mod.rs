@@ -459,7 +459,7 @@ impl<'src> Parser<'src> {
 
                 Ok(Ast {
                     span: next.span,
-                    node: AstNode::VarDeclaration {
+                    node: AstNode::Let {
                         name,
                         ty: var_type,
                         mutable,

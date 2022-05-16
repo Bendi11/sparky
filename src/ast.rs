@@ -163,96 +163,119 @@ impl fmt::Display for SymbolPath {
 
 /// Data structure storing a function prototype
 #[derive(Clone, Debug)]
-pub struct FunProto<T: Clone + Hash + Eq> {
+pub struct FunProto {
     /// User-defined name of the function
     pub name: Symbol,
     /// Any flags that the function has
     pub flags: FunFlags,
     /// Argument name and types
-    pub args: Vec<(Symbol, T)>,
+    pub args: Vec<(Symbol, UnresolvedType)>,
     /// Return type of the function
-    pub return_ty: T,
+    pub return_ty: UnresolvedType,
 }
 
-/// A node in an Abstract Syntax Tree
+/// A let statement that either assigns a value to an expression or 
+/// creates a new variable
 #[derive(Clone, PartialEq, Eq)]
-pub enum AstNode {
-    /// A variable / enum / constant / function access by name
-    Access(SymbolPath),
-    /// Member item access with the '.' operator
-    MemberAccess(Box<Ast>, Symbol),
-    /// An array-like index expression using '[' ']'
-    Index {
-        object: Box<Ast>,
-        index: Box<Ast>,
-    },
-    /// Function call with argument expressions
-    FunCall(Box<Ast>, Vec<Ast>),
-    /// If statement / expression
-    IfExpr(IfExpr),
-    /// A variable declaration using the `let` or `mut` keywords
-    VarDeclaration {
-        /// The name of the variable being declared
-        name: Symbol,
-        /// Optionally specified type of the variable
-        ty: Option<UnresolvedType>,
-        /// If the variable is mutable
-        mutable: bool,
-    },
-    /// A value is being assigned to another value
-    Assignment {
-        /// The left hand side of the assignment expression
-        lhs: Box<Ast>,
-        /// The value being assigned to the left hand side
-        rhs: Box<Ast>,
-    },
-    /// A binary expression with LHS, operator, and RHS
-    BinExpr(Box<Ast>, Op, Box<Ast>),
-    /// A unary expression with only operator and RHS
-    UnaryExpr(Op, Box<Ast>),
-    /// Phi returning a value from the current block
-    PhiExpr(Box<Ast>),
-    /// Returning an optional expression from a function
-    Return(Box<Ast>),
-    /// Casting an expression to a type
-    CastExpr(UnresolvedType, Box<Ast>),
-    /// A single constant literal
-    Literal(Literal<UnresolvedType>),
-    /// Breaking out of a loop
+pub struct Let {
+    /// If this let expression was declared with the `mut` keyword
+    pub mutable: bool,
+    
+    /// The expression that the let statement contains
+    pub let_expr: Box<Expr>,
+    
+    /// Optional value being assigned to the expression
+    pub assigned: Option<Box<Expr>>
+}
+
+/// A match expression that matches an enum expression based on its type
+#[derive(Clone, PartialEq, Eq)]
+pub struct Match {
+    //The expression being matched
+    matched: Box<Expr>,
+    //The possible cases being tested for
+    cases: Vec<(UnresolvedType, Stmt)>,
+
+}
+
+/// A statement at the top level of a function
+#[derive(Clone, PartialEq, Eq)]
+pub enum StmtNode {
+    /// A conditional statement with else - if chains
+    If(IfExpr),
+    /// A block with no purpose other than defining a new scope
+    Block(Vec<Stmt>),
+    /// Matching an enum based on its type
+    Match(Match),
+    
+    /// Break from something with a value
+    Phi(Box<Expr>),
+    
+    /// Return a value from the currently defined function
+    Return(Box<Expr>),
+    
+    /// Control flow keyword used to break from a loop
     Break,
-    /// Continuing in a loop
+    /// Control flow keyword used to continue to the next iteration of a loop
     Continue,
-    /// A block of statements
-    Block(Vec<Ast>),
-    /// A match statement
-    Match {
-        //The expression being matched
-        matched: Box<Ast>,
-        //The possible cases being tested for
-        cases: Vec<(UnresolvedType, Ast)>,
-    },
+}
+
+/// An expression that appears somewhere inside an [Stmt]
+#[derive(Clone, PartialEq, Eq)]
+pub enum ExprNode {
+    /// Variable / function access by name or path
+    Access(SymbolPath),
+    /// Structure member access by field name
+    Member(Box<Expr>, Symbol),
+    /// Array-like index expression using '[' ']'
+    Index(Box<Expr>, Box<Expr>),
+    /// Expression calling a function expression with arguments
+    Call(Box<Expr>, Vec<Expr>),
+    /// Binary operator applied to two values
+    Bin(Box<Expr>, Op, Box<Expr>),
+    /// Unary operator with a single operand
+    Unary(Op, Box<Expr>),
+    /// Casting an expression to a different type explicitly
+    Cast(UnresolvedType, Box<Expr>),
+    /// A literal (does not mean compile-time constant) value
+    Literal(Literal),
+    /// A block of statements, must phi a value in all paths to be a validexpression
+    Block(Vec<Stmt>),
+    /// A match expression, must phi a value to be valid
+    Match(Match),
+    /// An if expression, must phi a value to be valid
+    If(IfExpr),
 }
 
 /// An enumeration of all parseable literals
 #[derive(Clone, PartialEq, Eq)]
-pub enum Literal<T: Clone + Hash + Eq> {
+pub enum Literal {
+    /// Number literal containing optional annotation
     Number(NumberLiteral),
+    /// String literal with all escape characters escaped
     String(String),
+    /// Boolean literal
     Bool(bool),
-    Array(Vec<Ast>),
+    /// An array literal, all expressions must be of the same type
+    Array(Vec<Expr>),
+    /// A structure literal containing optional type for type checking and field
+    /// assignments
     Struct {
-        ty: Option<T>,
-        fields: Vec<(Symbol, Ast)>,
+        ty: Option<UnresolvedType>,
+        fields: Vec<(Symbol, Expr)>,
     },
+    /// Unit literal
     Unit,
 }
 
+/// An if expression or statement that tests the value of a boolean expression and
+/// adjusts control flow accordingly
 #[derive(Clone, PartialEq, Eq)]
 pub struct IfExpr {
     /// Conditional expression
-    pub cond: Box<Ast>,
+    pub cond: Box<Expr>,
     /// The body of the if statement
-    pub body: Vec<Ast>,
+    pub body: Vec<Stmt>,
     /// Either another if statement or a body
     pub else_expr: Option<ElseExpr>,
 }
@@ -261,16 +284,25 @@ pub struct IfExpr {
 #[derive(Clone, PartialEq, Eq)]
 pub enum ElseExpr {
     ElseIf(Box<IfExpr>),
-    Else(Vec<Ast>),
+    Else(Vec<Stmt>),
 }
 
-/// One node in an abstract syntax tree, containing an [AstNode] and additional location information used for
+/// One expression in an abstract syntax tree, containing an [ExprNode] and additional location information used for
 /// error messages later in the compiler
 #[derive(Clone, PartialEq, Eq)]
-pub struct Ast {
+pub struct Expr {
     /// The AST node's data
-    pub node: AstNode,
+    pub node: ExprNode,
     /// The span of the source string that this AST node occupies
+    pub span: Span,
+}
+
+/// One statement in the abstract syntax tree, the top level syntax for a function body
+#[derive(Clone, PartialEq, Eq)]
+pub struct Stmt {
+    /// The statement's data
+    pub node: StmtNode,
+    /// The span of the source file that this statement occupies
     pub span: Span,
 }
 
@@ -278,9 +310,9 @@ pub struct Ast {
 #[derive(Clone)]
 pub enum DefData {
     /// A function definition with body and prototype
-    FunDef(FunProto<UnresolvedType>, Vec<Ast>),
+    FunDef(FunProto, Vec<Stmt>),
     /// A function declaration with no body
-    FunDec(FunProto<UnresolvedType>),
+    FunDec(FunProto),
     /// A type alias binding a name to a type
     AliasDef {
         /// The alias that `aliased` can be accessed by
@@ -307,7 +339,9 @@ impl DefData {
 #[derive(Clone)]
 pub struct Def {
     pub data: DefData,
+    /// Span in the file that this def was defined
     pub span: Span,
+    /// File that this definition appeared in
     pub file: FileId,
 }
 
@@ -316,22 +350,22 @@ pub struct Def {
 #[derive(Clone)]
 pub struct ParsedModule {
     /// A map of names to all definitions in the module
-    pub defs: HashMap<Symbol, Def>,
+    pub defs: Vec<Def>,
     /// All imports for this module
     pub imports: Vec<Symbol>,
     /// The name of the module
     pub name: Symbol,
     /// All children of this module
-    pub children: HashMap<Symbol, ParsedModule>,
+    pub children: Vec<ParsedModule>,
 }
 
 impl ParsedModule {
     /// Create a new empty module
     pub fn new(name: Symbol) -> Self {
         Self {
-            defs: HashMap::new(),
+            defs: Vec::new(),
             name,
-            children: HashMap::new(),
+            children: Vec::new(),
             imports: vec![],
         }
     }
