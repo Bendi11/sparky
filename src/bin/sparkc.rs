@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{App, Arg, ValueHint};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use inkwell::context::Context;
+
 use spark::{
     ast::ParsedModule,
     error::DiagnosticManager,
@@ -173,7 +173,7 @@ fn main() {
                     }
                     InputItem::Dir(name, items) => {
                         let child = parse_dir(name.clone(), items, &files, &mut parser);
-                        root.children.insert(Symbol::from(&name), child);
+                        root.children.push(child);
                     }
                 }
             }
@@ -221,7 +221,7 @@ fn parse_dir<'src>(
             }
             InputItem::Dir(name, items) => {
                 let child = parse_dir(name.clone(), items, files, parser);
-                root.children.insert(Symbol::new(name), child);
+                root.children.push(child);
             }
         }
     }

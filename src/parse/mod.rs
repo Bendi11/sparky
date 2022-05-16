@@ -1,14 +1,14 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Literal},
+    ast::{BigInt, Literal, Let, Match},
     Symbol,
 };
 use smallvec::SmallVec;
 
 use crate::{
     ast::{
-        Ast, AstNode, Def, DefData, ElseExpr, FunFlags, FunProto, IfExpr, IntegerWidth,
+        Expr, ExprNode, Stmt, StmtNode, Def, DefData, ElseExpr, FunFlags, FunProto, If, IntegerWidth,
         NumberLiteral, NumberLiteralAnnotation, ParsedModule, SymbolPath, UnresolvedFunType,
         UnresolvedType,
     },
@@ -69,7 +69,7 @@ impl<'src> Parser<'src> {
     pub fn parse_to(&mut self, to: &mut ParsedModule, file: FileId) -> ParseResult<'src, ()> {
         while self.toks.peek().is_some() {
             let def = self.parse_decl(file)?;
-            to.defs.insert(def.data.name(), def);
+            to.defs.push(def);
         }
 
         Ok(())
@@ -80,6 +80,19 @@ impl<'src> Parser<'src> {
         Self {
             toks: Lexer::new(src),
             trace: SmallVec::new(),
+        }
+    }
+    
+    /// Shorthand create a new [ParseError] from an unexpected token
+    #[inline]
+    fn unexpected(&self, span: Span, found: Token<'src>, expecting: &'static[TokenData<'static>]) -> ParseError<'src> {
+        ParseError {
+            backtrace: self.trace.clone(),
+            highlighted_span: Some(span),
+            error: ParseErrorKind::UnexpectedToken {
+                found,
+                expecting: ExpectingOneOf(expecting)
+            },
         }
     }
 
@@ -345,7 +358,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a curly brace enclosed AST body
-    fn parse_body(&mut self) -> ParseResult<'src, (Vec<Ast>, Span)> {
+    fn parse_body(&mut self) -> ParseResult<'src, (Vec<Stmt>, Span)> {
         const EXPECTING_FOR_BODY: &[TokenData<'static>] =
             &[TokenData::OpenBracket(BracketType::Curly)];
 
@@ -380,7 +393,7 @@ impl<'src> Parser<'src> {
     }
     
     /// Parse a statement from the token stream
-    fn parse_stmt(&mut self) -> ParseResult<'src, Ast> {
+    fn parse_stmt(&mut self) -> ParseResult<'src, Stmt> {
         const EXPECTING_FOR_STMT: &[TokenData<'static>] = &[
             TokenData::Ident("if"),
             TokenData::Ident("let"),
@@ -399,29 +412,35 @@ impl<'src> Parser<'src> {
         let stmt = match peeked.data {
             TokenData::Ident("break") => {
                 self.toks.next();
-                Ok(Ast {
+                Ok(Stmt {
                     span: peeked.span,
-                    node: AstNode::Break,
+                    node: StmtNode::Break,
                 })
             }
             TokenData::Ident("continue") => {
                 self.toks.next();
-                Ok(Ast {
+                Ok(Stmt {
                     span: peeked.span,
-                    node: AstNode::Continue,
+                    node: StmtNode::Continue,
                 })
             }
             TokenData::Ident("if") => {
                 let if_stmt = self.parse_if()?;
-                Ok(Ast {
+                Ok(Stmt {
                     span: peeked.span,
-                    node: AstNode::IfExpr(if_stmt),
+                    node: StmtNode::If(if_stmt),
                 })
             }
-            TokenData::Ident("match") => self.parse_match(),
+            TokenData::Ident("match") => {
+                let (m, span) = self.parse_match()?;
+                Ok(Stmt {
+                    span,
+                    node: StmtNode::Match(m)
+                })
+            },
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
-                    TokenData::Ident("variable name"),
+                    TokenData::Ident("expression"),
                     TokenData::OpenBracket(BracketType::Smooth),
                 ];
 
@@ -432,38 +451,33 @@ impl<'src> Parser<'src> {
                 let next = self.next_tok(EXPECTING_AFTER_LET)?;
 
                 let mut var_type = None;
-                let name = match next.data {
-                    TokenData::Ident(name) => self.symbol(name),
+                let expr = match next.data {
                     TokenData::OpenBracket(BracketType::Smooth) => {
                         let typename = self.parse_typename()?;
                         self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
 
                         var_type = Some(typename);
 
-                        let name = self.expect_next_ident(&[TokenData::Ident("variable name")])?;
-                        self.symbol(name)
-                    }
-                    _ => {
-                        return Err(ParseError {
-                            highlighted_span: Some(next.span),
-                            backtrace: self.trace.clone(),
-                            error: ParseErrorKind::UnexpectedToken {
-                                found: next,
-                                expecting: ExpectingOneOf(EXPECTING_AFTER_LET),
-                            },
-                        })
-                    }
+                        self.parse_expr()?
+                    },
+                    _ => self.parse_expr()?,
                 };
 
                 self.trace.pop();
+                
+                let assigned = if self.toks.peek().map(|tok| tok.data == TokenData::Assign).unwrap_or(false) {
+                    self.toks.next(); //Consume the assignment operator
+                    Some(Box::new(self.parse_expr()?)) 
+                } else { None };
 
-                Ok(Ast {
+                Ok(Stmt {
                     span: next.span,
-                    node: AstNode::Let {
-                        name,
+                    node: StmtNode::Let(Let{
                         ty: var_type,
+                        let_expr: Box::new(expr),
+                        assigned,
                         mutable,
-                    },
+                    }),
                 })
             }
             TokenData::Ident("phi") => {
@@ -471,9 +485,9 @@ impl<'src> Parser<'src> {
                 self.trace.push("phi statement".into());
                 let phi_expr = self.parse_expr()?;
                 self.trace.pop();
-                Ok(Ast {
+                Ok(Stmt {
                     span: (peeked.span.from, phi_expr.span.to).into(),
-                    node: AstNode::PhiExpr(Box::new(phi_expr)),
+                    node: StmtNode::Phi(Box::new(phi_expr)),
                 })
             }
             TokenData::Ident("return") => {
@@ -483,67 +497,48 @@ impl<'src> Parser<'src> {
                 let returned = self.parse_expr()?;
 
                 self.trace.pop();
-                Ok(Ast {
+                Ok(Stmt {
                     span: peeked.span,
-                    node: AstNode::Return(Box::new(returned)),
+                    node: StmtNode::Return(Box::new(returned)),
                 })
             }
-            //Parse an assignment expression
-            TokenData::Ident(_)
-            | TokenData::OpenBracket(BracketType::Curly)
-            | TokenData::OpenBracket(BracketType::Smooth) => self.parse_prefix_expr(),
-            _ => Err(ParseError {
-                highlighted_span: Some(peeked.span),
-                backtrace: self.trace.clone(),
-                error: ParseErrorKind::UnexpectedToken {
-                    found: peeked.clone(),
-                    expecting: ExpectingOneOf(EXPECTING_FOR_STMT),
-                },
-            }),
+            _ => Err(self.unexpected(peeked.span, peeked.clone(), EXPECTING_FOR_STMT))
         }?;
 
-        if let Some(TokenData::Assign) = self.toks.peek().map(|tok| &tok.data) {
-            self.trace.push("assignment statement".into());
-            self.toks.next();
-            let assigned = self.parse_expr()?;
-            self.trace.pop();
-            Ok(Ast {
-                span: (stmt.span.from, assigned.span.to).into(),
-                node: AstNode::Assignment {
-                    lhs: Box::new(stmt),
-                    rhs: Box::new(assigned),
-                },
-            })
-        } else {
-            Ok(stmt)
-        }
+        Ok(stmt)
     }
 
     /// Parse a full expression from the token stream
-    fn parse_expr(&mut self) -> ParseResult<'src, Ast> {
+    fn parse_expr(&mut self) -> ParseResult<'src, Expr> {
         let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?.clone();
 
         let expr = match &peeked.data {
             TokenData::Ident("if") => {
                 let if_expr = self.parse_if()?;
-                Ast {
+                Expr {
                     span: peeked.span,
-                    node: AstNode::IfExpr(if_expr),
+                    node: ExprNode::If(if_expr),
                 }
             }
-            TokenData::Ident("match") => self.parse_match()?,
+            TokenData::Ident("match") => {
+                let (m, span) = self.parse_match()?;
+                Expr {
+                    span,
+                    node: ExprNode::Match(m)
+                }
+            },
             TokenData::Ident("true") => {
                 self.toks.next();
-                Ast {
+                Expr {
                     span: peeked.span,
-                    node: AstNode::Literal(Literal::Bool(true)),
+                    node: ExprNode::Literal(Literal::Bool(true)),
                 }
             }
             TokenData::Ident("false") => {
                 self.toks.next();
-                Ast {
+                Expr {
                     span: peeked.span,
-                    node: AstNode::Literal(Literal::Bool(false)),
+                    node: ExprNode::Literal(Literal::Bool(false)),
                 }
             }
             TokenData::Dollar => {
@@ -554,9 +549,9 @@ impl<'src> Parser<'src> {
                 self.trace.push("cast expression".into());
                 let expr = self.parse_expr()?;
                 self.trace.pop();
-                Ast {
+                Expr {
                     span: (peeked.span.from, expr.span.to).into(),
-                    node: AstNode::CastExpr(casted_to, Box::new(expr)),
+                    node: ExprNode::Cast(casted_to, Box::new(expr)),
                 }
             }
 
@@ -566,9 +561,9 @@ impl<'src> Parser<'src> {
                 let rhs = self.parse_expr()?;
                 self.trace.pop();
 
-                Ast {
+                Expr {
                     span: (peeked.span.from, rhs.span.to).into(),
-                    node: AstNode::UnaryExpr(*unaryop, Box::new(rhs)),
+                    node: ExprNode::Unary(*unaryop, Box::new(rhs)),
                 }
             }
             TokenData::OpenBracket(BracketType::Square) => {
@@ -594,44 +589,38 @@ impl<'src> Parser<'src> {
                         match next.data {
                             TokenData::Comma => continue,
                             TokenData::CloseBracket(BracketType::Square) => break elements,
-                            _ => {
-                                return Err(ParseError {
-                                    highlighted_span: Some(
-                                        (peeked.span.from, elements.last().unwrap().span.to).into(),
-                                    ),
-                                    backtrace: self.trace.clone(),
-                                    error: ParseErrorKind::UnexpectedToken {
-                                        found: next,
-                                        expecting: ExpectingOneOf(EXPECTING_FOR_ARRAY),
-                                    },
-                                })
-                            }
+                            _ => return Err(self.unexpected(
+                                    (peeked.span.from, elements.last().map(|last| last.span.to).unwrap_or(peeked.span.to)).into(),
+                                    next,
+                                    EXPECTING_FOR_ARRAY
+                                )
+                            )
                         }
                     }
                 };
                 self.trace.pop();
 
-                Ast {
+                Expr {
                     span: if let Some(last) = elements.last() {
                         (peeked.span.from, last.span.to).into()
                     } else {
                         peeked.span
                     },
-                    node: AstNode::Literal(Literal::Array(elements)),
+                    node: ExprNode::Literal(Literal::Array(elements)),
                 }
             }
-            TokenData::String(_data) => Ast {
+            TokenData::String(_data) => Expr {
                 span: peeked.span,
-                node: AstNode::Literal(Literal::String(self.parse_string_literal()?)),
+                node: ExprNode::Literal(Literal::String(self.parse_string_literal()?)),
             },
 
             TokenData::Number(_) => {
                 self.trace.push("number literal".into());
                 let num = self.parse_numliteral()?;
                 self.trace.pop();
-                Ast {
+                Expr {
                     span: peeked.span,
-                    node: AstNode::Literal(Literal::Number(num)),
+                    node: ExprNode::Literal(Literal::Number(num)),
                 }
             },
             TokenData::Pound => {
@@ -672,22 +661,15 @@ impl<'src> Parser<'src> {
                                 }
                             fields.push((name, expr));
                         },
-                        _ => return Err(ParseError {
-                            highlighted_span: Some(next.span),
-                            backtrace: self.trace.clone(),
-                            error: ParseErrorKind::UnexpectedToken {
-                                found: next,
-                                expecting: ExpectingOneOf(EXPECTING_AFTER_BRACE)
-                            }
-                        })
+                        _ => return Err(self.unexpected(next.span, next, EXPECTING_AFTER_BRACE))
                     }
                 };
 
                 self.trace.pop();
 
-                Ast {
+                Expr {
                     span: (start_loc, end_loc).into(),
-                    node: AstNode::Literal(Literal::Struct {
+                    node: ExprNode::Literal(Literal::Struct {
                         ty: typename,
                         fields,
                     })
@@ -696,16 +678,7 @@ impl<'src> Parser<'src> {
             TokenData::OpenBracket(BracketType::Smooth)
             | TokenData::Ident(_)
             | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr()?,
-            _ => {
-                return Err(ParseError {
-                    highlighted_span: Some(peeked.span),
-                    backtrace: self.trace.clone(),
-                    error: ParseErrorKind::UnexpectedToken {
-                        found: peeked,
-                        expecting: ExpectingOneOf(Self::EXPECTED_FOR_EXPRESSION),
-                    },
-                })
-            }
+            _ => return Err(self.unexpected(peeked.span, peeked, Self::EXPECTED_FOR_EXPRESSION))
         };
 
         self.parse_expr_rhs(expr)
@@ -777,7 +750,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse the right hand side of an expression if there is one
-    fn parse_expr_rhs(&mut self, lhs: Ast) -> ParseResult<'src, Ast> {
+    fn parse_expr_rhs(&mut self, lhs: Expr) -> ParseResult<'src, Expr> {
         let peeked = self.toks.peek();
         if let Some(peeked) = peeked {
             match peeked.data {
@@ -785,9 +758,9 @@ impl<'src> Parser<'src> {
                     self.toks.next();
 
                     let rhs = self.parse_expr()?;
-                    Ok(Ast {
+                    Ok(Expr {
                         span: (lhs.span.from, rhs.span.to).into(),
-                        node: AstNode::BinExpr(Box::new(lhs), operator, Box::new(rhs)),
+                        node: ExprNode::Bin(Box::new(lhs), operator, Box::new(rhs)),
                     })
                 }
                 _ => Ok(lhs),
@@ -798,7 +771,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a match expression from the token stream
-    fn parse_match(&mut self) -> ParseResult<'src, Ast> {
+    fn parse_match(&mut self) -> ParseResult<'src, (Match, Span)> {
         self.expect_next_ident(&[TokenData::Ident("match")])?;
         let matched = self.parse_expr()?;
         let start_span = matched.span.from;
@@ -824,17 +797,17 @@ impl<'src> Parser<'src> {
             }
         };
 
-        Ok(Ast {
-            span: (start_span, end_span).into(),
-            node: AstNode::Match {
+        Ok((
+            Match {
                 matched: Box::new(matched),
                 cases,
             },
-        })
+            (start_span, end_span).into()
+        ))
     }
 
     /// Parse an if statement
-    fn parse_if(&mut self) -> ParseResult<'src, IfExpr> {
+    fn parse_if(&mut self) -> ParseResult<'src, If> {
         self.expect_next(&[TokenData::Ident("if")])?;
         self.trace.push("if condition".into());
         let cond = self.parse_expr()?;
@@ -855,20 +828,20 @@ impl<'src> Parser<'src> {
                     let else_body = self.parse_body()?;
                     self.trace.pop();
 
-                    Ok(IfExpr {
+                    Ok(If {
                         cond: Box::new(cond),
                         body: body.0,
                         else_expr: Some(ElseExpr::Else(else_body.0)),
                     })
                 }
-                _ => Ok(IfExpr {
+                _ => Ok(If {
                     cond: Box::new(cond),
                     body: body.0,
                     else_expr: Some(ElseExpr::ElseIf(Box::new(self.parse_if()?))),
                 }),
             }
         } else {
-            Ok(IfExpr {
+            Ok(If {
                 cond: Box::new(cond),
                 body: body.0,
                 else_expr: None,
@@ -877,7 +850,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a prefix expression from the token stream
-    fn parse_prefix_expr(&mut self) -> ParseResult<'src, Ast> {
+    fn parse_prefix_expr(&mut self) -> ParseResult<'src, Expr> {
         const EXPECTING_NEXT: &[TokenData<'static>] = &[
             TokenData::Ident("variable or function name"),
             TokenData::OpenBracket(BracketType::Smooth),
@@ -889,18 +862,18 @@ impl<'src> Parser<'src> {
             TokenData::Ident(_) => {
                 self.trace.push("variable or function name".into());
                 let name = self.expect_next_path(EXPECTING_NEXT)?;
-                Ast {
+                Expr {
                     span: next.span,
-                    node: AstNode::Access(name),
+                    node: ExprNode::Access(name),
                 }
             }
             TokenData::OpenBracket(BracketType::Curly) => {
                 self.trace.push("block expression".into());
                 let block = self.parse_body()?;
 
-                Ast {
+                Expr {
                     span: block.1,
-                    node: AstNode::Block(block.0),
+                    node: ExprNode::Block(block.0),
                 }
             }
             TokenData::OpenBracket(BracketType::Smooth) => {
@@ -910,9 +883,9 @@ impl<'src> Parser<'src> {
                     self.toks.peek().map(|tok| &tok.data)
                 {
                     let close = self.toks.next().unwrap();
-                    return Ok(Ast {
+                    return Ok(Expr {
                         span: close.span,
-                        node: AstNode::Literal(Literal::Unit),
+                        node: ExprNode::Literal(Literal::Unit),
                     });
                 }
 
@@ -941,7 +914,7 @@ impl<'src> Parser<'src> {
 
     /// Recursive function to parse member accesses with the '.' token,
     /// and indexing with the [] array indexing method
-    fn parse_access(&mut self, accessing: Ast) -> ParseResult<'src, Ast> {
+    fn parse_access(&mut self, accessing: Expr) -> ParseResult<'src, Expr> {
         const ACCESS_EXPECTING: &[TokenData<'static>] = &[
             TokenData::Period,
             TokenData::OpenBracket(BracketType::Square),
@@ -983,22 +956,22 @@ impl<'src> Parser<'src> {
 
                         self.trace.pop();
 
-                        Ok(Ast {
+                        Ok(Expr {
                             span: if let Some(last) = args.last() {
                                 (peeked.span.from, last.span.to).into()
                             } else {
                                 peeked.span
                             },
-                            node: AstNode::FunCall(Box::new(accessing), args),
+                            node: ExprNode::Call(Box::new(accessing), args),
                         })
                     },
                     TokenData::Ident(item) => {
                         self.trace.pop();
 
                         let symbol = self.symbol(item);
-                        self.parse_access(Ast {
+                        self.parse_access(Expr {
                             span: (accessing.span.from, peeked.span.to).into(),
-                            node: AstNode::MemberAccess(Box::new(accessing), symbol),
+                            node: ExprNode::Member(Box::new(accessing), symbol),
                         })
                     },
                     _ => return Err(ParseError {
@@ -1019,12 +992,12 @@ impl<'src> Parser<'src> {
                 self.expect_next(&[TokenData::CloseBracket(BracketType::Square)])?;
                 self.trace.pop();
 
-                self.parse_access(Ast {
+                self.parse_access(Expr {
                     span: (accessing.span.from, peeked.span.to).into(),
-                    node: AstNode::Index {
-                        object: Box::new(accessing),
-                        index: Box::new(index),
-                    },
+                    node: ExprNode::Index(
+                        Box::new(accessing),
+                        Box::new(index),
+                    ),
                 })
             }
             _ => Ok(accessing),

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use std::{cmp::Eq, collections::HashMap, hash::Hash};
+use std::{cmp::Eq, hash::Hash};
 
 use bitflags::bitflags;
 
@@ -181,6 +181,9 @@ pub struct Let {
     /// If this let expression was declared with the `mut` keyword
     pub mutable: bool,
     
+    /// Type optionally used to aid inference
+    pub ty: Option<UnresolvedType>,
+    
     /// The expression that the let statement contains
     pub let_expr: Box<Expr>,
     
@@ -192,9 +195,9 @@ pub struct Let {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Match {
     //The expression being matched
-    matched: Box<Expr>,
+    pub matched: Box<Expr>,
     //The possible cases being tested for
-    cases: Vec<(UnresolvedType, Stmt)>,
+    pub cases: Vec<(UnresolvedType, Stmt)>,
 
 }
 
@@ -202,7 +205,7 @@ pub struct Match {
 #[derive(Clone, PartialEq, Eq)]
 pub enum StmtNode {
     /// A conditional statement with else - if chains
-    If(IfExpr),
+    If(If),
     /// A block with no purpose other than defining a new scope
     Block(Vec<Stmt>),
     /// Matching an enum based on its type
@@ -210,9 +213,11 @@ pub enum StmtNode {
     
     /// Break from something with a value
     Phi(Box<Expr>),
-    
     /// Return a value from the currently defined function
     Return(Box<Expr>),
+    
+    /// Assignment or variable declaration
+    Let(Let),
     
     /// Control flow keyword used to break from a loop
     Break,
@@ -244,7 +249,7 @@ pub enum ExprNode {
     /// A match expression, must phi a value to be valid
     Match(Match),
     /// An if expression, must phi a value to be valid
-    If(IfExpr),
+    If(If),
 }
 
 /// An enumeration of all parseable literals
@@ -271,7 +276,7 @@ pub enum Literal {
 /// An if expression or statement that tests the value of a boolean expression and
 /// adjusts control flow accordingly
 #[derive(Clone, PartialEq, Eq)]
-pub struct IfExpr {
+pub struct If {
     /// Conditional expression
     pub cond: Box<Expr>,
     /// The body of the if statement
@@ -283,7 +288,7 @@ pub struct IfExpr {
 /// Enum representing what can come after an if expression's body
 #[derive(Clone, PartialEq, Eq)]
 pub enum ElseExpr {
-    ElseIf(Box<IfExpr>),
+    ElseIf(Box<If>),
     Else(Vec<Stmt>),
 }
 
