@@ -4,7 +4,7 @@ use inkwell::{types::IntType, values::CallableValue, FloatPredicate, IntPredicat
 use crate::{
     ast::{Ast, AstNode, ElseExpr, IfExpr, Literal, NumberLiteral, NumberLiteralAnnotation},
     parse::token::Op,
-    util::files::FileId,
+    util::files::FileId, codegen::CompilerRes,
 };
 
 use super::*;
@@ -15,7 +15,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         module: ModId,
         ast: &Ast<TypeId>,
-    ) -> Result<(), Diagnostic<FileId>> {
+    ) -> CompilerRes<()> {
         match &ast.node {
             AstNode::Block(block) => {
                 self.gen_block_ast(module, block)?;
@@ -193,7 +193,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         module: ModId,
         ast: &Ast<TypeId>,
-    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<BasicValueEnum<'ctx>> {
         Ok(match &ast.node {
             AstNode::IfExpr(..) | AstNode::Block(..) | AstNode::Match { .. } => {
                 let phi = self.gen_lval(module, ast)?;
@@ -268,7 +268,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         matched: &Ast<TypeId>,
         arms: &[(TypeId, Ast<TypeId>)],
         span: Span,
-    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+    ) -> CompilerRes<Option<PointerValue<'ctx>>> {
         let mut has_phi = false;
         let mut all_arms_have_phi = true;
         for (_, expr) in arms {
@@ -376,7 +376,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         module: ModId,
         literal: &Literal<TypeId>,
         span: Span,
-    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<BasicValueEnum<'ctx>> {
         Ok(match literal {
             Literal::Bool(b) => match b {
                 true => self.ctx.bool_type().const_all_ones(),
@@ -679,7 +679,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         lhs: &Ast<TypeId>,
         op: Op,
         rhs: &Ast<TypeId>,
-    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<BasicValueEnum<'ctx>> {
         let lhs_ty = self.ast_type(module, lhs)?;
         let rhs_ty = self.ast_type(module, rhs)?;
 
@@ -890,7 +890,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         module: ModId,
         ast: &Ast<TypeId>,
-    ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<PointerValue<'ctx>> {
         Ok(match &ast.node {
             AstNode::Access(path) => return self.gen_access(ast.span, path),
             AstNode::Block(block) => {
@@ -937,7 +937,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         module: ModId,
         block: &[Ast<TypeId>],
-    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+    ) -> CompilerRes<Option<PointerValue<'ctx>>> {
         let old_continue = self.continue_bb;
         let start_bb = self.builder.get_insert_block().unwrap();
         let body_bb = self
@@ -965,7 +965,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         span: Span,
         path: &SymbolPath,
-    ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<PointerValue<'ctx>> {
         let def = self.find_in_scope(span, path)?;
         Ok(match def {
             ScopeDef::Def(SparkDef::FunDef(_, fun)) => {
@@ -997,7 +997,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         module: ModId,
         to_ty: TypeId,
         rhs: &Ast<TypeId>,
-    ) -> Result<BasicValueEnum<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<BasicValueEnum<'ctx>> {
         let rhs_ty = self
             .ast_type(module, rhs)
             .map_err(|d| d.with_notes(vec!["In cast expression".to_owned()]))?;
@@ -1228,7 +1228,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         module: ModId,
         if_expr: &IfExpr<TypeId>,
-    ) -> Result<Option<PointerValue<'ctx>>, Diagnostic<FileId>> {
+    ) -> CompilerRes<Option<PointerValue<'ctx>>> {
         let start_bb = self.builder.get_insert_block().unwrap();
 
         let cond_ty = self.ast_type(module, &if_expr.cond)?;
@@ -1305,7 +1305,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         module: ModId,
         object: &Ast<TypeId>,
         field: Symbol,
-    ) -> Result<PointerValue<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<PointerValue<'ctx>> {
         let obj_ty = self.ast_type(module, object)?;
         let obj_ty = self.spark.unwrap_alias(obj_ty);
         if let TypeData::Struct { ref fields } = self.spark[obj_ty] {
@@ -1355,7 +1355,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         module: ModId,
         called: &Ast<TypeId>,
         args: &[Ast<TypeId>],
-    ) -> Result<Option<BasicValueEnum<'ctx>>, Diagnostic<FileId>> {
+    ) -> CompilerRes<Option<BasicValueEnum<'ctx>>> {
         let called_ty = self.ast_type(module, called)?;
         if let TypeData::Function(f) = &self.spark[called_ty] {
             let f = f.clone();
@@ -1425,7 +1425,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         body: &[Ast<TypeId>],
         to_bb: BasicBlock<'ctx>,
         after_bb: BasicBlock<'ctx>
-    ) -> Result<Option<PhiData<'ctx>>, Diagnostic<FileId>> {
+    ) -> CompilerRes<Option<PhiData<'ctx>>> {
         let phi_data = match Self::phi_node(self.file, body) {
             Err(_) => None,
             Ok(phi_node) => {
@@ -1464,7 +1464,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         body: &[Ast<TypeId>],
         to_bb: BasicBlock<'ctx>,
         after_bb: BasicBlock<'ctx>,
-    ) -> Result<(), Diagnostic<FileId>> {
+    ) -> CompilerRes<()> {
         self.builder.position_at_end(to_bb);
 
         self.current_scope.push_layer();
@@ -1506,7 +1506,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &mut self,
         module: ModId,
         ast: &Ast<TypeId>,
-    ) -> Result<TypeId, Diagnostic<FileId>> {
+    ) -> CompilerRes<TypeId> {
         Ok(match &ast.node {
             AstNode::Literal(Literal::Struct {
                 ty,
@@ -1721,7 +1721,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Get the phi node from a block of AST nodes
-    fn phi_node(file: FileId, body: &[Ast<TypeId>]) -> Result<&Ast<TypeId>, Diagnostic<FileId>> {
+    fn phi_node(file: FileId, body: &[Ast<TypeId>]) -> CompilerRes<&Ast<TypeId>> {
         body.iter()
             .find_map(|stmt| {
                 if let AstNode::PhiExpr(_) = &stmt.node {

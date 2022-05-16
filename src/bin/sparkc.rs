@@ -185,8 +185,7 @@ fn main() {
     let mut ctx = SparkCtx::new();
     let mut lowerer = Lowerer::new(&mut ctx, &files);
 
-    let root_id = lowerer.lower_module(&root_module);
-
+    let root_id = lowerer.lower_module(&root_module).unwrap_or_else(|_| std::process::exit(-1));
     let mut llvm_ctx = Context::create();
     let mut generator = LlvmCodeGenerator::new(ctx, &mut llvm_ctx, &files, opts.clone());
     let llvm_root = generator.codegen_module(root_id).unwrap_or_else(|_| std::process::exit(-1));

@@ -30,6 +30,8 @@ use crate::{
     CompileOpts, OutputOptimizationLevel, Symbol,
 };
 
+use super::CompilerRes;
+
 /// A type representing all types that can be defined in the global scope
 /// map of the code generator
 #[derive(Clone, Copy)]
@@ -123,7 +125,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
         &self,
         span: Span,
         path: &SymbolPath,
-    ) -> Result<ScopeDef<'ctx>, Diagnostic<FileId>> {
+    ) -> CompilerRes<ScopeDef<'ctx>> {
         let mut iter = path.iter();
 
         let first = iter.next().unwrap();
@@ -212,7 +214,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Codegen LLVM IR from a type-lowered module
-    pub fn codegen_module(&mut self, module: ModId) -> Result<Module<'ctx>, Diagnostic<FileId>> {
+    pub fn codegen_module(&mut self, module: ModId) -> CompilerRes<Module<'ctx>> {
         let mut llvm_mod = self.ctx.create_module(self.spark[module].name.as_str());
         if let Err(e) = self.forward_funs(module, &mut llvm_mod) {
             self.diags.emit(e.clone());
@@ -223,7 +225,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Generate code for all function prototypes
-    fn forward_funs(&mut self, module: ModId, llvm: &mut Module<'ctx>) -> Result<(), Diagnostic<FileId>> {
+    fn forward_funs(&mut self, module: ModId, llvm: &mut Module<'ctx>) -> CompilerRes<()> {
         let defs = self.spark[module].defs.clone();
 
         for fun_id in defs.iter().filter_map(|(_, def)| {
@@ -261,7 +263,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Create an LLVM type from a type ID
-    fn llvm_ty(&mut self, span: Span, id: TypeId) -> Result<AnyTypeEnum<'ctx>, Diagnostic<FileId>> {
+    fn llvm_ty(&mut self, span: Span, id: TypeId) -> CompilerRes<AnyTypeEnum<'ctx>> {
         Ok(match self.spark[id].clone() {
             TypeData::Integer { signed: _, width } => match width {
                 IntegerWidth::Eight => self.ctx.i8_type().into(),
@@ -328,7 +330,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
 
     /// Create an LLVM function type from a spark IR function type
-    fn gen_fun_ty(&mut self, span: Span, ty: &FunctionType) -> Result<InkwellFunctionType<'ctx>, Diagnostic<FileId>> {
+    fn gen_fun_ty(&mut self, span: Span, ty: &FunctionType) -> CompilerRes<InkwellFunctionType<'ctx>> {
         let return_ty = self.llvm_ty(span, ty.return_ty)?;
         let args = ty
             .args
@@ -381,7 +383,7 @@ impl<'ctx, 'files> LlvmCodeGenerator<'ctx, 'files> {
     }
     
     /// Require a given type to not be a zero-sized type
-    fn require_basictype(file: FileId, span: Span, ty: AnyTypeEnum<'ctx>) -> Result<BasicTypeEnum<'ctx>, Diagnostic<FileId>> {
+    fn require_basictype(file: FileId, span: Span, ty: AnyTypeEnum<'ctx>) -> CompilerRes<BasicTypeEnum<'ctx>> {
         BasicTypeEnum::try_from(ty)
             .map_err(|_| {
                 Diagnostic::error()
