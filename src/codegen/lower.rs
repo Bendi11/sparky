@@ -70,7 +70,13 @@ impl<'ctx, 'files> Lowerer<'ctx, 'files> {
     }
 
     pub fn lower_module(&mut self, parsed: &ParsedModule) -> CompilerRes<ModId> {
-        let id = self.gen_forward_decls(parsed)?;
+        let id = match self.gen_forward_decls(parsed) {
+            Ok(id) => id,
+            Err(e) => {
+                self.diags.emit(e.clone());
+                return Err(e);
+            }
+        };
         if let Err(e) = self.lower_defs(parsed, id) {
             self.diags.emit(e.clone());
             return Err(e);
