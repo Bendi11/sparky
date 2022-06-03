@@ -2,10 +2,14 @@
 //! Representation created from an Abstract Syntax Tree
 
 pub mod value;
+pub mod types;
 
 use crate::{ast::{IntegerWidth, FunFlags}, arena::{Interner, Index, Arena}, Symbol, util::{files::FileId, loc::Span}};
 
-use self::value::IrAnyValue;
+use self::{
+    value::IrAnyValue,
+    types::{IrType, fun::IrFunType, integer::IrIntegerType, float::IrFloatType}
+};
 
 
 /// An IR context containing arenas with all type definitons, function declarations / definitions,
@@ -31,55 +35,6 @@ pub type FunId = Index<IrFun>;
 
 /// ID referencing an [IrType] that is an enum discriminant in an [IrType::Sum]
 pub type DiscriminantId = Index<TypeId>;
-
-/// Type of a function
-#[derive(Clone, Hash, PartialEq, Eq)]
-pub struct IrFunType {
-    /// Return type of the function
-    return_ty: TypeId,
-    /// Argument types and order of the function
-    args: Vec<TypeId>,
-}
-
-/// Data for an [IRType] that contains the actual type data
-#[derive(Clone, Hash, PartialEq, Eq)]
-pub enum IrType {
-    /// An integer type with width and signedness
-    Integer {
-        /// If this integer is a signed type
-        signed: bool,
-        /// Width of the integer type
-        width: IntegerWidth,
-    },
-    /// A 32 or 64 bit floating point type
-    Float {
-        /// If this is a 64-bit wide float
-        doublewide: bool,
-    },
-    /// Unnamed structure type with fields 
-    Struct {
-        /// Field types and names, in the order they were declared
-        fields: Vec<(TypeId, String)>,
-    },
-    /// Sum type that can be many different types
-    Sum {
-        /// The possible variants of this sum type
-        variants: Vec<TypeId>,
-    },
-    /// Boolean true or false type
-    Bool,
-    /// Unit type with a single value
-    Unit,
-    /// User-defined alias type
-    Alias {
-        /// Name of the aliased type
-        name: String,
-        /// Aliased type
-        ty: TypeId,
-    },
-    /// Function type
-    Fun(IrFunType)
-}
 
 /// A single basic block in the IR containing a list of statements
 pub struct IrBB {
@@ -180,23 +135,23 @@ impl IrContext {
 
     /// Create a new `IRContext` with primitive types defined
     pub fn new() -> Self {
-        let mut types = Interner::new();
+        let mut types = Interner::<IrType>::new();
 
-        types.insert(IrType::Integer { signed: true, width: IntegerWidth::Eight });    
-        types.insert(IrType::Integer { signed: true, width: IntegerWidth::Sixteen });
-        types.insert(IrType::Integer { signed: true, width: IntegerWidth::ThirtyTwo });
-        types.insert(IrType::Integer { signed: true, width: IntegerWidth::SixtyFour });
+        types.insert(IrIntegerType { signed: true, width: IntegerWidth::Eight }.into());    
+        types.insert(IrIntegerType { signed: true, width: IntegerWidth::Sixteen }.into());
+        types.insert(IrIntegerType { signed: true, width: IntegerWidth::ThirtyTwo }.into());
+        types.insert(IrIntegerType { signed: true, width: IntegerWidth::SixtyFour }.into());
         
-        types.insert(IrType::Integer { signed: false, width: IntegerWidth::Eight });    
-        types.insert(IrType::Integer { signed: false, width: IntegerWidth::Sixteen });
-        types.insert(IrType::Integer { signed: false, width: IntegerWidth::ThirtyTwo });
-        types.insert(IrType::Integer { signed: false, width: IntegerWidth::SixtyFour });
+        types.insert(IrIntegerType { signed: false, width: IntegerWidth::Eight }.into());    
+        types.insert(IrIntegerType { signed: false, width: IntegerWidth::Sixteen }.into());
+        types.insert(IrIntegerType { signed: false, width: IntegerWidth::ThirtyTwo }.into());
+        types.insert(IrIntegerType { signed: false, width: IntegerWidth::SixtyFour }.into());
         
         types.insert(IrType::Bool);
         types.insert(IrType::Unit);
     
-        types.insert(IrType::Float { doublewide: false });
-        types.insert(IrType::Float { doublewide: true });
+        types.insert(IrFloatType { doublewide: false }.into());
+        types.insert(IrFloatType { doublewide: true }.into());
 
         Self {
             types,

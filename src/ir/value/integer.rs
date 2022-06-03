@@ -16,6 +16,5 @@ pub struct IrIntegerValue {
     /// Span in the source code that contains this integer value
     pub loc: Span,
     /// The kind of integer-valued expression
-    pub kind: IrPointerValueKind,
+    pub kind: IrIntegerValueKind,
 }
-
