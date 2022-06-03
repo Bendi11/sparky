@@ -28,7 +28,7 @@ pub type IntermediateModuleId = Index<IntermediateModule>;
 
 /// Enum that points to a [TypeId] or [FunId], used by the [IntermediateModule]
 #[derive(Clone, Copy, Debug,)]
-enum IntermediateDefId {
+pub enum IntermediateDefId {
     /// ID of a defined type
     Type(TypeId),
     /// Function definition or declaration
@@ -39,7 +39,7 @@ enum IntermediateDefId {
 
 /// Data only used by the [IrLowerer] in order to save what symbols are defined in each
 /// [ParsedModule](crate::ast::ParsedModule)
-struct IntermediateModule {
+pub struct IntermediateModule {
     /// Map of defined symbols to their IDs in the [IrContext]
     pub defs: HashMap<Symbol, IntermediateDefId>,
     /// Name of this module
@@ -125,6 +125,34 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     };
                     let fun = self.ctx.funs.insert(fun);
                     self.modules[module].defs.insert(proto.name.clone(), IntermediateDefId::Fun(fun));
+                },
+                _ => (),
+            }
+        }
+        
+        for child_parsed in parsed.children.iter() {
+            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
+                IntermediateDefId::Module(module) => *module,
+                _ => unreachable!()
+            };
+            self.populate_defs_impl(child_module, child_parsed)?;
+        }
+        
+        //Resolve all imports, including function imports
+        for def in parsed.defs.iter() {
+            match &def.data {
+                DefData::ImportDef { name } => match self.resolve_path(module, name) {
+                    Some(id) => { self.modules[module].defs.insert(name.last(), id); },
+                    None => return Err(Diagnostic::error()
+                        .with_message(format!("Imported symbol {} not found", name))
+                        .with_labels(vec![
+                            Label::new(LabelStyle::Primary, def.file, def.span)
+                                .with_message("Import declaration here")
+                        ])
+                        .with_notes(vec![
+                            format!("In module {}", self.modules[module].name),
+                        ])
+                    )
                 },
                 _ => (),
             }
@@ -221,6 +249,4 @@ impl IntermediateModule {
             name,
         }
     }
-    
-    
 }
