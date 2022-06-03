@@ -168,10 +168,8 @@ pub struct FunProto {
     pub name: Symbol,
     /// Any flags that the function has
     pub flags: FunFlags,
-    /// Argument name and types
-    pub args: Vec<(Symbol, UnresolvedType)>,
-    /// Return type of the function
-    pub return_ty: UnresolvedType,
+    /// Function's signature
+    pub ty: UnresolvedFunType,
 }
 
 /// A let statement that either assigns a value to an expression or
@@ -422,7 +420,7 @@ pub struct UnresolvedFunType {
     /// The return type of the function
     pub return_ty: UnresolvedType,
     /// What argument types this function takes
-    pub arg_tys: Vec<UnresolvedType>,
+    pub arg_tys: Vec<(UnresolvedType, Option<Symbol>)>,
 }
 
 /// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as
@@ -443,7 +441,9 @@ pub enum UnresolvedType {
         /// If this is an f32 or an f64
         doublewide: bool,
     },
+    /// Pointer to another defined type
     Pointer(Box<UnresolvedType>),
+    /// Array with one element type and constant length
     Array {
         elements: Box<UnresolvedType>,
         len: u64,

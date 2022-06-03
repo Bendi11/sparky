@@ -4,9 +4,9 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use hashbrown::HashMap;
 
-use crate::{util::{files::{Files, FileId}, loc::Span}, Symbol, ast::{ParsedModule, DefData, UnresolvedType, SymbolPath, PathIter}, arena::{Index, Arena}};
+use crate::{util::{files::{Files, FileId}, loc::Span}, Symbol, ast::{ParsedModule, DefData, UnresolvedType, SymbolPath, PathIter, UnresolvedFunType}, arena::{Index, Arena}};
 
-use super::{IrContext, TypeId, FunId, types::{IrType, integer::IrIntegerType, float::IrFloatType, array::IrArrayType, sum::IrSumType, structure::IrStructType, fun::IrFunType}};
+use super::{IrContext, TypeId, FunId, types::{IrType, integer::IrIntegerType, float::IrFloatType, array::IrArrayType, sum::IrSumType, structure::IrStructType, fun::IrFunType}, IrFun};
 
 pub mod scopemap;
 
@@ -108,7 +108,14 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     } 
                 },
                 DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
-
+                    let fun = IrFun {
+                        file: def.file,
+                        span: def.span,
+                        name: proto.name.clone(),
+                        ty: self.resolve_fn_type(&proto.ty, module, parsed, def.file, def.span)?,
+                        body: None,
+                        flags: proto.flags,
+                    };
                 },
                 _ => (),
             }
@@ -155,21 +162,28 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 )
             },
             UnresolvedType::Fun(ty) => {
-                let return_ty = self.resolve_type(&ty.return_ty, module, parsed, file, span)?;
-                let args = ty.arg_tys.iter().map(|ty| 
-                    self.resolve_type(ty, module, parsed, file, span)
-                ).collect::<Result<Vec<_>, _>>()?;
-
-                let fn_ty = IrFunType {
-                    return_ty,
-                    args,
-                };
-
+                let fn_ty = self.resolve_fn_type(ty, module, parsed, file, span)?; 
                 self.ctx.types.insert(fn_ty.into())
             }
         })
     }
-    
+        
+    /// Resolve a function type, split into another function to be used when generating forward
+    /// references for function declarations 
+    fn resolve_fn_type(&mut self, ty: &UnresolvedFunType, module: IntermediateModuleId, parsed: &ParsedModule, file: FileId, span: Span) -> Result<IrFunType, Diagnostic<FileId>> {
+        let return_ty = self.resolve_type(&ty.return_ty, module, parsed, file, span)?;
+        let args = ty.arg_tys.iter().map(|(ty, name)| match self.resolve_type(ty, module, parsed, file, span) {
+            Ok(ty) => Ok((ty, name.clone())),
+            Err(e) => Err(e)
+        }
+        ).collect::<Result<Vec<_>, _>>()?;
+
+        Ok(IrFunType {
+            return_ty,
+            args,
+        })
+    }
+
     /// Resolve the path in the context of the given intermediate module
     #[inline]
     fn resolve_path(&self, module: IntermediateModuleId, path: &SymbolPath) -> Option<IntermediateDefId> {

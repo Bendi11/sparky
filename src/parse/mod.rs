@@ -272,7 +272,7 @@ impl<'src> Parser<'src> {
                                 .expect_next_ident(&[TokenData::Ident("function argument name")])?;
                             self.trace.pop();
 
-                            args.push((self.symbol(arg_name), arg_type));
+                            args.push((arg_type, Some(self.symbol(arg_name))));
 
                             const EXPECTING_AFTER_ARG: &[TokenData<'static>] = &[
                                 TokenData::OpenBracket(BracketType::Curly),
@@ -304,10 +304,14 @@ impl<'src> Parser<'src> {
                     UnresolvedType::Unit
                 };
 
+                let ty = UnresolvedFunType {
+                    arg_tys: args,
+                    return_ty,
+                };
+
                 let proto = FunProto {
                     name: self.symbol(name),
-                    args,
-                    return_ty,
+                    ty,
                     flags,
                 };
 
@@ -1118,7 +1122,7 @@ impl<'src> Parser<'src> {
                         } else {
                             let mut args = vec![];
                             loop {
-                                args.push(self.parse_typename()?);
+                                args.push((self.parse_typename()?, None));
                                 let next = self.next_tok(&[
                                     TokenData::Comma,
                                     TokenData::CloseBracket(BracketType::Smooth),

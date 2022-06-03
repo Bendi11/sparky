@@ -1,4 +1,4 @@
-use crate::ir::TypeId;
+use crate::{ir::TypeId, Symbol};
 
 use super::IrType;
 
@@ -10,7 +10,7 @@ pub struct IrFunType {
     /// Return type of the function
     pub return_ty: TypeId,
     /// Argument types and order of the function
-    pub args: Vec<TypeId>,
+    pub args: Vec<(TypeId, Option<Symbol>)>,
 }
 
 impl From<IrFunType> for IrType {
