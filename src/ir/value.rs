@@ -1,58 +1,38 @@
-use super::*;
+pub mod boolean;
+pub mod float;
+pub mod integer;
+pub mod pointer;
+
+pub use boolean::*;
+pub use float::*;
+pub use integer::*;
+pub use pointer::*;
+
+use crate::util::loc::Span;
+
+use super::VarId;
 
 /// Expression with source code info and 
-pub struct IrRvalue {
+pub struct IrAnyValue {
     /// Location of the value in code
-    pub loc: Loc,
+    pub loc: Span,
     /// Data representing the rvalue
-    pub kind: IrRvalueKind
+    pub kind: IrAnyRvalueKind
 }
 
-/// A binary operation with explicit types
-pub enum BinaryOp {
 
-}
-
-/// An expression that produces a pointer
-pub enum IrPointerValueKind {
-    /// Taking the address of a stack-allocated value
-    AddrOf(VarId),
-}
-
-/// An expression producing a pointer value with additional span information
-pub struct IrPointerValue {
-    /// Location in the source code of this expression
-    pub loc: Span,
-    /// Kind of expression that produces a pointer
-    pub kind: IrPointerValueKind,
-}
-
-/// An expression producing an integer value
-pub enum IrIntegerValueKind {
-    Add(Box<IrIntegerValue>, Box<IrIntegerValue>),
-    Sub(Box<IrIntegerValue>, Box<IrIntegerValue>),
-    Mul(Box<IrIntegerValue>, Box<IrIntegerValue>),
-    Div(Box<IrIntegerValue>, Box<IrIntegerValue>),
-    Mod(Box<IrIntegerValue>, Box<IrIntegerValue>),
-    /// Pointer-to-int cast
-    PtrCast(IrPointerValue),
-}
-
-/// [IrIntegerValueKind] with additional location data
-pub struct IrIntegerValue {
-    /// Span in the source code that contains this integer value
-    pub loc: Span,
-    /// The kind of integer-valued expression
-    pub kind: IrPointerValueKind,
-}
 
 /// An expression in the IR, can only be assigned to variables or used in some statements
-pub enum IrRvalueKind {
-    /// Binary operation on two values
-    BinaryOp(BinaryOp),
-    /// Taking the ddress of another value
-    AddrOf(Box<IrValue>),
+pub enum IrAnyRvalueKind {
     /// Dereferencing a pointer value
-    Deref(Box<IrValue>)
+    Deref(IrPointerValue),
+    /// Accessing a declared variable's value
+    Var(VarId),
+    /// Any expression producing a pointer value
+    Pointer(IrPointerValue),
+    /// Any expression producing an integer value
+    Integer(IrIntegerValue),
+    /// Any expression producing a boolean value
+    Boolean(IrBoolValue)
 }
 

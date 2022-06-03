@@ -5,6 +5,8 @@ pub mod value;
 
 use crate::{ast::{IntegerWidth, FunFlags}, arena::{Interner, Index, Arena}, Symbol, util::{files::FileId, loc::Span}};
 
+use self::value::IrAnyValue;
+
 
 /// An IR context containing arenas with all type definitons, function declarations / definitions,
 /// and modules
@@ -31,6 +33,7 @@ pub type FunId = Index<IrFun>;
 pub type DiscriminantId = Index<TypeId>;
 
 /// Type of a function
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct IrFunType {
     /// Return type of the function
     return_ty: TypeId,
@@ -39,6 +42,7 @@ pub struct IrFunType {
 }
 
 /// Data for an [IRType] that contains the actual type data
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub enum IrType {
     /// An integer type with width and signedness
     Integer {
@@ -60,7 +64,7 @@ pub enum IrType {
     /// Sum type that can be many different types
     Sum {
         /// The possible variants of this sum type
-        variants: Arena<TypeId>,
+        variants: Vec<TypeId>,
     },
     /// Boolean true or false type
     Bool,
@@ -82,7 +86,7 @@ pub struct IrBB {
     /// A list of statements in the order they should execute
     pub stmts: Vec<IrStmt>,
     /// The terminator statement of this basic block
-    pub terminator: Terminator,
+    pub terminator: IrTerminator,
 }
 
 /// A declared variable with type and name
@@ -124,13 +128,13 @@ pub struct IrBody {
 /// A statement that may terminate a basic block
 pub enum IrTerminator {
     /// Exits the currently executing function
-    Return(IrRvalue),
+    Return(IrAnyValue),
     /// Jumps unconditionally to another basic block
     Jmp(BBId),
     /// Jumps conditionally
     JmpIf {
         /// Boolean-valued condtion being checked
-        condition: IrRvalue,
+        condition: IrAnyValue,
         /// Basic block to jump to if the condition evaluates to true
         if_true: BBId,
         /// Basic block to jump to otherwise
@@ -139,7 +143,7 @@ pub enum IrTerminator {
     /// Matches against an enum's discriminant
     JmpMatch {
         /// Variant being tested 
-        variant: IrRvalue,
+        variant: IrAnyValue,
         /// List of checked discriminants by their indices
         discriminants: Vec<(DiscriminantId, BBId)>,
         /// Default jump
@@ -154,7 +158,7 @@ pub enum IrStmt {
         /// The variable to store into
         var: VarId,
         /// Value to store in variable
-        val: IrRvalue
+        val: IrAnyValue
     }
 }
 
@@ -164,7 +168,7 @@ impl IrContext {
     pub const I32: TypeId = unsafe { TypeId::from_raw(2) };
     pub const I64: TypeId = unsafe { TypeId::from_raw(3) };
     pub const U8: TypeId = unsafe { TypeId::from_raw(4) };
-    pub const U16: TypeID = unsafe { TypeId::from_raw(5) };
+    pub const U16: TypeId = unsafe { TypeId::from_raw(5) };
     pub const U32: TypeId = unsafe { TypeId::from_raw(6) };
     pub const U64: TypeId = unsafe { TypeId::from_raw(7) };
 
