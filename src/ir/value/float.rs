@@ -1,3 +1,5 @@
+use crate::ir::types::float::IrFloatType;
+
 use super::*;
 
 /// Any expression that produces a floating point value
@@ -15,7 +17,7 @@ pub enum IrFloatValueKind {
     Var(VarId),
     
     /// Integer to float cast
-    IntCast()
+    IntCast(IrIntegerValue, IrFloatType)
 }
 
 /// An expression that produces a floating point value

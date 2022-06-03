@@ -9,7 +9,7 @@ use super::IrType;
 pub struct IrStructType {
     /// A map of all field names to their type IDs,
     /// preserves field order data
-    pub fields: Vec<(Symbol, TypeId)>,
+    pub fields: Vec<(TypeId, Symbol)>,
 }
 
 impl From<IrStructType> for IrType {

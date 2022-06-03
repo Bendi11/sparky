@@ -8,9 +8,9 @@ use super::IrType;
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct IrFunType {
     /// Return type of the function
-    return_ty: TypeId,
+    pub return_ty: TypeId,
     /// Argument types and order of the function
-    args: Vec<TypeId>,
+    pub args: Vec<TypeId>,
 }
 
 impl From<IrFunType> for IrType {

@@ -137,6 +137,7 @@ impl<T> Arena<T> {
         self.data.push(val);
         Index(self.data.len() - 1, PhantomData)
     }
+
     /// Add an element to this arena using a closure taking the index of the item to be added
     /// and returning the item
     pub fn insert_with<F: FnOnce(Index<T>) -> T>(&mut self, f: F) -> Index<T> {

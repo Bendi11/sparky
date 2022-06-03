@@ -4,6 +4,9 @@ use super::*;
 pub enum IrPointerValueKind {
     /// Taking the address of a stack-allocated value
     AddrOf(VarId),
+    
+    /// Accessing pointer-valued variable
+    Var(VarId),
 }
 
 /// An expression producing a pointer value with additional span information
@@ -13,4 +16,3 @@ pub struct IrPointerValue {
     /// Kind of expression that produces a pointer
     pub kind: IrPointerValueKind,
 }
-

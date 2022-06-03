@@ -1,3 +1,5 @@
+use crate::ir::types::integer::IrIntegerType;
+
 use super::*;
 
 /// An expression producing an integer value
@@ -8,7 +10,7 @@ pub enum IrIntegerValueKind {
     Div(Box<IrIntegerValue>, Box<IrIntegerValue>),
     Mod(Box<IrIntegerValue>, Box<IrIntegerValue>),
     /// Pointer-to-int cast
-    PtrCast(IrPointerValue),
+    PtrCast(IrPointerValue, IrIntegerType),
 }
 
 /// [IrIntegerValueKind] with additional location data

@@ -283,16 +283,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quickscope"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56957ce87bc2e87b571220844dad33f458a295c3a134b524e900f2ab74858be6"
-dependencies = [
- "indexmap",
- "smallvec",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -367,7 +357,6 @@ dependencies = [
  "hashbrown 0.11.2",
  "inkwell",
  "internment",
- "quickscope",
  "smallvec",
  "uuid",
 ]

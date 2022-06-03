@@ -11,8 +11,11 @@ use spark::{
     CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol,
 };
 
+/// Input source code, either a file or a directory containing source files
 enum InputItem {
+    /// A directory with name containing more files 
     Dir(String, Vec<InputItem>),
+    /// File to be parsed and compiled into a part of a spark module
     File(FileId),
 }
 
@@ -204,6 +207,7 @@ fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId
     })
 }
 
+/// Recursively submit all child source files and modules of a directory to the given parser
 fn parse_dir<'src>(
     name: String,
     items: Vec<InputItem>,

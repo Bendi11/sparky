@@ -3,6 +3,7 @@
 
 pub mod value;
 pub mod types;
+pub mod lower;
 
 use crate::{ast::{IntegerWidth, FunFlags}, arena::{Interner, Index, Arena}, Symbol, util::{files::FileId, loc::Span}};
 
@@ -133,6 +134,8 @@ impl IrContext {
     pub const F32: TypeId = unsafe { TypeId::from_raw(10) };
     pub const F64: TypeId = unsafe { TypeId::from_raw(11) };
 
+    pub const INVALID: TypeId = unsafe { TypeId::from_raw(12) };
+
     /// Create a new `IRContext` with primitive types defined
     pub fn new() -> Self {
         let mut types = Interner::<IrType>::new();
@@ -152,6 +155,8 @@ impl IrContext {
     
         types.insert(IrFloatType { doublewide: false }.into());
         types.insert(IrFloatType { doublewide: true }.into());
+
+        types.insert(IrType::Invalid);
 
         Self {
             types,
