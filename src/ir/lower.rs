@@ -4,11 +4,27 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use hashbrown::HashMap;
 
-use crate::{util::{files::{Files, FileId}, loc::Span}, Symbol, ast::{ParsedModule, DefData, UnresolvedType, SymbolPath, PathIter, UnresolvedFunType}, arena::{Index, Arena}};
+use crate::{util::{files::{Files, FileId}, loc::Span}, Symbol, ast::{ParsedModule, DefData, UnresolvedType, SymbolPath, PathIter, UnresolvedFunType, FunProto}, arena::{Index, Arena}};
 
-use super::{IrContext, TypeId, FunId, types::{IrType, integer::IrIntegerType, float::IrFloatType, array::IrArrayType, sum::IrSumType, structure::IrStructType, fun::IrFunType}, IrFun};
+use super::{
+    IrContext,
+    TypeId,
+    FunId,
+    types::{
+        IrType,
+        integer::IrIntegerType,
+        float::IrFloatType,
+        array::IrArrayType,
+        sum::IrSumType,
+        structure::IrStructType,
+        fun::IrFunType
+    },
+    IrFun,
+    VarId,
+    BBId
+};
 
-pub mod scopemap;
+pub mod ast;
 
 /// Structure containing all needed state to lower parsed ASTs into spark's IR, performing type
 /// checking and resolution
@@ -21,6 +37,19 @@ pub struct IrLowerer<'files, 'ctx> {
     root_module: IntermediateModuleId,
     /// All intermediate modules
     modules: Arena<IntermediateModule>,
+    /// Stack representing the current scope
+    scope_stack: Vec<ScopePlate>,
+}
+
+/// Represents a type of scope that we are currently in, used to represent the nested
+/// scope structure of programs with ifs, loops, etc.
+pub struct ScopePlate {
+    /// Variables defined in this scope
+    vars: HashMap<Symbol, VarId>,
+    /// Stack allocation to store the phi or return value of the block in
+    return_var: Option<VarId>,
+    /// Block to exit to after this one is done or a break / phi statement is encountered
+    after_bb: BBId,
 }
 
 /// Index into the `modules` field of an [IrLowerer]
@@ -57,6 +86,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             ctx,
             root_module,
             modules,
+            scope_stack: Vec::new(),
         }
     }
         
@@ -161,6 +191,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         Ok(())
     }
     
+    
+
     /// Resolve a parsed type into a concrete type id
     fn resolve_type(&mut self, ty: &UnresolvedType, module: IntermediateModuleId, parsed: &ParsedModule, file: FileId, span: Span) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match ty {
