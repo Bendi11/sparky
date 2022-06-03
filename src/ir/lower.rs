@@ -39,6 +39,8 @@ pub struct IrLowerer<'files, 'ctx> {
     modules: Arena<IntermediateModule>,
     /// Stack representing the current scope
     scope_stack: Vec<ScopePlate>,
+    /// Current function we are lowering
+    current_fun: Option<FunId>,
 }
 
 /// Represents a type of scope that we are currently in, used to represent the nested
@@ -87,6 +89,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             root_module,
             modules,
             scope_stack: Vec::new(),
+            current_fun: None,
         }
     }
         
@@ -190,7 +193,6 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
 
         Ok(())
     }
-    
     
 
     /// Resolve a parsed type into a concrete type id

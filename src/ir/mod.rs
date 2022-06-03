@@ -20,6 +20,8 @@ pub struct IrContext {
     pub types: Interner<IrType>,
     /// All declared / defined functions
     pub funs: Arena<IrFun>,
+    /// All basic blocks in the program containing statements
+    pub bbs: Arena<IrBB>,
 }
 
 /// ID referencing an [IrType] in an [IrContext]
@@ -71,8 +73,6 @@ pub struct IrFun {
 
 /// The body of a function, composed of multiple statements and basic blocks
 pub struct IrBody {
-    /// All basic blocks in the function containing multiple statements
-    pub basic_blocks: Arena<IrBB>,
     /// Entry block of the body 
     pub entry: BBId,
     /// All local variable declarations
@@ -109,6 +109,8 @@ pub enum IrTerminator {
 
 /// A single statement in the Intermediate Representation
 pub enum IrStmt {
+    /// Allocate space for the given variable
+    VarLive(VarId),
     /// Store a value in a variable
     Store {
         /// The variable to store into
@@ -161,6 +163,7 @@ impl IrContext {
         Self {
             types,
             funs: Arena::new(),
+            bbs: Arena::new(),
         }
     }
     
