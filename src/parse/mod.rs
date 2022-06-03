@@ -455,13 +455,14 @@ impl<'src> Parser<'src> {
 
                 self.toks.next();
                 let mutable = peeked.data == TokenData::Ident("mut");
-                self.trace.push("variable declaration".into());
+                self.trace.push("let statement".into());
 
-                let next = self.next_tok(EXPECTING_AFTER_LET)?;
+                let next = self.peek_tok(EXPECTING_AFTER_LET)?.clone();
 
                 let mut var_type = None;
                 let expr = match next.data {
                     TokenData::OpenBracket(BracketType::Smooth) => {
+                        self.toks.next();
                         let typename = self.parse_typename()?;
                         self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
 
@@ -946,10 +947,45 @@ impl<'src> Parser<'src> {
             TokenData::Period,
             TokenData::OpenBracket(BracketType::Square),
             TokenData::Colon,
+            TokenData::OpenBracket(BracketType::Smooth),
         ];
 
         let peeked = self.peek_tok(ACCESS_EXPECTING)?.clone();
         match peeked.data {
+            TokenData::OpenBracket(BracketType::Smooth) => {
+                self.trace.push("function call".into());
+                let mut args = vec![];
+                self.toks.next();
+
+                loop {
+                    let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+                    match next_in_args.data {
+                        TokenData::Comma => {
+                            self.next_tok(&[TokenData::Comma])?;
+                        }
+                        TokenData::CloseBracket(BracketType::Smooth) => {
+                            self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                            break;
+                        }
+                        _ => {
+                            self.trace.push("function call argument".into());
+                            args.push(self.parse_expr()?);
+                            self.trace.pop();
+                        }
+                    }
+                }
+
+                self.trace.pop();
+
+                Ok(Expr {
+                    span: if let Some(last) = args.last() {
+                        (peeked.span.from, last.span.to).into()
+                    } else {
+                        peeked.span
+                    },
+                    node: ExprNode::Call(Box::new(accessing), args),
+                })
+            },
             TokenData::Period => {
                 const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] = &[
                     TokenData::Ident("structure field name"),
@@ -957,41 +993,9 @@ impl<'src> Parser<'src> {
                 ];
 
                 self.toks.next(); //Eat the period character
-                self.trace.push("member access or function call".into());
+                self.trace.push("member access".into());
                 let next = self.next_tok(EXPECTING_AFTER_PERIOD)?;
                 match next.data {
-                    TokenData::OpenBracket(BracketType::Smooth) => {
-                        let mut args = vec![];
-
-                        loop {
-                            let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
-                            match next_in_args.data {
-                                TokenData::Comma => {
-                                    self.next_tok(&[TokenData::Comma])?;
-                                }
-                                TokenData::CloseBracket(BracketType::Smooth) => {
-                                    self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-                                    break;
-                                }
-                                _ => {
-                                    self.trace.push("function call argument".into());
-                                    args.push(self.parse_expr()?);
-                                    self.trace.pop();
-                                }
-                            }
-                        }
-
-                        self.trace.pop();
-
-                        Ok(Expr {
-                            span: if let Some(last) = args.last() {
-                                (peeked.span.from, last.span.to).into()
-                            } else {
-                                peeked.span
-                            },
-                            node: ExprNode::Call(Box::new(accessing), args),
-                        })
-                    }
                     TokenData::Ident(item) => {
                         self.trace.pop();
 

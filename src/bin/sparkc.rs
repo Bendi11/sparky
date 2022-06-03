@@ -8,7 +8,7 @@ use spark::{
     error::DiagnosticManager,
     parse::{ParseError, Parser},
     util::files::{CompiledFile, FileId, Files},
-    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol,
+    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol, ir::{lower::IrLowerer, IrContext},
 };
 
 /// Input source code, either a file or a directory containing source files
@@ -183,6 +183,14 @@ fn main() {
             root
         }
     };
+    
+    let mut ctx = IrContext::new();
+    let mut lowerer = IrLowerer::new(&files, &mut ctx, root_module.name);
+    let mut diags = DiagnosticManager::new(&files);
+    lowerer.lower(&root_module).map_err(|e| diags.emit(e)).unwrap();
+    for ty in ctx.types {
+        println!("{:?}", ty); 
+    }
 }
 
 fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {

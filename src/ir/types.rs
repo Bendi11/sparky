@@ -12,7 +12,7 @@ pub mod sum;
 pub mod array;
 
 /// Data for an [IRType] that contains the actual type data
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum IrType {
     /// An integer type with width and signedness
     Integer(IrIntegerType),

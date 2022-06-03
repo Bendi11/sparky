@@ -5,7 +5,7 @@ use super::IrType;
 
 
 /// Type of a function
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct IrFunType {
     /// Return type of the function
     pub return_ty: TypeId,

@@ -19,7 +19,6 @@ pub struct IrLowerer<'files, 'ctx> {
     ctx: &'ctx mut IrContext,
     /// The root intermediate module, to be populated with definition data during lowering
     root_module: IntermediateModuleId,
-    
     /// All intermediate modules
     modules: Arena<IntermediateModule>,
 }
@@ -60,13 +59,21 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             modules,
         }
     }
-    
+        
+    /// Lower a parsed module to IR
+    pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
+        self.populate_forward_types_impl(self.root_module, root)?;
+        self.populate_defs_impl(self.root_module, root)?;
+
+        Ok(())
+    }
+
     /// Get forward references to all declared types and modules
     fn populate_forward_types_impl(&mut self, module: IntermediateModuleId, parsed: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::AliasDef { name, aliased: _ } => {
-                    let ty = self.ctx.types.insert_nointern(IrType::Alias { name: name.clone(), ty: IrContext::INVALID });
+                    let ty = self.ctx.types.insert_nointern(IrType::Invalid);
                     self.modules[module].defs.insert(name.clone(), IntermediateDefId::Type(ty));
                 },
                 _ => (),
@@ -116,6 +123,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         body: None,
                         flags: proto.flags,
                     };
+                    let fun = self.ctx.funs.insert(fun);
+                    self.modules[module].defs.insert(proto.name.clone(), IntermediateDefId::Fun(fun));
                 },
                 _ => (),
             }
@@ -167,7 +176,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             }
         })
     }
-        
+     
     /// Resolve a function type, split into another function to be used when generating forward
     /// references for function declarations 
     fn resolve_fn_type(&mut self, ty: &UnresolvedFunType, module: IntermediateModuleId, parsed: &ParsedModule, file: FileId, span: Span) -> Result<IrFunType, Diagnostic<FileId>> {
@@ -195,7 +204,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         let next = path.next().unwrap();
         let next = self.modules[module].defs.get(&next);
         match path.len() {
-            1 => next.copied(),
+            0 => next.copied(),
             _ => match next {
                 Some(IntermediateDefId::Module(other)) => self.resolve_path_impl(*other, path),
                 _ => None

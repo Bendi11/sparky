@@ -59,7 +59,7 @@ pub struct Arena<T> {
 /// but only allocates new elements when a unique one is added,
 /// so two elements that are equal share the same ID
 #[derive(Debug, Clone)]
-pub struct Interner<T: Hash + Eq> {
+pub struct Interner<T> {
     /// A map of instances of T to their positions in `arena`
     ids: HashMap<T, Index<T>>,
     /// The arena holding instances of `T`
@@ -73,6 +73,11 @@ impl<T: Hash + Eq + Clone> Interner<T> {
             ids: HashMap::new(),
             arena: Arena::new(),
         }
+    }
+    
+    /// Get an iterator over the elements of this `Interner`
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.arena.iter()
     }
 
     /// Insert an item into the arena or return a previously stored ID
@@ -226,6 +231,21 @@ impl<T> Default for Arena<T> {
     }
 }
 
+impl<T> IntoIterator for Interner<T> {
+    type IntoIter = std::vec::IntoIter<T>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.arena.into_iter()
+    }
+}
+impl<'a, T: Eq + Hash + Clone> IntoIterator for &'a Interner<T> {
+    type IntoIter = std::slice::Iter<'a, T>;
+    type Item = &'a T;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
 impl<T> fmt::Debug for Index<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Index({})", self.0)
