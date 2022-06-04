@@ -2,7 +2,6 @@ use crate::ast::IntegerWidth;
 
 use super::IrType;
 
-
 /// Integer type containing signedness and bit width information
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IrIntegerType {

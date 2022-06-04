@@ -15,9 +15,9 @@ pub enum IrFloatValueKind {
 
     /// Access a variable of floating point type
     Var(VarId),
-    
+
     /// Integer to float cast
-    IntCast(IrIntegerValue, IrFloatType)
+    IntCast(IrIntegerValue, IrFloatType),
 }
 
 /// An expression that produces a floating point value
@@ -26,4 +26,3 @@ pub struct IrFloatValue {
     pub span: Span,
     pub kind: IrFloatValueKind,
 }
-

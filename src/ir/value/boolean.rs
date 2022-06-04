@@ -1,6 +1,5 @@
 use super::*;
 
-
 /// Any expression that produces a boolean value
 pub enum IrBoolValueKind {
     ///Comparing two integer values for equality
@@ -9,10 +8,10 @@ pub enum IrBoolValueKind {
     FloatEq(IrFloatValue, IrFloatValue),
     /// Comparing two other boolean values for equality
     BooleanEq(Box<IrBoolValue>, Box<IrBoolValue>),
-    
+
     /// Comparing two pointers for equality
     PtrEq(IrPointerValue, IrPointerValue),
-    
+
     /// Integer less than comparison
     ILt(IrIntegerValue, IrIntegerValue),
     /// Integer less than or equal to comparison
@@ -30,7 +29,7 @@ pub enum IrBoolValueKind {
     FGt(IrFloatValue, IrFloatValue),
     /// Float greater than or equal to comparison
     FGe(IrFloatValue, IrFloatValue),
-    
+
     /// Accessing a boolean-valued variables
     Var(VarId),
 }
@@ -41,4 +40,3 @@ pub struct IrBoolValue {
     pub span: Span,
     pub kind: IrBoolValueKind,
 }
-

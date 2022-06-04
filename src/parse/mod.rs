@@ -985,7 +985,7 @@ impl<'src> Parser<'src> {
                     },
                     node: ExprNode::Call(Box::new(accessing), args),
                 })
-            },
+            }
             TokenData::Period => {
                 const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] = &[
                     TokenData::Ident("structure field name"),

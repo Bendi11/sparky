@@ -2,7 +2,6 @@ use crate::ir::TypeId;
 
 use super::IrType;
 
-
 /// A 'tagged union' type that contains a discriminant value and can be one of many types
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IrSumType {

@@ -74,7 +74,7 @@ impl<T: Hash + Eq + Clone> Interner<T> {
             arena: Arena::new(),
         }
     }
-    
+
     /// Get an iterator over the elements of this `Interner`
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.arena.iter()

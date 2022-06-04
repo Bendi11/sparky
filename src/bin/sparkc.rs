@@ -6,14 +6,15 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use spark::{
     ast::ParsedModule,
     error::DiagnosticManager,
+    ir::{lower::IrLowerer, IrContext},
     parse::{ParseError, Parser},
     util::files::{CompiledFile, FileId, Files},
-    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol, ir::{lower::IrLowerer, IrContext},
+    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol,
 };
 
 /// Input source code, either a file or a directory containing source files
 enum InputItem {
-    /// A directory with name containing more files 
+    /// A directory with name containing more files
     Dir(String, Vec<InputItem>),
     /// File to be parsed and compiled into a part of a spark module
     File(FileId),
@@ -183,13 +184,16 @@ fn main() {
             root
         }
     };
-    
+
     let mut ctx = IrContext::new();
     let mut lowerer = IrLowerer::new(&files, &mut ctx, root_module.name);
     let mut diags = DiagnosticManager::new(&files);
-    lowerer.lower(&root_module).map_err(|e| diags.emit(e)).unwrap();
+    lowerer
+        .lower(&root_module)
+        .map_err(|e| diags.emit(e))
+        .unwrap();
     for ty in ctx.types {
-        println!("{:?}", ty); 
+        println!("{:?}", ty);
     }
 }
 

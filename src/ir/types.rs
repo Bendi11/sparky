@@ -1,15 +1,18 @@
 use crate::Symbol;
 
-use self::{integer::IrIntegerType, float::IrFloatType, structure::IrStructType, sum::IrSumType, fun::IrFunType, array::IrArrayType};
+use self::{
+    array::IrArrayType, float::IrFloatType, fun::IrFunType, integer::IrIntegerType,
+    structure::IrStructType, sum::IrSumType,
+};
 
 use super::TypeId;
 
+pub mod array;
 pub mod float;
 pub mod fun;
 pub mod integer;
 pub mod structure;
 pub mod sum;
-pub mod array;
 
 /// Data for an [IRType] that contains the actual type data
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -17,8 +20,8 @@ pub enum IrType {
     /// An integer type with width and signedness
     Integer(IrIntegerType),
     /// A 32 or 64 bit floating point type
-    Float(IrFloatType), 
-    /// Unnamed structure type with fields 
+    Float(IrFloatType),
+    /// Unnamed structure type with fields
     Struct(IrStructType),
     /// Sum type that can be many different types
     Sum(IrSumType),

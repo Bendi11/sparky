@@ -1,7 +1,6 @@
-use crate::{Symbol, ir::TypeId};
+use crate::{ir::TypeId, Symbol};
 
 use super::IrType;
-
 
 /// An unnamed structure type mapping string field names to fields of a specific type,
 /// preserving field ordering information

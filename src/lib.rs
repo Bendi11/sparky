@@ -5,9 +5,9 @@ use internment::LocalIntern;
 pub mod arena;
 pub mod ast;
 pub mod error;
+pub mod ir;
 pub mod parse;
 pub mod util;
-pub mod ir;
 
 pub type Symbol = LocalIntern<String>;
 

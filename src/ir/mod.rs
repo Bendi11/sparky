@@ -1,22 +1,26 @@
 //! Module containing definitions for structures representing type-lowered Intermediate
 //! Representation created from an Abstract Syntax Tree
 
-pub mod value;
-pub mod types;
 pub mod lower;
+pub mod types;
+pub mod value;
 
-use crate::{ast::{IntegerWidth, FunFlags}, arena::{Interner, Index, Arena}, Symbol, util::{files::FileId, loc::Span}};
-
-use self::{
-    value::IrAnyValue,
-    types::{IrType, fun::IrFunType, integer::IrIntegerType, float::IrFloatType}
+use crate::{
+    arena::{Arena, Index, Interner},
+    ast::{FunFlags, IntegerWidth},
+    util::{files::FileId, loc::Span},
+    Symbol,
 };
 
+use self::{
+    types::{float::IrFloatType, fun::IrFunType, integer::IrIntegerType, IrType},
+    value::IrAnyValue,
+};
 
 /// An IR context containing arenas with all type definitons, function declarations / definitions,
 /// and modules
 pub struct IrContext {
-    /// A container with all defined types 
+    /// A container with all defined types
     pub types: Interner<IrType>,
     /// All declared / defined functions
     pub funs: Arena<IrFun>,
@@ -26,13 +30,13 @@ pub struct IrContext {
 
 /// ID referencing an [IrType] in an [IrContext]
 pub type TypeId = Index<IrType>;
-    
+
 /// ID referencing an [IrBB] in an [IrBody]
 pub type BBId = Index<IrBB>;
 
 /// ID referencing an [IrVar] in an [IrBody]
 pub type VarId = Index<IrVar>;
-    
+
 /// ID referencing an [IrFun] in an [IrContext]
 pub type FunId = Index<IrFun>;
 
@@ -73,7 +77,7 @@ pub struct IrFun {
 
 /// The body of a function, composed of multiple statements and basic blocks
 pub struct IrBody {
-    /// Entry block of the body 
+    /// Entry block of the body
     pub entry: BBId,
     /// All local variable declarations
     pub vars: Arena<IrVar>,
@@ -98,7 +102,7 @@ pub enum IrTerminator {
     },
     /// Matches against an enum's discriminant
     JmpMatch {
-        /// Variant being tested 
+        /// Variant being tested
         variant: IrAnyValue,
         /// List of checked discriminants by their indices
         discriminants: Vec<(DiscriminantId, BBId)>,
@@ -116,8 +120,8 @@ pub enum IrStmt {
         /// The variable to store into
         var: VarId,
         /// Value to store in variable
-        val: IrAnyValue
-    }
+        val: IrAnyValue,
+    },
 }
 
 impl IrContext {
@@ -142,19 +146,67 @@ impl IrContext {
     pub fn new() -> Self {
         let mut types = Interner::<IrType>::new();
 
-        types.insert(IrIntegerType { signed: true, width: IntegerWidth::Eight }.into());    
-        types.insert(IrIntegerType { signed: true, width: IntegerWidth::Sixteen }.into());
-        types.insert(IrIntegerType { signed: true, width: IntegerWidth::ThirtyTwo }.into());
-        types.insert(IrIntegerType { signed: true, width: IntegerWidth::SixtyFour }.into());
-        
-        types.insert(IrIntegerType { signed: false, width: IntegerWidth::Eight }.into());    
-        types.insert(IrIntegerType { signed: false, width: IntegerWidth::Sixteen }.into());
-        types.insert(IrIntegerType { signed: false, width: IntegerWidth::ThirtyTwo }.into());
-        types.insert(IrIntegerType { signed: false, width: IntegerWidth::SixtyFour }.into());
-        
+        types.insert(
+            IrIntegerType {
+                signed: true,
+                width: IntegerWidth::Eight,
+            }
+            .into(),
+        );
+        types.insert(
+            IrIntegerType {
+                signed: true,
+                width: IntegerWidth::Sixteen,
+            }
+            .into(),
+        );
+        types.insert(
+            IrIntegerType {
+                signed: true,
+                width: IntegerWidth::ThirtyTwo,
+            }
+            .into(),
+        );
+        types.insert(
+            IrIntegerType {
+                signed: true,
+                width: IntegerWidth::SixtyFour,
+            }
+            .into(),
+        );
+
+        types.insert(
+            IrIntegerType {
+                signed: false,
+                width: IntegerWidth::Eight,
+            }
+            .into(),
+        );
+        types.insert(
+            IrIntegerType {
+                signed: false,
+                width: IntegerWidth::Sixteen,
+            }
+            .into(),
+        );
+        types.insert(
+            IrIntegerType {
+                signed: false,
+                width: IntegerWidth::ThirtyTwo,
+            }
+            .into(),
+        );
+        types.insert(
+            IrIntegerType {
+                signed: false,
+                width: IntegerWidth::SixtyFour,
+            }
+            .into(),
+        );
+
         types.insert(IrType::Bool);
         types.insert(IrType::Unit);
-    
+
         types.insert(IrFloatType { doublewide: false }.into());
         types.insert(IrFloatType { doublewide: true }.into());
 
@@ -166,7 +218,7 @@ impl IrContext {
             bbs: Arena::new(),
         }
     }
-    
+
     /// Get the [TypeId] of an integer type with the given width and signededness
     pub const fn itype(signed: bool, width: IntegerWidth) -> TypeId {
         match (signed, width) {
@@ -174,7 +226,7 @@ impl IrContext {
             (true, IntegerWidth::Sixteen) => Self::I16,
             (true, IntegerWidth::ThirtyTwo) => Self::I32,
             (true, IntegerWidth::SixtyFour) => Self::I64,
-            
+
             (false, IntegerWidth::Eight) => Self::U8,
             (false, IntegerWidth::Sixteen) => Self::U16,
             (false, IntegerWidth::ThirtyTwo) => Self::U32,

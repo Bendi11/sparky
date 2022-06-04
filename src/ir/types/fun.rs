@@ -2,8 +2,6 @@ use crate::{ir::TypeId, Symbol};
 
 use super::IrType;
 
-
-
 /// Type of a function
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct IrFunType {

@@ -455,9 +455,7 @@ pub enum UnresolvedType {
         fields: Vec<(UnresolvedType, Symbol)>,
     },
     /// A tagged union with variant types
-    Enum {
-        variants: Vec<UnresolvedType>,
-    },
+    Enum { variants: Vec<UnresolvedType> },
     /// User-defined identifier
     UserDefined {
         /// The name of the user-defined type

@@ -2,7 +2,6 @@ use crate::ir::TypeId;
 
 use super::IrType;
 
-
 /// Array type with a compile-time known length and element type
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IrArrayType {
