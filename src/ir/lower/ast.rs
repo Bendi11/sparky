@@ -1,8 +1,8 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::{
-    ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode},
-    ir::{value::{IrIntegerValue, IrAnyValue, IrIntegerValueKind}, BBId, FunId, IrBB, IrFun, IrStmt, IrVar, VarId, types::IrType},
+    ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode, Literal, NumberLiteral, NumberLiteralAnnotation, IntegerWidth},
+    ir::{value::{IrIntegerValue, IrAnyValue, IrIntegerValueKind, IrFloatValue, IrFloatValueKind}, BBId, FunId, IrBB, IrFun, IrStmt, IrVar, VarId, types::{IrType, float::IrFloatType, integer::IrIntegerType}},
     util::files::FileId,
     Symbol,
 };
@@ -107,6 +107,41 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         ])
                     )
                 } 
+            },
+            ExprNode::Literal(literal) => match literal {
+                Literal::Number(number) => match number {
+                    NumberLiteral::Float(val, annot) => match annot {
+                        Some(NumberLiteralAnnotation::F32) => IrAnyValue::Float(IrFloatValue {
+                            span: expr.span,
+                            kind: IrFloatValueKind::Literal(*val, IrFloatType { doublewide: false }),
+                        }),
+                        Some(NumberLiteralAnnotation::F64) => IrAnyValue::Float(IrFloatValue {
+                            span: expr.span,
+                            kind: IrFloatValueKind::Literal(*val, IrFloatType { doublewide: true }),
+                        }),
+                        Some(annot) => {
+                            let literal = IrFloatValue { span: expr.span, kind: IrFloatValueKind::Literal(*val, IrFloatType { doublewide: true })};
+                            IrAnyValue::Integer(
+                                IrIntegerValue {
+                                    loc: expr.span,
+                                    kind: IrIntegerValueKind::FloatCast(literal, match annot {
+                                        NumberLiteralAnnotation::U8 => IrIntegerType { signed: false, width: IntegerWidth::Eight },
+                                        NumberLiteralAnnotation::U16 => IrIntegerType { signed: false, width: IntegerWidth::Sixteen },
+                                        NumberLiteralAnnotation::U32 => IrIntegerType { signed: false, width: IntegerWidth::ThirtyTwo },
+                                        NumberLiteralAnnotation::U64 => IrIntegerType { signed: false, width: IntegerWidth::SixtyFour },
+
+                                        NumberLiteralAnnotation::I8 => IrIntegerType { signed: true, width: IntegerWidth::Eight },
+                                        NumberLiteralAnnotation::I16 => IrIntegerType { signed: true, width: IntegerWidth::Sixteen },
+                                        NumberLiteralAnnotation::I32 => IrIntegerType { signed: true, width: IntegerWidth::ThirtyTwo },
+                                        NumberLiteralAnnotation::I64 => IrIntegerType { signed: true, width: IntegerWidth::SixtyFour },
+
+                                        _ => unreachable!()
+                                    }),
+                                },
+                            )
+                        }
+                    }
+                }
             },
             _ => unimplemented!()
         })

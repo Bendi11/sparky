@@ -11,6 +11,7 @@ pub enum IrIntegerValueKind {
     Mod(Box<IrIntegerValue>, Box<IrIntegerValue>),
     /// Pointer-to-int cast
     PtrCast(IrPointerValue, IrIntegerType),
+    FloatCast(Box<IrFloatValue>, IrIntegerType),
 }
 
 /// [IrIntegerValueKind] with additional location data
@@ -30,7 +31,7 @@ impl IrIntegerValueKind {
             Self::Div(v, _) |
             Self::Mod(v, _) => v.kind.ty(ctx),
 
-            Self::PtrCast(_, ty) => ctx.types.insert((*ty).into()),
+            Self::PtrCast(_, ty) | Self::FloatCast(_, ty) => ctx.types.insert((*ty).into()),
         }
     }
 }

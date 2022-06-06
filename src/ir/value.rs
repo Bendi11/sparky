@@ -20,6 +20,8 @@ pub enum IrAnyValue {
     Integer(IrIntegerValue),
     /// Any expression producing a boolean value
     Boolean(IrBoolValue),
+    /// Any expression producing a float value
+    Float(IrFloatValue),
 }
 
 impl IrAnyValue {
@@ -29,6 +31,7 @@ impl IrAnyValue {
             Self::Pointer(v) => v.kind.ty(ctx),
             Self::Integer(v) => v.kind.ty(ctx),
             Self::Boolean(_) => IrContext::BOOL,
+            Self::Float(v) => v.kind.ty(ctx),
         } 
     }
 }

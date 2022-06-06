@@ -18,6 +18,9 @@ pub enum IrFloatValueKind {
 
     /// Integer to float cast
     IntCast(IrIntegerValue, IrFloatType),
+
+    /// Literal value
+    Literal(f64, IrFloatType),
 }
 
 /// An expression that produces a floating point value
@@ -36,6 +39,7 @@ impl IrFloatValueKind {
                 Self::Div(lhs, _) => lhs.kind.ty(ctx),
             Self::Var(id) => ctx[*id].ty,
             Self::IntCast(_, ty) => ctx.types.insert((*ty).into()),
+            Self::Literal(_, ty) => ctx.types.insert((*ty).into()),
         }
     }
 }
