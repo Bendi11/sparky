@@ -5,6 +5,8 @@ pub mod lower;
 pub mod types;
 pub mod value;
 
+use std::ops::IndexMut;
+
 use crate::{
     arena::{Arena, Index, Interner},
     ast::{FunFlags, IntegerWidth},
@@ -26,6 +28,8 @@ pub struct IrContext {
     pub funs: Arena<IrFun>,
     /// All basic blocks in the program containing statements
     pub bbs: Arena<IrBB>,
+    /// All variables in the program 
+    pub vars: Arena<IrVar>,
 }
 
 /// ID referencing an [IrType] in an [IrContext]
@@ -79,8 +83,6 @@ pub struct IrFun {
 pub struct IrBody {
     /// Entry block of the body
     pub entry: BBId,
-    /// All local variable declarations
-    pub vars: Arena<IrVar>,
     /// The parent function
     pub parent: FunId,
 }
@@ -216,7 +218,17 @@ impl IrContext {
             types,
             funs: Arena::new(),
             bbs: Arena::new(),
+            vars: Arena::new(),
         }
+    }
+    
+    /// Get a human-readable type name for the given type
+    #[inline]
+    pub fn typename(&self, ty: TypeId) -> String {
+        TypenameFormatter {
+            ctx: self,
+            ty,
+        }.to_string()
     }
 
     /// Get the [TypeId] of an integer type with the given width and signededness
@@ -232,5 +244,111 @@ impl IrContext {
             (false, IntegerWidth::ThirtyTwo) => Self::U32,
             (false, IntegerWidth::SixtyFour) => Self::U64,
         }
+    }
+}
+
+/// Structure for more efficiently formatting typename strings via a std::fmt::Display
+/// implementation avoiding multiple string allocations
+struct TypenameFormatter<'ctx> {
+    ctx: &'ctx IrContext,
+    ty: TypeId,
+}
+
+impl<'ctx> TypenameFormatter<'ctx> {
+    /// Create a new formatter for the given type ID using the same shared context
+    const fn create(&self, ty: TypeId) -> Self {
+        Self {
+            ctx: self.ctx,
+            ty,
+        }
+    } 
+}
+
+impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.ctx[self.ty] {
+            IrType::Integer(ity) => write!(f, "{}", match (ity.signed, ity.width) {
+                (true, IntegerWidth::Eight) => "i8",
+                (true, IntegerWidth::Sixteen) => "i16",
+                (true, IntegerWidth::ThirtyTwo) => "i32",
+                (true, IntegerWidth::SixtyFour) => "i64",
+                
+                (false, IntegerWidth::Eight) => "u8",
+                (false, IntegerWidth::Sixteen) => "u16",
+                (false, IntegerWidth::ThirtyTwo) => "u32",
+                (false, IntegerWidth::SixtyFour) => "u64",
+            }),
+            IrType::Bool => write!(f, "bool"),
+            IrType::Unit => write!(f, "()"),
+            IrType::Sum(sum) => {
+                for variant in sum.variants.iter() {
+                    write!(f, "{} | ", self.create(*variant))?;
+                }
+                Ok(())
+            },
+            IrType::Float(float) => write!(f, "{}", match float.doublewide {
+                true => "f64",
+                false => "f32",
+            }),
+            IrType::Alias { name, .. } => write!(f, "{}", name),
+            IrType::Array(array) => write!(f,
+                "[{}]{}",
+                array.len,
+                self.create(array.element)
+            ),
+            IrType::Struct(structure) => {
+                write!(f, "{{")?;
+                for (field_ty, field_name) in structure.fields.iter() {
+                    write!(f, "{} {},", self.create(*field_ty), field_name)?;
+                }
+                write!(f, "}}")
+            },
+            IrType::Ptr(ty) => write!(f, "*{}", self.create(*ty)),
+            IrType::Fun(fun) => {
+                write!(f, "fun (")?;
+                for (arg_ty, arg_name) in fun.args.iter() {
+                    write!(
+                        f,
+                        "{} {}, ",
+                        self.create(*arg_ty),
+                        arg_name.unwrap_or(Symbol::from(""))
+                    )?;
+                }
+
+                write!(f, ") -> {}", self.create(fun.return_ty))
+            },
+            IrType::Invalid => write!(f, "INVALID"),
+        }
+    }
+}
+
+impl std::ops::Index<TypeId> for IrContext {
+    type Output = IrType;
+    fn index(&self, index: TypeId) -> &Self::Output {
+        &self.types[index]
+    }
+}
+
+impl std::ops::Index<FunId> for IrContext {
+    type Output = IrFun;
+    fn index(&self, index: FunId) -> &Self::Output {
+        &self.funs[index]
+    }
+}
+impl IndexMut<FunId> for IrContext {
+    fn index_mut(&mut self, index: FunId) -> &mut Self::Output {
+        &mut self.funs[index]
+    }
+}
+
+impl std::ops::Index<VarId> for IrContext {
+    type Output = IrVar;
+    fn index(&self, index: VarId) -> &Self::Output {
+        &self.vars[index]
+    }
+}
+impl IndexMut<VarId> for IrContext {
+    fn index_mut(&mut self, index: VarId) -> &mut Self::Output {
+        &mut self.vars[index]
     }
 }

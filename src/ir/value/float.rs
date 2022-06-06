@@ -1,4 +1,4 @@
-use crate::ir::types::float::IrFloatType;
+use crate::ir::{types::float::IrFloatType, TypeId};
 
 use super::*;
 
@@ -25,4 +25,17 @@ pub struct IrFloatValue {
     /// Span in the source file of the parent function that this expression occupies
     pub span: Span,
     pub kind: IrFloatValueKind,
+}
+
+impl IrFloatValueKind {
+    pub fn ty(&self, ctx: &mut IrContext) -> TypeId {
+        match self {
+            Self::Add(lhs, _) |
+                Self::Sub(lhs, _) |
+                Self::Mul(lhs, _) |
+                Self::Div(lhs, _) => lhs.kind.ty(ctx),
+            Self::Var(id) => ctx[*id].ty,
+            Self::IntCast(_, ty) => ctx.types.insert((*ty).into()),
+        }
+    }
 }

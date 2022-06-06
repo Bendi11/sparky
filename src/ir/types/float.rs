@@ -1,7 +1,7 @@
 use super::IrType;
 
 /// Floating point type containing the width of the IEEE 754 value
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct IrFloatType {
     /// If this is 32 or 64 bits wide
     pub doublewide: bool,

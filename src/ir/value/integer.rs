@@ -20,3 +20,17 @@ pub struct IrIntegerValue {
     /// The kind of integer-valued expression
     pub kind: IrIntegerValueKind,
 }
+
+impl IrIntegerValueKind {
+    pub fn ty(&self, ctx: &mut IrContext) -> TypeId {
+        match self {
+            Self::Add(v, _) |
+            Self::Sub(v, _) |
+            Self::Mul(v, _) |
+            Self::Div(v, _) |
+            Self::Mod(v, _) => v.kind.ty(ctx),
+
+            Self::PtrCast(_, ty) => ctx.types.insert((*ty).into()),
+        }
+    }
+}

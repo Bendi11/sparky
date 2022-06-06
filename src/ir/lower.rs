@@ -159,7 +159,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     match ty {
                         IntermediateDefId::Type(ty) => {
                             let resolved =
-                                self.resolve_type(aliased, module, parsed, def.file, def.span)?;
+                                self.resolve_type(aliased, module, def.file, def.span)?;
                             *self.ctx.types.get_mut(ty) = IrType::Alias {
                                 name: name.clone(),
                                 ty: resolved,
@@ -174,7 +174,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         file: def.file,
                         span: def.span,
                         name: proto.name.clone(),
-                        ty: self.resolve_fn_type(&proto.ty, module, parsed, def.file, def.span)?,
+                        ty: self.resolve_fn_type(&proto.ty, module, def.file, def.span)?,
                         body: None,
                         flags: proto.flags,
                     };
@@ -222,7 +222,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         &mut self,
         ty: &UnresolvedType,
         module: IntermediateModuleId,
-        parsed: &ParsedModule,
+        //parsed: &ParsedModule,
         file: FileId,
         span: Span,
     ) -> Result<TypeId, Diagnostic<FileId>> {
@@ -241,11 +241,11 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 .into(),
             ),
             UnresolvedType::Pointer(ptr) => {
-                let ty = self.resolve_type(ptr, module, parsed, file, span)?;
+                let ty = self.resolve_type(ptr, module, file, span)?;
                 self.ctx.types.insert(IrType::Ptr(ty))
             }
             UnresolvedType::Array { elements, len } => {
-                let element = self.resolve_type(elements, module, parsed, file, span)?;
+                let element = self.resolve_type(elements, module, file, span)?;
                 self.ctx
                     .types
                     .insert(IrArrayType { element, len: *len }.into())
@@ -255,7 +255,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             UnresolvedType::Enum { variants } => {
                 let variants = variants
                     .iter()
-                    .map(|variant| self.resolve_type(variant, module, parsed, file, span))
+                    .map(|variant| self.resolve_type(variant, module, file, span))
                     .collect::<Result<Vec<_>, _>>()?;
                 self.ctx.types.insert(IrSumType { variants }.into())
             }
@@ -263,7 +263,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 let fields = fields
                     .iter()
                     .map(|(field, name)| {
-                        match self.resolve_type(field, module, parsed, file, span) {
+                        match self.resolve_type(field, module, file, span) {
                             Ok(field) => Ok((field, name.clone())),
                             Err(e) => Err(e),
                         }
@@ -283,7 +283,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 }
             },
             UnresolvedType::Fun(ty) => {
-                let fn_ty = self.resolve_fn_type(ty, module, parsed, file, span)?;
+                let fn_ty = self.resolve_fn_type(ty, module, file, span)?;
                 self.ctx.types.insert(fn_ty.into())
             }
         })
@@ -295,16 +295,15 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         &mut self,
         ty: &UnresolvedFunType,
         module: IntermediateModuleId,
-        parsed: &ParsedModule,
         file: FileId,
         span: Span,
     ) -> Result<IrFunType, Diagnostic<FileId>> {
-        let return_ty = self.resolve_type(&ty.return_ty, module, parsed, file, span)?;
+        let return_ty = self.resolve_type(&ty.return_ty, module, file, span)?;
         let args = ty
             .arg_tys
             .iter()
             .map(
-                |(ty, name)| match self.resolve_type(ty, module, parsed, file, span) {
+                |(ty, name)| match self.resolve_type(ty, module, file, span) {
                     Ok(ty) => Ok((ty, name.clone())),
                     Err(e) => Err(e),
                 },

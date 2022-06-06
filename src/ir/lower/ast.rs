@@ -2,7 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::{
     ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode},
-    ir::{value::IrIntegerValue, BBId, FunId, IrBB, IrFun, IrStmt, IrVar, VarId},
+    ir::{value::{IrIntegerValue, IrAnyValue, IrIntegerValueKind}, BBId, FunId, IrBB, IrFun, IrStmt, IrVar, VarId, types::IrType},
     util::files::FileId,
     Symbol,
 };
@@ -25,12 +25,18 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     fn lower_stmt(
         &mut self,
         module: IntermediateModuleId,
-        parsed: &ParsedModule,
         stmt: &Stmt,
         bb: BBId,
     ) -> Result<(), Diagnostic<FileId>> {
         match &stmt.node {
             StmtNode::Let(let_stmt) => {
+                let assigned = let_stmt
+                    .assigned
+                    .as_ref()
+                    .map(|assigned| 
+                        self.lower_expr(module, bb, assigned)
+                    ).map_or(Ok(None), |v| v.map(Some))?;
+
                 if let ExprNode::Access(ref var) = let_stmt.let_expr.node {
                     //Create a new variable if none exists
                     if var.len() == 1 && !self.lookup_var(&var.last()).is_none() {
@@ -39,12 +45,11 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             Some(ty) => self.resolve_type(
                                 ty,
                                 module,
-                                parsed,
                                 self.current_fun().file,
                                 stmt.span,
                             )?,
-                            None => match &let_stmt.assigned {
-                                Some(assigned) => unimplemented!(),
+                            None => match &assigned {
+                                Some(assigned) => assigned.ty(self.ctx),
                                 None => {
                                     return Err(Diagnostic::error()
                                         .with_message(format!(
@@ -61,10 +66,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         };
 
                         let var = self
-                            .current_fun_mut()
-                            .body
-                            .as_mut()
-                            .unwrap()
+                            .ctx
                             .vars
                             .insert(IrVar { name, ty });
                         self.current_scope_mut().vars.insert(name.clone(), var);
@@ -76,6 +78,38 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         }
 
         Ok(())
+    }
+        
+    /// Lower an expression of any type
+    fn lower_expr(
+        &mut self,
+        module: IntermediateModuleId,
+        bb: BBId,
+        expr: &Expr,
+    ) -> Result<IrAnyValue, Diagnostic<FileId>> {
+        Ok(match &expr.node {
+            ExprNode::Cast(ty, rhs) => {
+                let ty = self.resolve_type(ty, module, self.current_fun().file, expr.span)?;
+                let rhs = self.lower_expr(module, bb, rhs)?;
+                match &self.ctx.types[ty] {
+                    IrType::Integer(casted) => match rhs {
+                        IrAnyValue::Pointer(ptr) =>
+                            IrAnyValue::Integer(IrIntegerValue {
+                                loc: expr.span,
+                                kind: IrIntegerValueKind::PtrCast(ptr, *casted),
+                            }),
+                        _ => unreachable!()
+                    },
+                    _ => return Err(Diagnostic::error()
+                        //.with_message(format!("Cannot cast expression of type {} to {}", self.ctx.typename(ty), self.ctx.typename(self.ctx.typeof(rhs))))
+                        .with_labels(vec![
+                            Label::primary(self.current_fun().file, expr.span),
+                        ])
+                    )
+                } 
+            },
+            _ => unimplemented!()
+        })
     }
 
     /// Lookup a declared variable in the current scope stack

@@ -40,3 +40,4 @@ pub struct IrBoolValue {
     pub span: Span,
     pub kind: IrBoolValueKind,
 }
+
