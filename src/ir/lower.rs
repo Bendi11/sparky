@@ -17,11 +17,7 @@ use crate::{
 };
 
 use super::{
-    types::{
-        array::IrArrayType, float::IrFloatType, fun::IrFunType, integer::IrIntegerType,
-        structure::IrStructType, sum::IrSumType, IrType,
-    },
-    BBId, FunId, IrContext, IrFun, TypeId, VarId,
+    BBId, FunId, IrFun, TypeId, VarId, types::{IrType, FunType}, IrContext,
 };
 
 pub mod ast;
@@ -228,14 +224,14 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     ) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match ty {
             UnresolvedType::Integer { width, signed } => self.ctx.types.insert(
-                IrIntegerType {
+                IrType::Integer {
                     width: *width,
                     signed: *signed,
                 }
                 .into(),
             ),
             UnresolvedType::Float { doublewide } => self.ctx.types.insert(
-                IrFloatType {
+                IrType::Float {
                     doublewide: *doublewide,
                 }
                 .into(),
@@ -248,7 +244,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 let element = self.resolve_type(elements, module, file, span)?;
                 self.ctx
                     .types
-                    .insert(IrArrayType { element, len: *len }.into())
+                    .insert(IrType::Array(element, *len))
             }
             UnresolvedType::Unit => IrContext::UNIT,
             UnresolvedType::Bool => IrContext::BOOL,
@@ -257,7 +253,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     .iter()
                     .map(|variant| self.resolve_type(variant, module, file, span))
                     .collect::<Result<Vec<_>, _>>()?;
-                self.ctx.types.insert(IrSumType { variants }.into())
+                self.ctx.types.insert(IrType::Sum(variants).into())
             }
             UnresolvedType::Struct { fields } => {
                 let fields = fields
@@ -269,7 +265,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                self.ctx.types.insert(IrStructType { fields }.into())
+                self.ctx.types.insert(IrType::Struct(fields).into())
             }
             UnresolvedType::UserDefined { name } => match self.resolve_path(module, name) {
                 Some(IntermediateDefId::Type(ty)) => ty,
@@ -284,7 +280,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             },
             UnresolvedType::Fun(ty) => {
                 let fn_ty = self.resolve_fn_type(ty, module, file, span)?;
-                self.ctx.types.insert(fn_ty.into())
+                self.ctx.types.insert(IrType::Fun(fn_ty))
             }
         })
     }
@@ -297,9 +293,9 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         module: IntermediateModuleId,
         file: FileId,
         span: Span,
-    ) -> Result<IrFunType, Diagnostic<FileId>> {
+    ) -> Result<FunType, Diagnostic<FileId>> {
         let return_ty = self.resolve_type(&ty.return_ty, module, file, span)?;
-        let args = ty
+        let params = ty
             .arg_tys
             .iter()
             .map(
@@ -310,7 +306,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             )
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(IrFunType { return_ty, args })
+        Ok(FunType { return_ty, params })
     }
 
     /// Resolve the path in the context of the given intermediate module

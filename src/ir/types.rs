@@ -1,30 +1,32 @@
-use crate::Symbol;
-
-use self::{
-    array::IrArrayType, float::IrFloatType, fun::IrFunType, integer::IrIntegerType,
-    structure::IrStructType, sum::IrSumType,
-};
+use crate::{Symbol, ast::IntegerWidth};
 
 use super::TypeId;
 
-pub mod array;
-pub mod float;
-pub mod fun;
-pub mod integer;
-pub mod structure;
-pub mod sum;
+/// The signature of a function with argument and return types
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct FunType {
+    /// Type that the IR function must return
+    pub return_ty: TypeId, 
+    /// Arguments types with optional names
+    pub params: Vec<(TypeId, Option<Symbol>)>,
+}
 
 /// Data for an [IRType] that contains the actual type data
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum IrType {
     /// An integer type with width and signedness
-    Integer(IrIntegerType),
+    Integer {
+        signed: bool,
+        width: IntegerWidth,
+    },
     /// A 32 or 64 bit floating point type
-    Float(IrFloatType),
+    Float { 
+        doublewide: bool,
+    },
     /// Unnamed structure type with fields
-    Struct(IrStructType),
+    Struct(Vec<(TypeId, Symbol)>),
     /// Sum type that can be many different types
-    Sum(IrSumType),
+    Sum(Vec<TypeId>),
     /// Boolean true or false type
     Bool,
     /// Unit type with a single value
@@ -37,11 +39,11 @@ pub enum IrType {
         ty: TypeId,
     },
     /// Array with compile-time known length and element type
-    Array(IrArrayType),
+    Array(TypeId, u64),
     /// Pointer to a type
     Ptr(TypeId),
     /// Function type
-    Fun(IrFunType),
+    Fun(FunType),
     /// Never used except by the IR lowerer
     Invalid,
 }
