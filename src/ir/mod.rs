@@ -47,7 +47,7 @@ pub type DiscriminantId = Index<TypeId>;
 /// A single basic block in the IR containing a list of statements
 pub struct IrBB {
     /// A list of statements in the order they should execute
-    pub stmts: Vec<IrStmt>,
+    pub stmts: Vec<IrStmtKind>,
     /// The terminator statement of this basic block
     pub terminator: IrTerminator,
 }
@@ -110,8 +110,14 @@ pub enum IrTerminator {
     },
 }
 
+/// A single statement in the IR, an instruction that produces no value
+pub struct IrStmt {
+    pub span: Span,
+    pub kind: IrStmtKind,
+}
+
 /// A single statement in the Intermediate Representation
-pub enum IrStmt {
+pub enum IrStmtKind {
     /// Allocate space for the given variable
     VarLive(VarId),
     /// Store a value in a variable
@@ -347,5 +353,17 @@ impl std::ops::Index<VarId> for IrContext {
 impl IndexMut<VarId> for IrContext {
     fn index_mut(&mut self, index: VarId) -> &mut Self::Output {
         &mut self.vars[index]
+    }
+}
+
+impl std::ops::Index<BBId> for IrContext {
+    type Output = IrBB;
+    fn index(&self, index: BBId) -> &Self::Output {
+        &self.bbs[index]
+    }
+}
+impl IndexMut<BBId> for IrContext {
+    fn index_mut(&mut self, index: BBId) -> &mut Self::Output {
+        &mut self.bbs[index]
     }
 }

@@ -46,7 +46,7 @@ pub struct ScopePlate {
     vars: HashMap<Symbol, VarId>,
     /// Stack allocation to store the phi or return value of the block in
     return_var: Option<VarId>,
-    /// Block to exit to after this one is done or a break / phi statement is encountered
+    /// Block to exit to after this one is done or a break / phi / return statement is encountered
     after_bb: BBId,
 }
 
