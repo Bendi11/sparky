@@ -2,7 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::{
     ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode, Literal, NumberLiteral, NumberLiteralAnnotation, IntegerWidth},
-    ir::{BBId, FunId, IrBB, IrFun, IrStmtKind, IrVar, VarId, types::IrType, value::{IrExprKind, IrExpr}, IrTerminator},
+    ir::{BBId, FunId, IrBB, IrFun, IrStmtKind, IrVar, VarId, types::IrType, value::{IrExprKind, IrExpr}, IrTerminator, IrStmt},
     util::files::FileId,
     Symbol,
 };
@@ -31,21 +31,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         bb: BBId,
     ) -> Result<(), Diagnostic<FileId>> {
         match &stmt.node {
-            StmtNode::Return(val) => match self.scope_stack.first_mut() {
-                Some(top) => match top.return_var {
-                    Some(var) => {
-                        self.ctx[bb].terminator = IrTerminator::Return(self.lower_expr(module, file, fun, val, bb)?);
-                    },
-                    None => return Err(Diagnostic::error()
-                        .with_message("Return statement while current function does not return a value")
-                        .with_labels(vec![Label::primary(file, stmt.span)])
-                    )
+            StmtNode::Return(val) => match self.scope_stack.first().unwrap().return_var {
+                Some(var) => {
+                    self.ctx[bb].terminator = IrTerminator::Return(self.lower_expr(module, file, fun, val, bb)?);
                 },
                 None => return Err(Diagnostic::error()
-                    .with_message("Return statement encountered while not in function".to_owned())
-                    .with_labels(vec![
-                        Label::primary(file, stmt.span)
-                    ])
+                    .with_message("Return statement while current function does not return a value")
+                    .with_labels(vec![Label::primary(file, stmt.span)])
                 )
             },
             StmtNode::Phi(val) => {
@@ -54,7 +46,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     .stmts
                     .push(IrStmt {
                         span: stmt.span,
-                        kind: IrStmtKind::Store { var, val: self.lower_expr(module, file, fun, val, bb)? }
+                        kind: IrStmtKind::Store { var: self.current_scope().return_var, val: self.lower_expr(module, file, fun, val, bb)? }
                     });
                 self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
 
@@ -71,7 +63,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         file: FileId,
         fun: FunId,
         expr: &Expr,
-        bb: IrBB,
+        bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         Ok(IrExpr {
             span: expr.span, 
