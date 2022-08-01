@@ -129,6 +129,12 @@ pub enum IrStmtKind {
         /// Value to store in variable
         val: IrExpr,
     },
+    Write {
+        //// Expression that must be of pointer type
+        ptr: IrExpr,
+        /// Value to write to the pointer
+        val: IrExpr,
+    }
 }
 
 impl IrContext {

@@ -4,7 +4,7 @@ use crate::{
     ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode, Literal, NumberLiteral, NumberLiteralAnnotation, IntegerWidth},
     ir::{BBId, FunId, IrBB, IrFun, IrStmtKind, IrVar, VarId, types::IrType, value::{IrExprKind, IrExpr}, IrTerminator, IrStmt},
     util::files::FileId,
-    Symbol,
+    Symbol, parse::token::Op,
 };
 
 use super::{IntermediateModuleId, IrLowerer, ScopePlate, IntermediateDefId};
@@ -68,6 +68,60 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
 
             },
+            StmtNode::Let(let_stmt) => {
+                let assigned = self.lower_expr(module, file, fun, &let_stmt.assigned, bb)?;
+                let ptr = match &let_stmt.let_expr.node {
+                    ExprNode::Access(name) => {
+                        let (ty, var) = match self.lookup_var(&name.last()) {
+                            Some(var) => (self.ctx[var].ty, var),
+                            None => {
+                                let ty = let_stmt
+                                    .ty
+                                    .as_ref()
+                                    .map(|ty| self.resolve_type(ty, module, file, let_stmt.let_expr.span))
+                                    .unwrap_or(Ok(assigned.ty))?;
+
+                                let var = IrVar {
+                                    ty,
+                                    name: name.last(),
+                                };
+
+                                let var_id = self.ctx.vars.insert(var);
+                                self.ctx[bb].stmts.push(IrStmt {
+                                    span: let_stmt.let_expr.span,
+                                    kind: IrStmtKind::VarLive(var_id),
+                                });
+
+                                (ty, var_id)
+                            }
+                        };
+
+                        IrExpr {
+                            span: let_stmt.let_expr.span,
+                            ty: self.ctx.types.insert(IrType::Ptr(ty)),
+                            kind: IrExprKind::Unary(Op::AND, Box::new(IrExpr {
+                                    span: let_stmt.let_expr.span,
+                                    ty,
+                                    kind: IrExprKind::Var(var),
+                                })
+                            )
+                        }
+                    },
+                    _ => {
+                        let let_expr = self.lower_expr(module, file, fun, &let_stmt.let_expr, bb)?;
+                        IrExpr {
+                            span: let_stmt.let_expr.span,
+                            ty: self.ctx.types.insert(IrType::Ptr(let_expr.ty)),
+                            kind: IrExprKind::Unary(Op::AND, Box::new(let_expr))
+                        }
+                    }
+                };
+                
+                self.ctx[bb].stmts.push(IrStmt {
+                    span: (let_stmt.let_expr.span.from..let_stmt.assigned.span.to).into(),
+                    kind: IrStmtKind::Write { ptr, val: assigned }
+                });
+            }
             _ => unimplemented!()
         } 
         Ok(())
@@ -187,11 +241,14 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         ])
                     )
                 }
-            }
+            },
+            ExprNode::Unary(op, expr) => return self.lower_unary(module, file, fun, *op, &expr, bb),
+            ExprNode::Bin(lhs, op, rhs) => return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb),
             _ => unimplemented!()
         })
     }
 
+    
     /// Lookup a declared variable in the current scope stack
     fn lookup_var(&self, var: &Symbol) -> Option<VarId> {
         for plate in self.scope_stack.iter().rev() {

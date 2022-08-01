@@ -474,18 +474,13 @@ impl<'src> Parser<'src> {
                 };
 
                 self.trace.pop();
+                
+                const EXPECTING_ASSIGN: &[TokenData<'static>] = &[
+                    TokenData::Assign,
+                ];
 
-                let assigned = if self
-                    .toks
-                    .peek()
-                    .map(|tok| tok.data == TokenData::Assign)
-                    .unwrap_or(false)
-                {
-                    self.toks.next(); //Consume the assignment operator
-                    Some(Box::new(self.parse_expr()?))
-                } else {
-                    None
-                };
+                self.expect_next(EXPECTING_ASSIGN)?;
+                let assigned = Box::new(self.parse_expr()?);
 
                 Ok(Stmt {
                     span: next.span,
