@@ -1,9 +1,17 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
-use crate::{ir::{value::{IrExpr, IrExprKind}, FunId, BBId, types::IrType, IrContext}, util::{files::FileId, loc::Span}, ast::Expr, parse::token::Op};
+use crate::{
+    ast::Expr,
+    ir::{
+        types::IrType,
+        value::{IrExpr, IrExprKind},
+        BBId, FunId, IrContext,
+    },
+    parse::token::Op,
+    util::{files::FileId, loc::Span},
+};
 
-use super::{IrLowerer, IntermediateModuleId};
-
+use super::{IntermediateModuleId, IrLowerer};
 
 impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     /// Lower a binary expression to IR
@@ -21,42 +29,61 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         let rhs = self.lower_expr(module, file, fun, rhs, bb)?;
 
         let ty = match (&self.ctx[lhs.ty], op, &self.ctx[rhs.ty]) {
-            (IrType::Bool, Op::LogicalAnd | Op::LogicalOr | Op::LogicalNot | Op::Eq, IrType::Bool) => IrContext::BOOL,
+            (
+                IrType::Bool,
+                Op::LogicalAnd | Op::LogicalOr | Op::LogicalNot | Op::Eq,
+                IrType::Bool,
+            ) => IrContext::BOOL,
             (
                 IrType::Integer(_),
-                Op::Eq| Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq | Op::Star | Op::Div | Op::Add | Op::Sub | Op::ShLeft | Op::ShRight,
+                Op::Eq
+                | Op::Greater
+                | Op::GreaterEq
+                | Op::Less
+                | Op::LessEq
+                | Op::Star
+                | Op::Div
+                | Op::Add
+                | Op::Sub
+                | Op::ShLeft
+                | Op::ShRight,
                 IrType::Integer(_),
             ) => lhs.ty,
             (
                 IrType::Float(_),
-                Op::Eq | Op::Greater | Op::GreaterEq | Op::Less | Op::LessEq | Op::Star | Op::Div | Op::Add | Op::Sub,
-                IrType::Float(_)
+                Op::Eq
+                | Op::Greater
+                | Op::GreaterEq
+                | Op::Less
+                | Op::LessEq
+                | Op::Star
+                | Op::Div
+                | Op::Add
+                | Op::Sub,
+                IrType::Float(_),
             ) => lhs.ty,
-            (
-                IrType::Ptr(_),
-                Op::ShRight | Op::ShLeft,
-                IrType::Integer(_)
-            ) => lhs.ty,
-            (
-                IrType::Ptr(_),
-                Op::Add | Op::Sub,
-                IrType::Ptr(_) | IrType::Integer(_)
-            ) => lhs.ty,
-            _ => return Err(Diagnostic::error()
-                .with_message(format!(
-                    "Cannot apply binary operator {} to operand types {} and {}",
-                    op,
-                    self.ctx.typename(lhs.ty),
-                    self.ctx.typename(rhs.ty),
-                ))
-                .with_labels(vec![
-                    Label::primary(file, Span::from(lhs.span.from..rhs.span.to)),
-                    Label::secondary(file, lhs.span)
-                        .with_message(format!("LHS of type {} appears here", self.ctx.typename(lhs.ty))),
-                    Label::secondary(file, rhs.span)
-                        .with_message(format!("RHS of type {} appears here", self.ctx.typename(rhs.ty))),
-                ])
-            )
+            (IrType::Ptr(_), Op::ShRight | Op::ShLeft, IrType::Integer(_)) => lhs.ty,
+            (IrType::Ptr(_), Op::Add | Op::Sub, IrType::Ptr(_) | IrType::Integer(_)) => lhs.ty,
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                        "Cannot apply binary operator {} to operand types {} and {}",
+                        op,
+                        self.ctx.typename(lhs.ty),
+                        self.ctx.typename(rhs.ty),
+                    ))
+                    .with_labels(vec![
+                        Label::primary(file, Span::from(lhs.span.from..rhs.span.to)),
+                        Label::secondary(file, lhs.span).with_message(format!(
+                            "LHS of type {} appears here",
+                            self.ctx.typename(lhs.ty)
+                        )),
+                        Label::secondary(file, rhs.span).with_message(format!(
+                            "RHS of type {} appears here",
+                            self.ctx.typename(rhs.ty)
+                        )),
+                    ]))
+            }
         };
 
         Ok(IrExpr {
@@ -65,7 +92,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             kind: IrExprKind::Binary(Box::new(lhs), op, Box::new(rhs)),
         })
     }
-    
+
     /// Lower a unary expression to IR
     pub fn lower_unary(
         &mut self,
@@ -83,16 +110,15 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             (Op::AND, _) => self.ctx.types.insert(IrType::Ptr(expr.ty)),
             (Op::Sub, IrType::Integer(_) | IrType::Float(_)) => expr.ty,
             (Op::NOT, IrType::Integer(_) | IrType::Ptr(_)) => expr.ty,
-            _ => return Err(Diagnostic::error()
-                .with_message(format!(
-                    "Cannot apply unary operator {} to expression of type {}",
-                    op,
-                    self.ctx.typename(expr.ty),
-                ))
-                .with_labels(vec![
-                    Label::primary(file, expr.span),
-                ])
-            )
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                        "Cannot apply unary operator {} to expression of type {}",
+                        op,
+                        self.ctx.typename(expr.ty),
+                    ))
+                    .with_labels(vec![Label::primary(file, expr.span)]))
+            }
         };
 
         Ok(IrExpr {

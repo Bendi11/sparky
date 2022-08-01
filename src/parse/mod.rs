@@ -474,10 +474,8 @@ impl<'src> Parser<'src> {
                 };
 
                 self.trace.pop();
-                
-                const EXPECTING_ASSIGN: &[TokenData<'static>] = &[
-                    TokenData::Assign,
-                ];
+
+                const EXPECTING_ASSIGN: &[TokenData<'static>] = &[TokenData::Assign];
 
                 self.expect_next(EXPECTING_ASSIGN)?;
                 let assigned = Box::new(self.parse_expr()?);
@@ -513,20 +511,21 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: StmtNode::Return(Box::new(returned)),
                 })
-            },
+            }
             TokenData::Ident(name) => {
-                const EXPECTING_FOR_CALL: &[TokenData<'static>] = &[
-                    TokenData::Ident("Function name")
-                ];
+                const EXPECTING_FOR_CALL: &[TokenData<'static>] =
+                    &[TokenData::Ident("Function name")];
 
                 let name = self.expect_next_path(EXPECTING_FOR_CALL)?;
                 let args = self.parse_fun_args()?;
-                
+
                 Ok(Stmt {
-                    span: (peeked.span.from..args.last().map(|arg| arg.span.to).unwrap_or(peeked.span.to)).into(),
+                    span: (peeked.span.from
+                        ..args.last().map(|arg| arg.span.to).unwrap_or(peeked.span.to))
+                        .into(),
                     node: StmtNode::Call(name, args),
                 })
-            },
+            }
             _ => Err(self.unexpected(peeked.span, peeked.clone(), EXPECTING_FOR_STMT)),
         }?;
 
@@ -884,7 +883,7 @@ impl<'src> Parser<'src> {
             })
         }
     }
-    
+
     /// Parse function arguments from the token stream
     fn parse_fun_args(&mut self) -> ParseResult<'src, Vec<Expr>> {
         self.trace.push("function call".into());
@@ -989,7 +988,7 @@ impl<'src> Parser<'src> {
         let peeked = self.peek_tok(ACCESS_EXPECTING)?.clone();
         match peeked.data {
             TokenData::OpenBracket(BracketType::Smooth) => {
-                let args = self.parse_fun_args()?; 
+                let args = self.parse_fun_args()?;
                 Ok(Expr {
                     span: if let Some(last) = args.last() {
                         (peeked.span.from, last.span.to).into()

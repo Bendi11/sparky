@@ -2,13 +2,21 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 
 use crate::{
-    ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode, Literal, NumberLiteral, NumberLiteralAnnotation, IntegerWidth},
-    ir::{BBId, FunId, IrBB, IrFun, IrStmtKind, IrVar, VarId, types::{IrType, FunType}, value::{IrExprKind, IrExpr}, IrTerminator, IrStmt, IrBody},
+    ast::{
+        Expr, ExprNode, IntegerWidth, Literal, NumberLiteral, NumberLiteralAnnotation,
+        ParsedModule, Stmt, StmtNode,
+    },
+    ir::{
+        types::{FunType, IrType},
+        value::{IrExpr, IrExprKind},
+        BBId, FunId, IrBB, IrBody, IrFun, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId,
+    },
+    parse::token::Op,
     util::{files::FileId, loc::Span},
-    Symbol, parse::token::Op,
+    Symbol,
 };
 
-use super::{IntermediateModuleId, IrLowerer, ScopePlate, IntermediateDefId};
+use super::{IntermediateDefId, IntermediateModuleId, IrLowerer, ScopePlate};
 
 impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     /// Lower a function's body to IR statements and basic blocks
@@ -19,35 +27,45 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         fun: FunId,
         stmts: &[Stmt],
     ) -> Result<(), Diagnostic<FileId>> {
-        let entry = self.ctx.bbs.insert(IrBB { stmts: vec![], terminator: IrTerminator::Invalid });
+        let entry = self.ctx.bbs.insert(IrBB {
+            stmts: vec![],
+            terminator: IrTerminator::Invalid,
+        });
         let return_var = match self.ctx[self.ctx[fun].ty.return_ty] {
             IrType::Unit => None,
             _ => {
-                let return_var = self.ctx.vars.insert(IrVar { ty: self.ctx[fun].ty.return_ty, name: Symbol::new(format!("@return_var#{}", self.ctx[fun].name)) });
+                let return_var = self.ctx.vars.insert(IrVar {
+                    ty: self.ctx[fun].ty.return_ty,
+                    name: Symbol::new(format!("@return_var#{}", self.ctx[fun].name)),
+                });
                 let span = self.ctx[fun].span;
                 self.ctx[entry].stmts.push(IrStmt {
                     span,
-                    kind: IrStmtKind::VarLive(return_var), 
+                    kind: IrStmtKind::VarLive(return_var),
                 });
 
                 Some(return_var)
             }
         };
 
-        self.scope_stack.push(ScopePlate { vars: HashMap::default(), return_var, after_bb: entry });
-        
+        self.scope_stack.push(ScopePlate {
+            vars: HashMap::default(),
+            return_var,
+            after_bb: entry,
+        });
+
         let params = self.ctx[fun].ty.params.clone();
         for (ty, name) in params {
             if let Some(name) = name {
-                let param_var = self.ctx.vars.insert(IrVar { ty, name: name.clone() });
+                let param_var = self.ctx.vars.insert(IrVar {
+                    ty,
+                    name: name.clone(),
+                });
                 self.lowest_scope_mut().vars.insert(name.clone(), param_var);
             }
         }
 
-        self.ctx[fun].body = Some(IrBody {
-            entry,
-            parent: fun,
-        });
+        self.ctx[fun].body = Some(IrBody { entry, parent: fun });
 
         for stmt in stmts {
             self.lower_stmt(module, file, fun, stmt, entry)?;
@@ -57,7 +75,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
 
         Ok(())
     }
-    
+
     /// Lower a single statement to IR instructions
     pub(super) fn lower_stmt(
         &mut self,
@@ -70,41 +88,39 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         match &stmt.node {
             StmtNode::Return(val) => match self.lowest_scope().return_var {
                 Some(var) => {
-                    self.ctx[bb].terminator = IrTerminator::Return(self.lower_expr(module, file, fun, val, bb)?);
-                },
-                None => return Err(Diagnostic::error()
-                    .with_message("Return statement while current function does not return a value")
-                    .with_labels(vec![Label::primary(file, stmt.span)])
-                )
+                    self.ctx[bb].terminator =
+                        IrTerminator::Return(self.lower_expr(module, file, fun, val, bb)?);
+                }
+                None => {
+                    return Err(Diagnostic::error()
+                        .with_message(
+                            "Return statement while current function does not return a value",
+                        )
+                        .with_labels(vec![Label::primary(file, stmt.span)]))
+                }
             },
             StmtNode::Phi(val) => {
-                let return_var = match self
-                    .current_scope()
-                    .return_var {
-                        Some(ret) => ret,
-                        None => return Err(
-                            Diagnostic::error()
-                                .with_message("Phi statement in a block that is not an expression".to_owned())
-                                .with_labels(vec![
-                                    Label::primary(file, stmt.span)
-                                        .with_message("Phi statement appears here")
-                                ])
-                        )
-                    };
+                let return_var = match self.current_scope().return_var {
+                    Some(ret) => ret,
+                    None => {
+                        return Err(Diagnostic::error()
+                            .with_message(
+                                "Phi statement in a block that is not an expression".to_owned(),
+                            )
+                            .with_labels(vec![Label::primary(file, stmt.span)
+                                .with_message("Phi statement appears here")]))
+                    }
+                };
                 let return_val = self.lower_expr(module, file, fun, val, bb)?;
-                self
-                    .ctx[bb]
-                    .stmts
-                    .push(IrStmt {
-                        span: stmt.span,
-                        kind: IrStmtKind::Store {
-                            var: return_var,
-                            val: return_val
-                        }
-                    });
+                self.ctx[bb].stmts.push(IrStmt {
+                    span: stmt.span,
+                    kind: IrStmtKind::Store {
+                        var: return_var,
+                        val: return_val,
+                    },
+                });
                 self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
-
-            },
+            }
             StmtNode::Let(let_stmt) => {
                 let assigned = self.lower_expr(module, file, fun, &let_stmt.assigned, bb)?;
                 let ptr = match &let_stmt.let_expr.node {
@@ -115,7 +131,9 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 let ty = let_stmt
                                     .ty
                                     .as_ref()
-                                    .map(|ty| self.resolve_type(ty, module, file, let_stmt.let_expr.span))
+                                    .map(|ty| {
+                                        self.resolve_type(ty, module, file, let_stmt.let_expr.span)
+                                    })
                                     .unwrap_or(Ok(assigned.ty))?;
 
                                 let var = IrVar {
@@ -136,29 +154,32 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         IrExpr {
                             span: let_stmt.let_expr.span,
                             ty: self.ctx.types.insert(IrType::Ptr(ty)),
-                            kind: IrExprKind::Unary(Op::AND, Box::new(IrExpr {
+                            kind: IrExprKind::Unary(
+                                Op::AND,
+                                Box::new(IrExpr {
                                     span: let_stmt.let_expr.span,
                                     ty,
                                     kind: IrExprKind::Var(var),
-                                })
-                            )
+                                }),
+                            ),
                         }
-                    },
+                    }
                     _ => {
-                        let let_expr = self.lower_expr(module, file, fun, &let_stmt.let_expr, bb)?;
+                        let let_expr =
+                            self.lower_expr(module, file, fun, &let_stmt.let_expr, bb)?;
                         IrExpr {
                             span: let_stmt.let_expr.span,
                             ty: self.ctx.types.insert(IrType::Ptr(let_expr.ty)),
-                            kind: IrExprKind::Unary(Op::AND, Box::new(let_expr))
+                            kind: IrExprKind::Unary(Op::AND, Box::new(let_expr)),
                         }
                     }
                 };
-                
+
                 self.ctx[bb].stmts.push(IrStmt {
                     span: (let_stmt.let_expr.span.from..let_stmt.assigned.span.to).into(),
-                    kind: IrStmtKind::Write { ptr, val: assigned }
+                    kind: IrStmtKind::Write { ptr, val: assigned },
                 });
-            },
+            }
             StmtNode::Call(ident, args) => {
                 let def = self.resolve_path(module, ident);
                 match def {
@@ -173,32 +194,34 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
 
                         self.ctx[bb].stmts.push(IrStmt {
                             span: stmt.span,
-                            kind: IrStmtKind::Call { fun: fun_id, args }
+                            kind: IrStmtKind::Call { fun: fun_id, args },
                         })
-                    },                                      
-                    _ => return Err(Diagnostic::error    ()
-                        .with_message(format!("No functi    on found in the current scope for path {}", ident))
-                        .with_labels(vec![                  
-                            Label::primary(file, stmt.span),
-                        ])                                  
-                    )                                       
-                }                                           
-            },                                              
-            _ => unimplemented!()                           
-        }                                                   
-        Ok(())                                              
-    }                                                       
+                    }
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                "No functi    on found in the current scope for path {}",
+                                ident
+                            ))
+                            .with_labels(vec![Label::primary(file, stmt.span)]))
+                    }
+                }
+            }
+            _ => unimplemented!(),
+        }
+        Ok(())
+    }
 
     /// Lower a single AST expression to intermediate representation
-    pub(super) fn lower_expr(                                      
-        &mut self,                                          
-        module: IntermediateModuleId,                       
-        file: FileId,                                       
-        fun: FunId,                                         
-        expr: &Expr,                                        
-        bb: BBId,                                           
-    ) -> Result<IrExpr, Diagnostic<FileId>> {               
-        Ok(match &expr.node {                               
+    pub(super) fn lower_expr(
+        &mut self,
+        module: IntermediateModuleId,
+        file: FileId,
+        fun: FunId,
+        expr: &Expr,
+        bb: BBId,
+    ) -> Result<IrExpr, Diagnostic<FileId>> {
+        Ok(match &expr.node {
             ExprNode::Access(pat) => match self.resolve_path(module, pat) {
                 Some(IntermediateDefId::Fun(fun_id)) => IrExpr {
                     kind: IrExprKind::Fun(fun_id),
@@ -211,15 +234,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         ty: self.ctx[var].ty,
                         span: expr.span,
                     },
-                    _ => return Err(
-                        Diagnostic::error()
+                    _ => {
+                        return Err(Diagnostic::error()
                             .with_message(format!("No variable or function found for name {}", pat))
-                            .with_labels(vec![
-                                Label::primary(file, expr.span)
-                                    .with_message("Unknown identifier appears here")
-                            ])
-                    )
-                }
+                            .with_labels(vec![Label::primary(file, expr.span)
+                                .with_message("Unknown identifier appears here")]))
+                    }
+                },
             },
             ExprNode::Member(object, name) => {
                 let object = self.lower_expr(module, file, fun, object, bb)?;
@@ -231,26 +252,28 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                     kind: IrExprKind::Member(Box::new(object), idx),
                                     ty: field.ty,
                                     span: expr.span,
-                                })
+                                });
                             }
                         }
                         return Err(Diagnostic::error()
-                            .with_message(format!("Field {} not found for structure type {}", name, self.ctx.typename(object.ty)))
-                            .with_labels(vec![
-                                Label::primary(file, expr.span)
-                                    .with_message("Structure field access occurs here")
-                            ])
-                        )
-                    },
+                            .with_message(format!(
+                                "Field {} not found for structure type {}",
+                                name,
+                                self.ctx.typename(object.ty)
+                            ))
+                            .with_labels(vec![Label::primary(file, expr.span)
+                                .with_message("Structure field access occurs here")]));
+                    }
                     _ => return Err(Diagnostic::error()
-                        .with_message(format!("Attempting to access field {} of expression of non-structure type {}", name, self.ctx.typename(object.ty)))
-                        .with_labels(vec![
-                            Label::primary(file, expr.span)
-                                .with_message("Field access occurs here")
-                        ])
-                    )
+                        .with_message(format!(
+                            "Attempting to access field {} of expression of non-structure type {}",
+                            name,
+                            self.ctx.typename(object.ty)
+                        ))
+                        .with_labels(vec![Label::primary(file, expr.span)
+                            .with_message("Field access occurs here")])),
                 }
-            },
+            }
             ExprNode::Call(fun_ast, args) => {
                 let fun_ir = self.lower_expr(module, file, fun, fun_ast, bb)?;
                 match self.ctx[fun_ir.ty].clone() {
@@ -259,45 +282,53 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             .iter()
                             .map(|arg| self.lower_expr(module, file, fun, arg, bb))
                             .collect::<Result<Vec<IrExpr>, _>>()?;
-                        self.typecheck_fun(file, expr.span, &fun_ty, &args)?; 
-                        
+                        self.typecheck_fun(file, expr.span, &fun_ty, &args)?;
+
                         IrExpr {
                             kind: IrExprKind::Call(Box::new(fun_ir), args),
                             ty: fun_ty.return_ty,
                             span: expr.span,
                         }
-                    },
-                    _ => return Err(Diagnostic::error()
-                        .with_message(format!("Attempting to call expression of non-function type {}", self.ctx.typename(fun_ir.ty)))
-                        .with_labels(vec![
-                            Label::primary(file, expr.span)
-                                .with_message("Call expression occurs here")
-                        ])
-                    )
+                    }
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                "Attempting to call expression of non-function type {}",
+                                self.ctx.typename(fun_ir.ty)
+                            ))
+                            .with_labels(vec![Label::primary(file, expr.span)
+                                .with_message("Call expression occurs here")]))
+                    }
                 }
-            },
-            ExprNode::Unary(op, expr) => return self.lower_unary(module, file, fun, *op, &expr, bb),
-            ExprNode::Bin(lhs, op, rhs) => return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb),
-            _ => unimplemented!()
+            }
+            ExprNode::Unary(op, expr) => {
+                return self.lower_unary(module, file, fun, *op, &expr, bb)
+            }
+            ExprNode::Bin(lhs, op, rhs) => {
+                return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb)
+            }
+            _ => unimplemented!(),
         })
     }
-    
+
     /// Ensure that the passed arguments to the given function are of the correct type
     fn typecheck_fun(
         &self,
         file: FileId,
         span: Span,
         fun_ty: &FunType,
-        args: &[IrExpr]
+        args: &[IrExpr],
     ) -> Result<(), Diagnostic<FileId>> {
         if args.len() != fun_ty.params.len() {
             return Err(Diagnostic::error()
-                .with_message(format!("Expected {} arguments when calling function, found {}", fun_ty.params.len(), args.len()))
+                .with_message(format!(
+                    "Expected {} arguments when calling function, found {}",
+                    fun_ty.params.len(),
+                    args.len()
+                ))
                 .with_labels(vec![
-                    Label::primary(file, span)
-                        .with_message("Call expression occurs here")
-                ])
-            )
+                    Label::primary(file, span).with_message("Call expression occurs here")
+                ]));
         }
 
         for (idx, (param, arg)) in fun_ty.params.iter().zip(args.iter()).enumerate() {
@@ -315,14 +346,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         Label::secondary(file, span)
                             .with_message("Call expression occurs here")
                     ])
-                )
+                );
             }
         }
 
         Ok(())
     }
 
-    
     /// Lookup a declared variable in the current scope stack
     fn lookup_var(&self, var: &Symbol) -> Option<VarId> {
         for plate in self.scope_stack.iter().rev() {
@@ -350,15 +380,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     }
 
     fn lowest_scope(&self) -> &ScopePlate {
-        self
-            .scope_stack
+        self.scope_stack
             .first()
             .expect("Internal compiler error: scope stack is empty")
     }
 
     fn lowest_scope_mut(&mut self) -> &mut ScopePlate {
-        self
-            .scope_stack
+        self.scope_stack
             .first_mut()
             .expect("Internal compiler error: scope stack is empty")
     }

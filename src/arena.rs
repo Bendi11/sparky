@@ -74,7 +74,7 @@ impl<T: Hash + Eq + Clone> Interner<T> {
             arena: Arena::new(),
         }
     }
-    
+
     /// Get the index of the given element in this `Interner`
     pub fn get_id(&self, elem: &T) -> Option<Index<T>> {
         self.ids.get(elem).copied()

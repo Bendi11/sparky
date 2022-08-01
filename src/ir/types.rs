@@ -1,4 +1,4 @@
-use crate::{Symbol, ast::IntegerWidth};
+use crate::{ast::IntegerWidth, Symbol};
 
 use super::TypeId;
 
@@ -6,7 +6,7 @@ use super::TypeId;
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct FunType {
     /// Type that the IR function must return
-    pub return_ty: TypeId, 
+    pub return_ty: TypeId,
     /// Arguments types with optional names
     pub params: Vec<(TypeId, Option<Symbol>)>,
 }

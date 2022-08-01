@@ -14,7 +14,10 @@ use crate::{
     Symbol,
 };
 
-use self::{types::{IrType, FunType, IrFloatType, IrIntegerType}, value::{IrExpr, IrExprKind, IrLiteral}};
+use self::{
+    types::{FunType, IrFloatType, IrIntegerType, IrType},
+    value::{IrExpr, IrExprKind, IrLiteral},
+};
 
 /// An IR context containing arenas with all type definitons, function declarations / definitions,
 /// and modules
@@ -25,7 +28,7 @@ pub struct IrContext {
     pub funs: Arena<IrFun>,
     /// All basic blocks in the program containing statements
     pub bbs: Arena<IrBB>,
-    /// All variables in the program 
+    /// All variables in the program
     pub vars: Arena<IrVar>,
 }
 
@@ -144,10 +147,7 @@ pub enum IrStmtKind {
         val: IrExpr,
     },
     /// Call a function directly
-    Call {
-        fun: FunId,
-        args: Vec<IrExpr>,
-    }
+    Call { fun: FunId, args: Vec<IrExpr> },
 }
 
 impl IrContext {
@@ -245,14 +245,11 @@ impl IrContext {
             vars: Arena::new(),
         }
     }
-    
+
     /// Get a human-readable type name for the given type
     #[inline]
     pub fn typename(&self, ty: TypeId) -> String {
-        TypenameFormatter {
-            ctx: self,
-            ty,
-        }.to_string()
+        TypenameFormatter { ctx: self, ty }.to_string()
     }
 
     /// Get the [TypeId] of an integer type with the given width and signededness
@@ -281,27 +278,28 @@ struct TypenameFormatter<'ctx> {
 impl<'ctx> TypenameFormatter<'ctx> {
     /// Create a new formatter for the given type ID using the same shared context
     const fn create(&self, ty: TypeId) -> Self {
-        Self {
-            ctx: self.ctx,
-            ty,
-        }
-    } 
+        Self { ctx: self.ctx, ty }
+    }
 }
 
 impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.ctx[self.ty] {
-            IrType::Integer(IrIntegerType{signed, width}) => write!(f, "{}", match (signed, width) {
-                (true, IntegerWidth::Eight) => "i8",
-                (true, IntegerWidth::Sixteen) => "i16",
-                (true, IntegerWidth::ThirtyTwo) => "i32",
-                (true, IntegerWidth::SixtyFour) => "i64",
-                
-                (false, IntegerWidth::Eight) => "u8",
-                (false, IntegerWidth::Sixteen) => "u16",
-                (false, IntegerWidth::ThirtyTwo) => "u32",
-                (false, IntegerWidth::SixtyFour) => "u64",
-            }),
+            IrType::Integer(IrIntegerType { signed, width }) => write!(
+                f,
+                "{}",
+                match (signed, width) {
+                    (true, IntegerWidth::Eight) => "i8",
+                    (true, IntegerWidth::Sixteen) => "i16",
+                    (true, IntegerWidth::ThirtyTwo) => "i32",
+                    (true, IntegerWidth::SixtyFour) => "i64",
+
+                    (false, IntegerWidth::Eight) => "u8",
+                    (false, IntegerWidth::Sixteen) => "u16",
+                    (false, IntegerWidth::ThirtyTwo) => "u32",
+                    (false, IntegerWidth::SixtyFour) => "u64",
+                }
+            ),
             IrType::Bool => write!(f, "bool"),
             IrType::Unit => write!(f, "()"),
             IrType::Sum(sum) => {
@@ -309,24 +307,24 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
                     write!(f, "{} | ", self.create(*variant))?;
                 }
                 Ok(())
-            },
-            IrType::Float(IrFloatType{doublewide}) => write!(f, "{}", match doublewide {
-                true => "f64",
-                false => "f32",
-            }),
-            IrType::Alias { name, .. } => write!(f, "{}", name),
-            IrType::Array(element, len) => write!(f,
-                "[{}]{}",
-                len,
-                self.create(*element)
+            }
+            IrType::Float(IrFloatType { doublewide }) => write!(
+                f,
+                "{}",
+                match doublewide {
+                    true => "f64",
+                    false => "f32",
+                }
             ),
+            IrType::Alias { name, .. } => write!(f, "{}", name),
+            IrType::Array(element, len) => write!(f, "[{}]{}", len, self.create(*element)),
             IrType::Struct(structure) => {
                 write!(f, "{{")?;
                 for field in structure.fields.iter() {
                     write!(f, "{} {},", self.create(field.ty), field.name)?;
                 }
                 write!(f, "}}")
-            },
+            }
             IrType::Ptr(ty) => write!(f, "*{}", self.create(*ty)),
             IrType::Fun(fun) => {
                 write!(f, "fun (")?;
@@ -340,7 +338,7 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
                 }
 
                 write!(f, ") -> {}", self.create(fun.return_ty))
-            },
+            }
             IrType::Invalid => write!(f, "INVALID"),
         }
     }
