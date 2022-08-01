@@ -4,11 +4,9 @@ type strbuf = *str
 
 fun ext printf(str fmt, *u8 a)
 
+fun ext test()
+
 fun ext main(i32 argc, **u8 a) -> i32 {
-    let puts("Test spark program")
-    let printf("Hello World %s\n", if argc > 1 {
-            phi *( $**u8 ($u64 a) + 8u64)
-        } else { phi *a } 
-    )
+    test()
     return argc
 }

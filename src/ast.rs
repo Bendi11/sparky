@@ -207,7 +207,8 @@ pub enum StmtNode {
     Block(Vec<Stmt>),
     /// Matching an enum based on its type
     Match(Match),
-
+    /// Calling a function by name
+    Call(SymbolPath, Vec<Expr>),
     /// Break from something with a value
     Phi(Box<Expr>),
     /// Return a value from the currently defined function

@@ -2,8 +2,8 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::{
     ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode, Literal, NumberLiteral, NumberLiteralAnnotation, IntegerWidth},
-    ir::{BBId, FunId, IrBB, IrFun, IrStmtKind, IrVar, VarId, types::IrType, value::{IrExprKind, IrExpr}, IrTerminator, IrStmt},
-    util::files::FileId,
+    ir::{BBId, FunId, IrBB, IrFun, IrStmtKind, IrVar, VarId, types::{IrType, FunType}, value::{IrExprKind, IrExpr}, IrTerminator, IrStmt, IrBody},
+    util::{files::FileId, loc::Span},
     Symbol, parse::token::Op,
 };
 
@@ -11,18 +11,29 @@ use super::{IntermediateModuleId, IrLowerer, ScopePlate, IntermediateDefId};
 
 impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     /// Lower a function's body to IR statements and basic blocks
-    fn lower_body(
+    pub(super) fn lower_body(
         &mut self,
         module: IntermediateModuleId,
         file: FileId,
         fun: FunId,
-        smts: &[Stmt],
+        stmts: &[Stmt],
     ) -> Result<(), Diagnostic<FileId>> {
+        let entry = self.ctx.bbs.insert(IrBB { stmts: vec![], terminator: IrTerminator::Invalid });
+
+        self.ctx[fun].body = Some(IrBody {
+            entry,
+            parent: fun,
+        });
+
+        for stmt in stmts {
+            self.lower_stmt(module, file, fun, stmt, entry)?;
+        }
+
         Ok(())
     }
     
     /// Lower a single statement to IR instructions
-    fn lower_stmt(
+    pub(super) fn lower_stmt(
         &mut self,
         module: IntermediateModuleId,
         file: FileId,
@@ -121,22 +132,47 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     span: (let_stmt.let_expr.span.from..let_stmt.assigned.span.to).into(),
                     kind: IrStmtKind::Write { ptr, val: assigned }
                 });
-            }
-            _ => unimplemented!()
-        } 
-        Ok(())
-    }
-    
-    /// Lower a single AST expression to intermediate representation
-    pub fn lower_expr(
-        &mut self,
-        module: IntermediateModuleId,
-        file: FileId,
-        fun: FunId,
-        expr: &Expr,
-        bb: BBId,
-    ) -> Result<IrExpr, Diagnostic<FileId>> {
-        Ok(match &expr.node {
+            },
+            StmtNode::Call(ident, args) => {
+                let def = self.resolve_path(module, ident);
+                match def {
+                    Some(IntermediateDefId::Fun(fun_id)) => {
+                        let fun_ty = self.ctx[fun_id].ty.clone();
+                        let args = args
+                            .iter()
+                            .map(|arg| self.lower_expr(module, file, fun, arg, bb))
+                            .collect::<Result<Vec<_>, _>>()?;
+
+                        self.typecheck_fun(file, stmt.span, &fun_ty, &args)?;
+
+                        self.ctx[bb].stmts.push(IrStmt {
+                            span: stmt.span,
+                            kind: IrStmtKind::Call { fun: fun_id, args }
+                        })
+                    },                                      
+                    _ => return Err(Diagnostic::error    ()
+                        .with_message(format!("No functi    on found in the current scope for path {}", ident))
+                        .with_labels(vec![                  
+                            Label::primary(file, stmt.span),
+                        ])                                  
+                    )                                       
+                }                                           
+            },                                              
+            _ => unimplemented!()                           
+        }                                                   
+        Ok(())                                              
+    }                                                       
+                                                            
+    /// Lower a single AST expression to intermediate re    presentation
+    pub fn lower_expr(                                      
+        &mut self,                                          
+        module: IntermediateModuleId,                       
+        file: FileId,                                       
+        fun: FunId,                                         
+        expr: &Expr,                                        
+        bb: BBId,                                           
+    ) -> Result<IrExpr, Diagnostic<FileId>> {               
+        Ok(match &expr.node {                               
             ExprNode::Access(pat) => match self.resolve_path(module, pat) {
                 Some(IntermediateDefId::Fun(fun_id)) => IrExpr {
                     kind: IrExprKind::Fun(fun_id),
@@ -197,36 +233,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             .iter()
                             .map(|arg| self.lower_expr(module, file, fun, arg, bb))
                             .collect::<Result<Vec<IrExpr>, _>>()?;
+                        self.typecheck_fun(file, expr.span, &fun_ty, &args)?; 
                         
-                        if args.len() != fun_ty.params.len() {
-                            return Err(Diagnostic::error()
-                                .with_message(format!("Expected {} arguments when calling function, found {}", fun_ty.params.len(), args.len()))
-                                .with_labels(vec![
-                                    Label::primary(file, expr.span)
-                                        .with_message("Call expression occurs here")
-                                ])
-                            )
-                        }
-
-                        for (idx, (param, arg)) in fun_ty.params.iter().zip(args.iter()).enumerate() {
-                            if param.0 != arg.ty {
-                                return Err(Diagnostic::error()
-                                    .with_message(format!(
-                                        "Argument {}: expected parameter type {} but argument of type {} was passed",
-                                        idx,
-                                        self.ctx.typename(param.0),
-                                        self.ctx.typename(arg.ty))
-                                    )
-                                    .with_labels(vec![
-                                        Label::primary(file, arg.span)
-                                            .with_message("Argument passed here"),
-                                        Label::secondary(file, expr.span)
-                                            .with_message("Call expression occurs here")
-                                    ])
-                                )
-                            }
-                        }
-
                         IrExpr {
                             kind: IrExprKind::Call(Box::new(fun_ir), args),
                             ty: fun_ty.return_ty,
@@ -246,6 +254,46 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             ExprNode::Bin(lhs, op, rhs) => return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb),
             _ => unimplemented!()
         })
+    }
+    
+    /// Ensure that the passed arguments to the given function are of the correct type
+    fn typecheck_fun(
+        &self,
+        file: FileId,
+        span: Span,
+        fun_ty: &FunType,
+        args: &[IrExpr]
+    ) -> Result<(), Diagnostic<FileId>> {
+        if args.len() != fun_ty.params.len() {
+            return Err(Diagnostic::error()
+                .with_message(format!("Expected {} arguments when calling function, found {}", fun_ty.params.len(), args.len()))
+                .with_labels(vec![
+                    Label::primary(file, span)
+                        .with_message("Call expression occurs here")
+                ])
+            )
+        }
+
+        for (idx, (param, arg)) in fun_ty.params.iter().zip(args.iter()).enumerate() {
+            if param.0 != arg.ty {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                        "Argument {}: expected parameter type {} but argument of type {} was passed",
+                        idx,
+                        self.ctx.typename(param.0),
+                        self.ctx.typename(arg.ty))
+                    )
+                    .with_labels(vec![
+                        Label::primary(file, arg.span)
+                            .with_message("Argument passed here"),
+                        Label::secondary(file, span)
+                            .with_message("Call expression occurs here")
+                    ])
+                )
+            }
+        }
+
+        Ok(())
     }
 
     

@@ -513,7 +513,20 @@ impl<'src> Parser<'src> {
                     span: peeked.span,
                     node: StmtNode::Return(Box::new(returned)),
                 })
-            }
+            },
+            TokenData::Ident(name) => {
+                const EXPECTING_FOR_CALL: &[TokenData<'static>] = &[
+                    TokenData::Ident("Function name")
+                ];
+
+                let name = self.expect_next_path(EXPECTING_FOR_CALL)?;
+                let args = self.parse_fun_args()?;
+                
+                Ok(Stmt {
+                    span: (peeked.span.from..args.last().map(|arg| arg.span.to).unwrap_or(peeked.span.to)).into(),
+                    node: StmtNode::Call(name, args),
+                })
+            },
             _ => Err(self.unexpected(peeked.span, peeked.clone(), EXPECTING_FOR_STMT)),
         }?;
 
@@ -871,6 +884,34 @@ impl<'src> Parser<'src> {
             })
         }
     }
+    
+    /// Parse function arguments from the token stream
+    fn parse_fun_args(&mut self) -> ParseResult<'src, Vec<Expr>> {
+        self.trace.push("function call".into());
+        let mut args = vec![];
+        self.toks.next();
+
+        loop {
+            let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
+            match next_in_args.data {
+                TokenData::Comma => {
+                    self.next_tok(&[TokenData::Comma])?;
+                }
+                TokenData::CloseBracket(BracketType::Smooth) => {
+                    self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                    break;
+                }
+                _ => {
+                    self.trace.push("function call argument".into());
+                    args.push(self.parse_expr()?);
+                    self.trace.pop();
+                }
+            }
+        }
+
+        self.trace.pop();
+        Ok(args)
+    }
 
     /// Parse a prefix expression from the token stream
     fn parse_prefix_expr(&mut self) -> ParseResult<'src, Expr> {
@@ -948,30 +989,7 @@ impl<'src> Parser<'src> {
         let peeked = self.peek_tok(ACCESS_EXPECTING)?.clone();
         match peeked.data {
             TokenData::OpenBracket(BracketType::Smooth) => {
-                self.trace.push("function call".into());
-                let mut args = vec![];
-                self.toks.next();
-
-                loop {
-                    let next_in_args = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?;
-                    match next_in_args.data {
-                        TokenData::Comma => {
-                            self.next_tok(&[TokenData::Comma])?;
-                        }
-                        TokenData::CloseBracket(BracketType::Smooth) => {
-                            self.next_tok(&[TokenData::CloseBracket(BracketType::Smooth)])?;
-                            break;
-                        }
-                        _ => {
-                            self.trace.push("function call argument".into());
-                            args.push(self.parse_expr()?);
-                            self.trace.pop();
-                        }
-                    }
-                }
-
-                self.trace.pop();
-
+                let args = self.parse_fun_args()?; 
                 Ok(Expr {
                     span: if let Some(last) = args.last() {
                         (peeked.span.from, last.span.to).into()

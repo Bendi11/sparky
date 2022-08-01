@@ -191,9 +191,10 @@ fn main() {
     lowerer
         .lower(&root_module)
         .map_err(|e| diags.emit(e))
-        .unwrap();
-    for ty in ctx.types {
-        println!("{:?}", ty);
+        .unwrap_or_else(|()| std::process::exit(-1));
+
+    for fun in ctx.funs.iter() {
+        println!("{:?}", ctx[fun.body.as_ref().unwrap().entry]);
     }
 }
 

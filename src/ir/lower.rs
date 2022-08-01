@@ -94,6 +94,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         self.populate_forward_types_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
+        self.populate_fn_bodies_impl(self.root_module, root)?;
 
         Ok(())
     }
@@ -137,6 +138,29 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     _ => (),
                 },
                 _ => (),
+            }
+        }
+
+        Ok(())
+    }
+    
+    /// Lower the bodies of all functions to IR
+    fn populate_fn_bodies_impl(
+        &mut self,
+        module: IntermediateModuleId,
+        parsed: &ParsedModule,
+    ) -> Result<(), Diagnostic<FileId>> {
+        for def in parsed.defs.iter() {
+            match &def.data {
+                DefData::FunDef(proto, body) => {
+                    let def_id = self.modules[module].defs[&proto.name];
+                    if let IntermediateDefId::Fun(fun) = def_id {
+                        self.lower_body(module, def.file, fun, body)?;
+                    } else {
+                        panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
+                    }
+                },
+                _ => ()
             }
         }
 

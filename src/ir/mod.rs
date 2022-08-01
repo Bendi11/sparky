@@ -45,6 +45,7 @@ pub type FunId = Index<IrFun>;
 pub type DiscriminantId = Index<TypeId>;
 
 /// A single basic block in the IR containing a list of statements
+#[derive(Clone, Debug)]
 pub struct IrBB {
     /// A list of statements in the order they should execute
     pub stmts: Vec<IrStmt>,
@@ -53,6 +54,7 @@ pub struct IrBB {
 }
 
 /// A declared variable with type and name
+#[derive(Clone, Debug)]
 pub struct IrVar {
     /// Type of the variable
     pub ty: TypeId,
@@ -79,6 +81,7 @@ pub struct IrFun {
 }
 
 /// The body of a function, composed of multiple statements and basic blocks
+#[derive(Clone, Debug)]
 pub struct IrBody {
     /// Entry block of the body
     pub entry: BBId,
@@ -87,6 +90,7 @@ pub struct IrBody {
 }
 
 /// A statement that may terminate a basic block
+#[derive(Clone, Debug)]
 pub enum IrTerminator {
     /// Exits the currently executing function
     Return(IrExpr),
@@ -110,15 +114,19 @@ pub enum IrTerminator {
         /// Default jump
         default_jmp: BBId,
     },
+    /// Internal compiler usage
+    Invalid,
 }
 
 /// A single statement in the IR, an instruction that produces no value
+#[derive(Clone, Debug)]
 pub struct IrStmt {
     pub span: Span,
     pub kind: IrStmtKind,
 }
 
 /// A single statement in the Intermediate Representation
+#[derive(Clone, Debug)]
 pub enum IrStmtKind {
     /// Allocate space for the given variable
     VarLive(VarId),
@@ -134,6 +142,11 @@ pub enum IrStmtKind {
         ptr: IrExpr,
         /// Value to write to the pointer
         val: IrExpr,
+    },
+    /// Call a function directly
+    Call {
+        fun: FunId,
+        args: Vec<IrExpr>,
     }
 }
 
