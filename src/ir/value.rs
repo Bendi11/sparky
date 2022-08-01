@@ -1,6 +1,6 @@
-use crate::{util::loc::Span, parse::token::Op};
+use crate::{util::loc::Span, parse::token::Op, ast::BigInt};
 
-use super::{VarId, types::IrType, IrContext, TypeId, FunId};
+use super::{VarId, types::{IrType, IrIntegerType}, IrContext, TypeId, FunId};
 
 /// Structure containing an [IrExprKind] plus location data for error messages
 #[derive(Clone, Debug,)]
@@ -9,12 +9,14 @@ pub struct IrExpr {
     pub span: Span,
     /// What kind of expression this is
     pub kind: IrExprKind,
+    /// What type the expression's value is
+    pub ty: TypeId,
 }
 
 /// Literal in the IR containing any user-created literal value
 #[derive(Clone, Debug,)]
 pub enum IrLiteral {
-    
+    Integer(BigInt, IrIntegerType), 
 }
 
 /// Enumeration containing all expressions that produce a value in the intermediate representation
@@ -32,4 +34,6 @@ pub enum IrExprKind {
     Call(Box<IrExpr>, Vec<IrExpr>),
     /// Taking the address of a function
     Fun(FunId),
+    /// Accessing a field of an expression
+    Member(Box<IrExpr>, usize),
 }

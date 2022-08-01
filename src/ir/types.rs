@@ -11,20 +11,41 @@ pub struct FunType {
     pub params: Vec<(TypeId, Option<Symbol>)>,
 }
 
+/// Structure representing signed and unsigned integer types of varying bit width
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IrIntegerType {
+    pub width: IntegerWidth,
+    pub signed: bool,
+}
+
+/// Structure representing either a 32 bit or 64 bit float type
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct IrFloatType {
+    pub doublewide: bool,
+}
+
+/// Structure contained in an [IrStructType] representing a single field of s structure type
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct IrStructField {
+    pub ty: TypeId,
+    pub name: Symbol,
+}
+
+/// Structure representing an anonymous structure type with fields
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct IrStructType {
+    pub fields: Vec<IrStructField>,
+}
+
 /// Data for an [IRType] that contains the actual type data
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum IrType {
     /// An integer type with width and signedness
-    Integer {
-        signed: bool,
-        width: IntegerWidth,
-    },
+    Integer(IrIntegerType),
     /// A 32 or 64 bit floating point type
-    Float { 
-        doublewide: bool,
-    },
+    Float(IrFloatType),
     /// Unnamed structure type with fields
-    Struct(Vec<(TypeId, Symbol)>),
+    Struct(IrStructType),
     /// Sum type that can be many different types
     Sum(Vec<TypeId>),
     /// Boolean true or false type

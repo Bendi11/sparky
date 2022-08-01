@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::{
-    BBId, FunId, IrFun, TypeId, VarId, types::{IrType, FunType}, IrContext,
+    BBId, FunId, IrFun, TypeId, VarId, types::{IrType, FunType, IrIntegerType, IrFloatType, IrStructField, IrStructType}, IrContext,
 };
 
 pub mod ast;
@@ -166,11 +166,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     }
                 }
                 DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
+                    let fun_ty = self.resolve_fn_type(&proto.ty, module, def.file, def.span)?;
                     let fun = IrFun {
                         file: def.file,
                         span: def.span,
                         name: proto.name.clone(),
-                        ty: self.resolve_fn_type(&proto.ty, module, def.file, def.span)?,
+                        ty_id: self.ctx.types.insert(IrType::Fun(fun_ty.clone())),
+                        ty: fun_ty,
                         body: None,
                         flags: proto.flags,
                     };
@@ -224,16 +226,16 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     ) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match ty {
             UnresolvedType::Integer { width, signed } => self.ctx.types.insert(
-                IrType::Integer {
+                IrType::Integer(IrIntegerType {
                     width: *width,
                     signed: *signed,
-                }
+                })
                 .into(),
             ),
             UnresolvedType::Float { doublewide } => self.ctx.types.insert(
-                IrType::Float {
+                IrType::Float(IrFloatType {
                     doublewide: *doublewide,
-                }
+                })
                 .into(),
             ),
             UnresolvedType::Pointer(ptr) => {
@@ -260,12 +262,15 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     .iter()
                     .map(|(field, name)| {
                         match self.resolve_type(field, module, file, span) {
-                            Ok(field) => Ok((field, name.clone())),
+                            Ok(field) => Ok(IrStructField {
+                                name: *name,
+                                ty: field,
+                            }),
                             Err(e) => Err(e),
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                self.ctx.types.insert(IrType::Struct(fields).into())
+                self.ctx.types.insert(IrType::Struct(IrStructType{fields}).into())
             }
             UnresolvedType::UserDefined { name } => match self.resolve_path(module, name) {
                 Some(IntermediateDefId::Type(ty)) => ty,

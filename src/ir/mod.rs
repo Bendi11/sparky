@@ -14,7 +14,7 @@ use crate::{
     Symbol,
 };
 
-use self::{types::{IrType, FunType}, value::IrExpr};
+use self::{types::{IrType, FunType, IrFloatType, IrIntegerType}, value::{IrExpr, IrExprKind, IrLiteral}};
 
 /// An IR context containing arenas with all type definitons, function declarations / definitions,
 /// and modules
@@ -47,7 +47,7 @@ pub type DiscriminantId = Index<TypeId>;
 /// A single basic block in the IR containing a list of statements
 pub struct IrBB {
     /// A list of statements in the order they should execute
-    pub stmts: Vec<IrStmtKind>,
+    pub stmts: Vec<IrStmt>,
     /// The terminator statement of this basic block
     pub terminator: IrTerminator,
 }
@@ -66,6 +66,8 @@ pub struct IrFun {
     pub name: Symbol,
     /// Function's signature
     pub ty: FunType,
+    /// ID of the function type
+    pub ty_id: TypeId,
     /// Source file that contains this function's definition
     pub file: FileId,
     /// Span in the source file of this function
@@ -152,68 +154,68 @@ impl IrContext {
         let mut types = Interner::<IrType>::new();
 
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::Eight,
-            }
+            })
             .into(),
         );
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::Sixteen,
-            }
+            })
             .into(),
         );
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::ThirtyTwo,
-            }
+            })
             .into(),
         );
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::SixtyFour,
-            }
+            })
             .into(),
         );
 
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::Eight,
-            }
+            })
             .into(),
         );
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::Sixteen,
-            }
+            })
             .into(),
         );
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::ThirtyTwo,
-            }
+            })
             .into(),
         );
         types.insert(
-            IrType::Integer {
+            IrType::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::SixtyFour,
-            }
+            })
             .into(),
         );
 
         types.insert(IrType::Bool);
         types.insert(IrType::Unit);
 
-        types.insert(IrType::Float { doublewide: false }.into());
-        types.insert(IrType::Float { doublewide: true }.into());
+        types.insert(IrType::Float(IrFloatType { doublewide: false }).into());
+        types.insert(IrType::Float(IrFloatType { doublewide: true }).into());
 
         types.insert(IrType::Invalid);
 
@@ -270,7 +272,7 @@ impl<'ctx> TypenameFormatter<'ctx> {
 impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.ctx[self.ty] {
-            IrType::Integer { signed, width } => write!(f, "{}", match (signed, width) {
+            IrType::Integer(IrIntegerType{signed, width}) => write!(f, "{}", match (signed, width) {
                 (true, IntegerWidth::Eight) => "i8",
                 (true, IntegerWidth::Sixteen) => "i16",
                 (true, IntegerWidth::ThirtyTwo) => "i32",
@@ -289,7 +291,7 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
                 }
                 Ok(())
             },
-            IrType::Float{ doublewide } => write!(f, "{}", match doublewide {
+            IrType::Float(IrFloatType{doublewide}) => write!(f, "{}", match doublewide {
                 true => "f64",
                 false => "f32",
             }),
@@ -301,8 +303,8 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
             ),
             IrType::Struct(structure) => {
                 write!(f, "{{")?;
-                for (field_ty, field_name) in structure.iter() {
-                    write!(f, "{} {},", self.create(*field_ty), field_name)?;
+                for field in structure.fields.iter() {
+                    write!(f, "{} {},", self.create(field.ty), field.name)?;
                 }
                 write!(f, "}}")
             },
