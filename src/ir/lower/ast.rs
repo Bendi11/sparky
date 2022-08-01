@@ -1,4 +1,5 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
+use hashbrown::HashMap;
 
 use crate::{
     ast::{Expr, ExprNode, ParsedModule, Stmt, StmtNode, Literal, NumberLiteral, NumberLiteralAnnotation, IntegerWidth},
@@ -19,6 +20,29 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         stmts: &[Stmt],
     ) -> Result<(), Diagnostic<FileId>> {
         let entry = self.ctx.bbs.insert(IrBB { stmts: vec![], terminator: IrTerminator::Invalid });
+        let return_var = match self.ctx[self.ctx[fun].ty.return_ty] {
+            IrType::Unit => None,
+            _ => {
+                let return_var = self.ctx.vars.insert(IrVar { ty: self.ctx[fun].ty.return_ty, name: Symbol::new(format!("@return_var#{}", self.ctx[fun].name)) });
+                let span = self.ctx[fun].span;
+                self.ctx[entry].stmts.push(IrStmt {
+                    span,
+                    kind: IrStmtKind::VarLive(return_var), 
+                });
+
+                Some(return_var)
+            }
+        };
+
+        self.scope_stack.push(ScopePlate { vars: HashMap::default(), return_var, after_bb: entry });
+        
+        let params = self.ctx[fun].ty.params.clone();
+        for (ty, name) in params {
+            if let Some(name) = name {
+                let param_var = self.ctx.vars.insert(IrVar { ty, name: name.clone() });
+                self.lowest_scope_mut().vars.insert(name.clone(), param_var);
+            }
+        }
 
         self.ctx[fun].body = Some(IrBody {
             entry,
@@ -28,6 +52,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         for stmt in stmts {
             self.lower_stmt(module, file, fun, stmt, entry)?;
         }
+
+        self.scope_stack.pop();
 
         Ok(())
     }
@@ -162,9 +188,9 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         }                                                   
         Ok(())                                              
     }                                                       
-                                                            
-    /// Lower a single AST expression to intermediate re    presentation
-    pub fn lower_expr(                                      
+
+    /// Lower a single AST expression to intermediate representation
+    pub(super) fn lower_expr(                                      
         &mut self,                                          
         module: IntermediateModuleId,                       
         file: FileId,                                       

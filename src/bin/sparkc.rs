@@ -194,7 +194,9 @@ fn main() {
         .unwrap_or_else(|()| std::process::exit(-1));
 
     for fun in ctx.funs.iter() {
-        println!("{:?}", ctx[fun.body.as_ref().unwrap().entry]);
+        if let Some(ref body) = fun.body {
+            println!("{:?}", ctx[body.entry]);
+        }
     }
 }
 
