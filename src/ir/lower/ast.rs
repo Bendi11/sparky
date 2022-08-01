@@ -74,7 +74,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     }
     
     /// Lower a single AST expression to intermediate representation
-    fn lower_expr(
+    pub fn lower_expr(
         &mut self,
         module: IntermediateModuleId,
         file: FileId,
