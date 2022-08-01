@@ -134,6 +134,59 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         ])
                     )
                 }
+            },
+            ExprNode::Call(fun_ast, args) => {
+                let fun_ir = self.lower_expr(module, file, fun, fun_ast, bb)?;
+                match self.ctx[fun_ir.ty].clone() {
+                    IrType::Fun(fun_ty) => {
+                        let args = args
+                            .iter()
+                            .map(|arg| self.lower_expr(module, file, fun, arg, bb))
+                            .collect::<Result<Vec<IrExpr>, _>>()?;
+                        
+                        if args.len() != fun_ty.params.len() {
+                            return Err(Diagnostic::error()
+                                .with_message(format!("Expected {} arguments when calling function, found {}", fun_ty.params.len(), args.len()))
+                                .with_labels(vec![
+                                    Label::primary(file, expr.span)
+                                        .with_message("Call expression occurs here")
+                                ])
+                            )
+                        }
+
+                        for (idx, (param, arg)) in fun_ty.params.iter().zip(args.iter()).enumerate() {
+                            if param.0 != arg.ty {
+                                return Err(Diagnostic::error()
+                                    .with_message(format!(
+                                        "Argument {}: expected parameter type {} but argument of type {} was passed",
+                                        idx,
+                                        self.ctx.typename(param.0),
+                                        self.ctx.typename(arg.ty))
+                                    )
+                                    .with_labels(vec![
+                                        Label::primary(file, arg.span)
+                                            .with_message("Argument passed here"),
+                                        Label::secondary(file, expr.span)
+                                            .with_message("Call expression occurs here")
+                                    ])
+                                )
+                            }
+                        }
+
+                        IrExpr {
+                            kind: IrExprKind::Call(Box::new(fun_ir), args),
+                            ty: fun_ty.return_ty,
+                            span: expr.span,
+                        }
+                    },
+                    _ => return Err(Diagnostic::error()
+                        .with_message(format!("Attempting to call expression of non-function type {}", self.ctx.typename(fun_ir.ty)))
+                        .with_labels(vec![
+                            Label::primary(file, expr.span)
+                                .with_message("Call expression occurs here")
+                        ])
+                    )
+                }
             }
             _ => unimplemented!()
         })
