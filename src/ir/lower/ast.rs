@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use crate::{
     ast::{
         Expr, ExprNode, IntegerWidth, Literal, NumberLiteral, NumberLiteralAnnotation,
-        ParsedModule, Stmt, StmtNode, BigInt, If,
+        ParsedModule, Stmt, StmtNode, BigInt, If, ElseExpr,
     },
     ir::{
         types::{FunType, IrType, IrIntegerType, IrFloatType, IrStructType, IrStructField},
@@ -111,7 +111,22 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 .with_message("Phi statement appears here")]))
                     }
                 };
+               
+
                 let return_val = self.lower_expr(module, file, fun, val, bb)?;
+
+                if self.ctx[self.ctx[return_var].ty] == IrType::Invalid { self.ctx[return_var].ty = return_val.ty }
+
+                if self.ctx[return_var].ty != return_val.ty {
+                    return Err(Diagnostic::error()
+                        .with_message(format!(
+                            "Phi statement returns expression of type {}, but type {} was expected",
+                            self.ctx.typename(return_val.ty),
+                            self.ctx.typename(self.ctx[return_var].ty),
+                        ))
+                    )
+                }
+
                 self.ctx[bb].stmts.push(IrStmt {
                     span: stmt.span,
                     kind: IrStmtKind::Store {
@@ -223,7 +238,10 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             .with_labels(vec![Label::primary(file, stmt.span)]))
                     }
                 }
-            }
+            },
+            StmtNode::If(expr) => {
+                return self.lower_if(module, file, fun, expr, bb).map(|_|())
+            },
             _ => unimplemented!(),
         }
         Ok(())
@@ -320,10 +338,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 .with_message("Call expression occurs here")]))
                     }
                 }
+            },
+            ExprNode::If(expr) => {
+                return self.lower_if(module, file, fun, expr, bb)
             }
             ExprNode::Unary(op, expr) => {
                 return self.lower_unary(module, file, fun, *op, &expr, bb)
-            }
+            },
             ExprNode::Bin(lhs, op, rhs) => {
                 return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb)
             },
@@ -547,7 +568,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     }
     
     /// Lower an if statement to IR, including new basic blocks and jumps
-    /*fn lower_if(
+    fn lower_if(
         &mut self,
         module: IntermediateModuleId,
         file: FileId,
@@ -555,13 +576,59 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         expr: &If,
         bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
-        let if_cond = self.lower_expr(module, file, fun, &expr.cond, bb);
+        let if_cond = self.lower_expr(module, file, fun, &expr.cond, bb)?;
 
-        let if_body_bb = self.ctx.bbs.insert(IrBB { stmts: vec![], terminator: IrTerminator::Invalid });
-        for stmt in expr.body.iter() {
-            self.lower_stmt(module, file, fun, stmt, if_body_bb);
-        }  
-    }*/
+        let if_body_bb = self.ctx.bb();
+        let after_bb = self.ctx.bb();
+        let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", if_body_bb)) });
+
+        self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+        self.lower_block(module, file, fun, &expr.body, if_body_bb)?;
+        self.scope_stack.pop();
+        match &expr.else_expr {
+            Some(ElseExpr::ElseIf(expr)) => {
+                let else_bb = self.ctx.bb();
+                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+                self.lower_if(module, file, fun, &expr, else_bb)?;
+                self.scope_stack.pop();
+            },
+            Some(ElseExpr::Else(body)) => {
+                let else_bb = self.ctx.bb();
+                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+                self.lower_block(module, file, fun, &body, else_bb)?;
+                self.scope_stack.pop();
+                self.ctx[bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
+            },
+            None => {
+                self.ctx[bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: after_bb };
+            }
+        }
+
+        Ok(IrExpr {
+            span: expr.cond.span,
+            ty: self.ctx[phi_var].ty,
+            kind: IrExprKind::Var(phi_var)
+        })
+    }
+
+    fn lower_block(
+        &mut self,
+        module: IntermediateModuleId,
+        file: FileId,
+        fun: FunId,
+        stmts: &[Stmt],
+        bb: BBId,
+    ) -> Result<(), Diagnostic<FileId>> {
+        for stmt in stmts.iter() {
+            self.lower_stmt(module, file, fun, stmt, bb);
+        }
+
+        if matches!(self.ctx[bb].terminator, IrTerminator::Invalid) {
+            self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+        }
+
+        Ok(())
+    }
 
     /// Ensure that the passed arguments to the given function are of the correct type
     fn typecheck_fun(

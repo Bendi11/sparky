@@ -274,6 +274,11 @@ impl IrContext {
             _ => ty,
         }
     }
+    
+    /// Create a new basic block with invalid terminator and return the ID
+    pub fn bb(&mut self) -> BBId {
+        self.bbs.insert(IrBB { stmts: vec![], terminator: IrTerminator::Invalid })
+    }
 }
 
 /// Structure for more efficiently formatting typename strings via a std::fmt::Display

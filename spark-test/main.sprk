@@ -14,5 +14,18 @@ fun ext main(i32 argc, **u8 a) -> i32 {
     let struct = $structure#{
         a = 100,
         b = "testing",
-    }let struct.b = 3 test()printf($str "testing", "1")printf($str ((["test", "1"])[0]), "1")mod:puts("testing")return (argc + 1 / 2)
+    }
+    let struct.b = 3
+    test()
+    let struct.a = if true {
+        phi 2
+    } else if false {
+        phi 1
+    } else {
+        phi 3
+    }
+    printf($str "testing", "1")
+    printf($str ((["test", "1"])[0]), "1")
+    mod:puts("testing")
+    return (argc + 1 / 2)
 }
