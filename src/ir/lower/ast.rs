@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use crate::{
     ast::{
         Expr, ExprNode, IntegerWidth, Literal, NumberLiteral, NumberLiteralAnnotation,
-        ParsedModule, Stmt, StmtNode, BigInt,
+        ParsedModule, Stmt, StmtNode, BigInt, If,
     },
     ir::{
         types::{FunType, IrType, IrIntegerType, IrFloatType, IrStructType, IrStructField},
@@ -142,6 +142,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 };
 
                                 let var_id = self.ctx.vars.insert(var);
+                                self.current_scope_mut().vars.insert(name.last(), var_id);
                                 self.ctx[bb].stmts.push(IrStmt {
                                     span: let_stmt.let_expr.span,
                                     kind: IrStmtKind::VarLive(var_id),
@@ -216,7 +217,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     _ => {
                         return Err(Diagnostic::error()
                             .with_message(format!(
-                                "No functi    on found in the current scope for path {}",
+                                "No function found in the current scope for path {}",
                                 ident
                             ))
                             .with_labels(vec![Label::primary(file, stmt.span)]))
@@ -260,7 +261,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             },
             ExprNode::Member(object, name) => {
                 let object = self.lower_expr(module, file, fun, object, bb)?;
-                match &self.ctx[object.ty] {
+                let object_ty = self.ctx.unwrap_alias(object.ty);
+                match &self.ctx[object_ty] {
                     IrType::Struct(s_ty) => {
                         for (idx, field) in s_ty.fields.iter().enumerate() {
                             if field.name == *name {
@@ -543,6 +545,23 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             _ => unimplemented!(),
         })
     }
+    
+    /// Lower an if statement to IR, including new basic blocks and jumps
+    /*fn lower_if(
+        &mut self,
+        module: IntermediateModuleId,
+        file: FileId,
+        fun: FunId,
+        expr: &If,
+        bb: BBId,
+    ) -> Result<IrExpr, Diagnostic<FileId>> {
+        let if_cond = self.lower_expr(module, file, fun, &expr.cond, bb);
+
+        let if_body_bb = self.ctx.bbs.insert(IrBB { stmts: vec![], terminator: IrTerminator::Invalid });
+        for stmt in expr.body.iter() {
+            self.lower_stmt(module, file, fun, stmt, if_body_bb);
+        }  
+    }*/
 
     /// Ensure that the passed arguments to the given function are of the correct type
     fn typecheck_fun(
