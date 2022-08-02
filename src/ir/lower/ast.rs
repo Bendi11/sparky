@@ -123,7 +123,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             }
             StmtNode::Let(let_stmt) => {
                 let assigned = self.lower_expr(module, file, fun, &let_stmt.assigned, bb)?;
-                let ptr = match &let_stmt.let_expr.node {
+                let (ty, ptr) = match &let_stmt.let_expr.node {
                     ExprNode::Access(name) => {
                         let (ty, var) = match self.lookup_var(&name.last()) {
                             Some(var) => (self.ctx[var].ty, var),
@@ -151,7 +151,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             }
                         };
 
-                        IrExpr {
+                        (ty, IrExpr {
                             span: let_stmt.let_expr.span,
                             ty: self.ctx.types.insert(IrType::Ptr(ty)),
                             kind: IrExprKind::Unary(
@@ -162,18 +162,34 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                     kind: IrExprKind::Var(var),
                                 }),
                             ),
-                        }
+                        })
                     }
                     _ => {
                         let let_expr =
                             self.lower_expr(module, file, fun, &let_stmt.let_expr, bb)?;
-                        IrExpr {
+                        (assigned.ty, IrExpr {
                             span: let_stmt.let_expr.span,
                             ty: self.ctx.types.insert(IrType::Ptr(let_expr.ty)),
                             kind: IrExprKind::Unary(Op::AND, Box::new(let_expr)),
-                        }
+                        })
                     }
                 };
+
+                if ty != assigned.ty {
+                    return Err(Diagnostic::error()
+                        .with_message(format!(
+                            "Assigning a value of type {} to a value of incompatible type {}",
+                            self.ctx.typename(assigned.ty),
+                            self.ctx.typename(ty)
+                        ))
+                        .with_labels(vec![
+                            Label::primary(file, assigned.span)
+                                .with_message(format!("Assigned value of type {} appears here", self.ctx.typename(assigned.ty))),
+                            Label::secondary(file, ptr.span)
+                                .with_message(format!("Assignee of type {} appears here", self.ctx.typename(ty)))
+                        ])
+                    )
+                } 
 
                 self.ctx[bb].stmts.push(IrStmt {
                     span: (let_stmt.let_expr.span.from..let_stmt.assigned.span.to).into(),
