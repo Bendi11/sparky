@@ -325,6 +325,10 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             ExprNode::Bin(lhs, op, rhs) => {
                 return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb)
             },
+            ExprNode::Cast(ty, expr) => {
+                let ty = self.resolve_type(ty, module, file, expr.span)?;
+                return self.lower_cast(module, file, fun, expr, ty, bb)
+            },
             ExprNode::Literal(lit) => match lit {
                 Literal::String(s) => IrExpr {
                     span: expr.span,
