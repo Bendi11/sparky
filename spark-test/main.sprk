@@ -8,5 +8,6 @@ fun ext test()
 
 fun ext main(i32 argc, **u8 a) -> i32 {
     test()
-    return argc
+    let b = #{a = 3,4}
+    phi argc
 }

@@ -1,7 +1,7 @@
-use crate::{ast::BigInt, parse::token::Op, util::loc::Span};
+use crate::{ast::BigInt, parse::token::Op, util::loc::Span, Symbol};
 
 use super::{
-    types::{IrIntegerType, IrType},
+    types::{IrIntegerType, IrType, IrFloatType},
     FunId, IrContext, TypeId, VarId,
 };
 
@@ -20,6 +20,12 @@ pub struct IrExpr {
 #[derive(Clone, Debug)]
 pub enum IrLiteral {
     Integer(BigInt, IrIntegerType),
+    Float(f64, IrFloatType),
+    String(String),
+    Bool(bool),
+    Array(Vec<IrExpr>),
+    Struct(Vec<(Symbol, IrExpr)>),
+    Unit,
 }
 
 /// Enumeration containing all expressions that produce a value in the intermediate representation
@@ -39,4 +45,6 @@ pub enum IrExprKind {
     Fun(FunId),
     /// Accessing a field of an expression
     Member(Box<IrExpr>, usize),
+    /// Casting an expression to another type
+    Cast(Box<IrExpr>, TypeId),
 }

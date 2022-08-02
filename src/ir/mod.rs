@@ -266,6 +266,14 @@ impl IrContext {
             (false, IntegerWidth::SixtyFour) => Self::U64,
         }
     }
+    
+    /// Unwrap any type aliases to get a type that is guranteed to not be an alias
+    pub fn unwrap_alias(&self, ty: TypeId) -> TypeId {
+        match &self[ty] {
+            IrType::Alias { ty, .. } => self.unwrap_alias(*ty),
+            _ => ty,
+        }
+    }
 }
 
 /// Structure for more efficiently formatting typename strings via a std::fmt::Display

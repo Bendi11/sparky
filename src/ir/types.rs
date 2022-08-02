@@ -68,3 +68,13 @@ pub enum IrType {
     /// Never used except by the IR lowerer
     Invalid,
 }
+
+impl IrStructType {
+    /// Get the field of this structure type by the given name
+    pub fn field_ty(&self, name: &Symbol) -> Option<TypeId> {
+        self
+            .fields
+            .iter()
+            .find_map(|field| if field.name == *name { Some(field.ty) } else { None })
+    }
+}

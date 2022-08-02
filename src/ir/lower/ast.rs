@@ -4,12 +4,12 @@ use hashbrown::HashMap;
 use crate::{
     ast::{
         Expr, ExprNode, IntegerWidth, Literal, NumberLiteral, NumberLiteralAnnotation,
-        ParsedModule, Stmt, StmtNode,
+        ParsedModule, Stmt, StmtNode, BigInt,
     },
     ir::{
-        types::{FunType, IrType},
-        value::{IrExpr, IrExprKind},
-        BBId, FunId, IrBB, IrBody, IrFun, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId,
+        types::{FunType, IrType, IrIntegerType, IrFloatType, IrStructType, IrStructField},
+        value::{IrExpr, IrExprKind, IrLiteral},
+        BBId, FunId, IrBB, IrBody, IrFun, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId, IrContext,
     },
     parse::token::Op,
     util::{files::FileId, loc::Span},
@@ -264,14 +264,16 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             .with_labels(vec![Label::primary(file, expr.span)
                                 .with_message("Structure field access occurs here")]));
                     }
-                    _ => return Err(Diagnostic::error()
-                        .with_message(format!(
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
                             "Attempting to access field {} of expression of non-structure type {}",
                             name,
                             self.ctx.typename(object.ty)
                         ))
-                        .with_labels(vec![Label::primary(file, expr.span)
-                            .with_message("Field access occurs here")])),
+                            .with_labels(vec![Label::primary(file, expr.span)
+                                .with_message("Field access occurs here")]))
+                    }
                 }
             }
             ExprNode::Call(fun_ast, args) => {
@@ -306,7 +308,174 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             }
             ExprNode::Bin(lhs, op, rhs) => {
                 return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb)
-            }
+            },
+            ExprNode::Literal(lit) => match lit {
+                Literal::String(s) => IrExpr {
+                    span: expr.span,
+                    ty: self.ctx.types.insert(IrType::Ptr(IrContext::U8)),
+                    kind: IrExprKind::Lit(IrLiteral::String(s.clone()))
+                },
+                Literal::Bool(b) => IrExpr {
+                    span: expr.span,
+                    ty: IrContext::BOOL,
+                    kind: IrExprKind::Lit(IrLiteral::Bool(*b)),
+                },
+                Literal::Unit => IrExpr {
+                    span: expr.span,
+                    ty: IrContext::UNIT,
+                    kind: IrExprKind::Lit(IrLiteral::Unit),
+                },
+                Literal::Array(exprs) => {
+                    let exprs = exprs
+                        .iter()
+                        .map(|expr| self.lower_expr(module, file, fun, expr, bb))
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let ty = if exprs.len() > 1 {
+                        let ty = exprs.first().unwrap().ty;
+                        for (i, elem) in exprs.iter().enumerate() {
+                            if elem.ty != ty {
+                                return Err(Diagnostic::error()
+                                    .with_message(format!(
+                                        "Element {} of array literal has type {}, but array element type is {}", 
+                                        i,
+                                        self.ctx.typename(elem.ty),
+                                        self.ctx.typename(ty),
+                                    ))
+                                    .with_labels(vec![
+                                        Label::primary(file, elem.span)
+                                            .with_message(format!(
+                                                "Expression of type {} appears here",
+                                                self.ctx.typename(elem.ty),
+                                            )),
+                                        Label::secondary(file, expr.span)
+                                            .with_message(format!(
+                                                "Array literal here has element type {}",
+                                                self.ctx.typename(ty)
+                                            ))
+                                    ])
+                                )
+                            }
+                        }
+                        ty
+                    } else {
+                        IrContext::UNIT
+                    };
+
+                    IrExpr {
+                        span: expr.span,
+                        ty: self.ctx.types.insert(IrType::Array(ty, exprs.len() as u64)),
+                        kind: IrExprKind::Lit(IrLiteral::Array(exprs))
+                    }
+                },
+                Literal::Struct { ty, fields } => {
+                    let ty = ty
+                        .as_ref().map(|ty| self.resolve_type(ty, module, file, expr.span))
+                        .map_or(Ok(None), |ty| ty.map(Some))?;
+                    let unwrapped = ty.map(|ty| self.ctx.unwrap_alias(ty));
+                    
+                    let struct_ty = if let Some(unwrapped) = unwrapped {
+                        match self.ctx[unwrapped] {
+                            IrType::Struct(ref fields) => Some(fields.clone()),
+                            _ => return Err(Diagnostic::error()
+                                .with_message(format!(
+                                    "Cannot create a structure literal of non-structure type {}",
+                                    self.ctx.typename(unwrapped)
+                                ))
+                                .with_labels(vec![
+                                    Label::primary(file, expr.span)
+                                        .with_message("Structure literal appears here")
+                                ])
+                            )
+                        }
+                    } else {
+                        None
+                    };
+
+                    let fields = fields
+                        .iter()
+                        .map(|(name, field)| {
+                            if let Some(struct_ty) = &struct_ty {
+                                if struct_ty.field_ty(name).is_none() {
+                                    return Err(Diagnostic::error()
+                                        .with_message(format!(
+                                            "Structure literal assigns a value for field named {}, but structure type {} contains no such field",
+                                            name,
+                                            self.ctx.typename(ty.unwrap())
+                                        ))
+                                    )
+                                }
+                            }
+
+                            Ok((*name, self.lower_expr(module, file, fun, field, bb)? ))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let lit_expr = IrExpr {
+                        span: expr.span,
+                        ty: self.ctx.types.insert(
+                            IrType::Struct(IrStructType {
+                                fields: fields
+                                    .iter()
+                                    .map(|(name, expr)| IrStructField { name: *name, ty: expr.ty })
+                                    .collect()
+                            })
+                        ),
+                        kind: IrExprKind::Lit(IrLiteral::Struct(fields))
+                    };
+
+                    match ty {
+                        Some(ty) => IrExpr {
+                            span: expr.span,
+                            ty,
+                            kind: IrExprKind::Cast(Box::new(lit_expr), ty)
+                        },
+                        None => lit_expr
+                    }
+                },
+                Literal::Number(num) => {
+                    let (signed, ty) = match num
+                        .annotation()
+                        .unwrap_or_else(||
+                            if matches!(num, NumberLiteral::Float(..)) { NumberLiteralAnnotation::F32 } else { NumberLiteralAnnotation::I32 }
+                        ) {
+                        NumberLiteralAnnotation::I8 =>  (true, IrContext::I8 ),
+                        NumberLiteralAnnotation::I16 => (true, IrContext::I16),
+                        NumberLiteralAnnotation::I32 => (true, IrContext::I32),
+                        NumberLiteralAnnotation::I64 => (true, IrContext::I64),
+
+                        NumberLiteralAnnotation::U8 =>  (false, IrContext::U8 ),
+                        NumberLiteralAnnotation::U16 => (false, IrContext::U16),
+                        NumberLiteralAnnotation::U32 => (false, IrContext::U32),
+                        NumberLiteralAnnotation::U64 => (false, IrContext::U64),
+
+                        NumberLiteralAnnotation::F32 => (false, IrContext::F32),
+                        NumberLiteralAnnotation::F64 => (false, IrContext::F64),
+                    };
+
+                    IrExpr {
+                        span: expr.span,
+                        ty,
+                        kind: IrExprKind::Cast(
+                            Box::new(
+                                match num {
+                                    NumberLiteral::Integer(num, _) => IrExpr {
+                                        span: expr.span,
+                                        ty: if signed { IrContext::I64 } else { IrContext::U64 },
+                                        kind: IrExprKind::Lit(IrLiteral::Integer(*num, IrIntegerType { width: IntegerWidth::SixtyFour, signed })),
+                                    },
+                                    NumberLiteral::Float(num, _) => IrExpr {
+                                        span: expr.span,
+                                        ty: IrContext::F64,
+                                        kind: IrExprKind::Lit(IrLiteral::Float(*num, IrFloatType { doublewide: true }))
+                                    },
+                                }
+                            ),
+                            ty,
+                        )
+                    }
+                }
+            },
             _ => unimplemented!(),
         })
     }
