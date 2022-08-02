@@ -242,6 +242,14 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             StmtNode::If(expr) => {
                 return self.lower_if(module, file, fun, expr, bb).map(|_|())
             },
+            StmtNode::Block(b) => {
+                let new_bb = self.ctx.bb();
+                let after_bb = self.ctx.bb();
+                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: None, after_bb });
+                self.lower_block(module, file, fun, &b, bb)?;
+                self.scope_stack.pop();
+                self.ctx[bb].terminator = IrTerminator::Jmp(new_bb);
+            } 
             _ => unimplemented!(),
         }
         Ok(())
@@ -563,7 +571,20 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     }
                 }
             },
-            _ => unimplemented!(),
+            ExprNode::Block(b) => {
+                let new_bb = self.ctx.bb();
+                let after_bb = self.ctx.bb();
+                let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", new_bb)) });
+                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+                self.lower_block(module, file, fun, &b, new_bb)?;
+                self.scope_stack.pop();
+                self.ctx[bb].terminator = IrTerminator::Jmp(new_bb);
+                IrExpr {
+                    span: expr.span,
+                    ty: self.ctx[phi_var].ty,
+                    kind: IrExprKind::Var(phi_var),
+                }
+            }
         })
     }
     
@@ -620,7 +641,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         bb: BBId,
     ) -> Result<(), Diagnostic<FileId>> {
         for stmt in stmts.iter() {
-            self.lower_stmt(module, file, fun, stmt, bb);
+            self.lower_stmt(module, file, fun, stmt, bb)?;
         }
 
         if matches!(self.ctx[bb].terminator, IrTerminator::Invalid) {
