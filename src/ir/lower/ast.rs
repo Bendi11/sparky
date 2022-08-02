@@ -329,6 +329,50 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 let ty = self.resolve_type(ty, module, file, expr.span)?;
                 return self.lower_cast(module, file, fun, expr, ty, bb)
             },
+            ExprNode::Index(obj, idx) => {
+                let obj = self.lower_expr(module, file, fun, obj, bb)?;
+                let obj_ty = self.ctx.unwrap_alias(obj.ty);
+                let elem_ty = match self.ctx[obj_ty] {
+                    IrType::Array(elem, _) => elem,
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                "Cannot index an expression of non-array type {}",
+                                self.ctx.typename(obj.ty),
+                            ))
+                            .with_labels(vec![
+                                Label::primary(file, obj.span)
+                                    .with_message("Index expression appears here")
+                            ])
+                        )
+                    }
+                };
+
+                let idx = self.lower_expr(module, file, fun, idx, bb)?;
+
+                let idx_ty = self.ctx.unwrap_alias(idx.ty);
+                if !matches!(&self.ctx[idx_ty], IrType::Integer(_)) {
+                    return Err(Diagnostic::error()
+                        .with_message(format!(
+                            "Cannot index an expression of array type {} with a value of non-integer type {}",
+                            self.ctx.typename(obj.ty),
+                            self.ctx.typename(idx.ty),
+                        ))
+                        .with_labels(vec![
+                            Label::primary(file, idx.span)
+                                .with_message(format!("Index of type {} appears here", self.ctx.typename(idx.ty))),
+                            Label::secondary(file, obj.span)
+                                .with_message(format!("Array expression of type {} appears here", self.ctx.typename(obj.ty))),
+                        ])
+                    )
+                }
+
+                IrExpr {
+                    span: expr.span,
+                    ty: elem_ty,
+                    kind: IrExprKind::Index(Box::new(obj), Box::new(idx))
+                }
+            },
             ExprNode::Literal(lit) => match lit {
                 Literal::String(s) => IrExpr {
                     span: expr.span,

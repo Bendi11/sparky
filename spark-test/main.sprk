@@ -9,5 +9,6 @@ fun ext test()
 fun ext main(i32 argc, **u8 a) -> i32 {
     test()
     printf($str "testing", "1")
+    printf($str ((["test", "1"])[0]), "1")
     return (argc + 1 / 2)
 }

@@ -47,4 +47,6 @@ pub enum IrExprKind {
     Member(Box<IrExpr>, usize),
     /// Casting an expression to another type
     Cast(Box<IrExpr>, TypeId),
+    /// Indexing an array type with integer-valued index
+    Index(Box<IrExpr>, Box<IrExpr>),
 }
