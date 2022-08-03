@@ -188,6 +188,19 @@ impl<T> Arena<T> {
             .into_iter()
             .map(|idx| Index::new(idx))
     }
+    
+    /// Create a new arena containing all elements of this [Arena] mapped by the specified function
+    pub fn secondary<E, F: Fn(&T) -> E>(&self, f: F) -> Arena<E> {
+        let data = self
+            .data
+            .iter()
+            .map(f)
+            .collect::<Vec<_>>();
+
+        Arena::<E> {
+            data
+        }
+    }
 }
 
 impl<T> IntoIterator for Arena<T> {

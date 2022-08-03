@@ -23,7 +23,7 @@ uuid = { version = "0.8", features = ["v4"]}
 
 codespan-reporting = "0.11"
 
-#inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm14-0"] }
 
 
 [profile.release]

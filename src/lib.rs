@@ -8,6 +8,7 @@ pub mod error;
 pub mod ir;
 pub mod parse;
 pub mod util;
+pub mod llvm;
 
 pub type Symbol = LocalIntern<String>;
 
