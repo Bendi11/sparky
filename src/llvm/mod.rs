@@ -1,5 +1,6 @@
 
-use inkwell::{module::{Module, Linkage}, context::Context, builder::Builder, values::{FunctionValue, PointerValue}, types::{AnyTypeEnum, BasicTypeEnum, BasicType, FunctionType, IntType}, AddressSpace, passes::PassManager, targets::{Target, InitializationConfig, RelocMode, CodeModel, TargetMachine, FileType}, OptimizationLevel};
+use hashbrown::HashMap;
+use inkwell::{module::{Module, Linkage}, context::Context, builder::Builder, values::{FunctionValue, PointerValue}, types::{AnyTypeEnum, BasicTypeEnum, BasicType, FunctionType, IntType}, AddressSpace, passes::PassManager, targets::{Target, InitializationConfig, RelocMode, CodeModel, TargetMachine, FileType}, OptimizationLevel, basic_block::BasicBlock};
 
 use crate::{util::files::Files, ir::{IrContext, TypeId, types::{IrType, IrFloatType, FunType, IrIntegerType}, FunId, BBId}, arena::Arena, ast::IntegerWidth, CompileOpts};
 
@@ -20,6 +21,7 @@ pub struct LLVMCodeGeneratorState<'files, 'llvm> {
     llvm_funs: Arena<FunctionValue<'llvm>>,
     llvm_types: Arena<BasicTypeEnum<'llvm>>,
     llvm_vars: Arena<Option<PointerValue<'llvm>>>,
+    llvm_bbs: HashMap<BBId, BasicBlock<'llvm>>,
 
 }
 
@@ -36,11 +38,12 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
                 llvm_types: irctx
                     .types
                     .secondary(
-                        |(idx, ty)| Self::gen_type(ctx, irctx, ty)
+                        |(_, ty)| Self::gen_type(ctx, irctx, ty)
                     ),
                 llvm_vars: irctx
                     .vars
                     .secondary(|_| None),
+                llvm_bbs: HashMap::new(),
                 files,
 
                 ctx,
@@ -56,9 +59,7 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
         for fun_id in self.state.llvm_funs.indices() {
             let fun = self.irctx.funs.get_secondary(fun_id);
             if let Some(body) = &fun.body {
-                let entry = self.state.ctx.append_basic_block(self.state.llvm_funs[fun_id], fun.name.as_str());
-                self.state.build.position_at_end(entry);
-                self.state.gen_bb(self.irctx, body.entry);
+                self.state.gen_bb(self.irctx, body.entry, self.state.llvm_funs[fun_id]);
             }
         }
 
@@ -135,6 +136,9 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
                 ctx.struct_type(&fields, false).into()
             },
             IrType::Sum(variants) => {
+                if variants.is_empty() {
+                    panic!("Type: {:#?} has no variants", ty);
+                }
                 let variants = variants
                     .iter()
                     .map(|variant| Self::gen_type(ctx, irctx, &irctx[*variant]))
@@ -142,7 +146,12 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
 
                 let largest_size = variants
                     .iter()
-                    .map(|ty| ty.size_of().unwrap().get_zero_extended_constant().unwrap())
+                    .map(|ty| ty
+                        .size_of()
+                        .unwrap()
+                        .get_zero_extended_constant()
+                        .unwrap_or(1)
+                    )
                     .max()
                     .unwrap();
 
@@ -151,7 +160,8 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
                     .into()
             },
             IrType::Array(ty, sz) => Self::gen_type(ctx, irctx, &irctx[*ty]).array_type(*sz as u32).into(),
-            IrType::Alias { .. } | IrType::Invalid => unreachable!(),
+            IrType::Alias { ty, .. } => Self::gen_type(ctx, irctx, &irctx[*ty]),
+            IrType::Invalid => ctx.i8_type().into(),
         }
     }
     

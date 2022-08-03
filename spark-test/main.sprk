@@ -13,24 +13,6 @@ fun ext printf(str fmt, *u8 a)
 fun ext test()
 
 fun ext main(i32 argc, **u8 a) -> i32 {
-    let struct = $structure#{ a = 100, b = "testing", } let struct.b = test()
-    let struct.a = if true {
-        phi 2
-    } else if false {
-        phi 1
-    } else {
-        phi 3
-    }
-
-    let struct.b = "testing"
-    
-    let test_adt = $str_or_num 140
-    let struct.a = match test_adt {
-        str -> phi 0,
-        i32 -> phi $i32 test_adt
-    }
-    printf($str "testing", "1")
-    printf($str ((["test", "1"])[0]), "1")
-    mod:puts("testing")
-    return (argc + 1 / 2)
+    puts("test")
+    return 0
 }

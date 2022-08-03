@@ -95,7 +95,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .unwrap_or(self.ctx.i8_type().const_int(0, false).into())
             },
             IrExprKind::Fun(..) | IrExprKind::Member(..) | IrExprKind::Index(..) => self.gen_lval(irctx, expr).into(),
-            _ => todo!()
+            _ => todo!("{:?} is not yet implemented", expr)
         }
     }
     
