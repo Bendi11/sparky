@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use crate::{
     ast::{
         Expr, ExprNode, IntegerWidth, Literal, NumberLiteral, NumberLiteralAnnotation,
-        ParsedModule, Stmt, StmtNode, BigInt, If, ElseExpr,
+        ParsedModule, Stmt, StmtNode, BigInt, If, ElseExpr, Match,
     },
     ir::{
         types::{FunType, IrType, IrIntegerType, IrFloatType, IrStructType, IrStructField},
@@ -249,8 +249,16 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 self.lower_block(module, file, fun, &b, bb)?;
                 self.scope_stack.pop();
                 self.ctx[bb].terminator = IrTerminator::Jmp(new_bb);
-            } 
-            _ => unimplemented!(),
+            },
+            StmtNode::Match(match_stmt) => {
+                self.lower_match(module, file, fun, match_stmt, stmt.span, bb)?;
+            },
+            StmtNode::Break => {
+                self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+            },
+            StmtNode::Continue => {
+                self.ctx[bb].terminator = IrTerminator::Jmp(bb);
+            },
         }
         Ok(())
     }
@@ -349,7 +357,10 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             },
             ExprNode::If(expr) => {
                 return self.lower_if(module, file, fun, expr, bb)
-            }
+            },
+            ExprNode::Match(match_expr) => {
+                return self.lower_match(module, file, fun, match_expr, expr.span, bb) 
+            },
             ExprNode::Unary(op, expr) => {
                 return self.lower_unary(module, file, fun, *op, &expr, bb)
             },
@@ -629,6 +640,45 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             span: expr.cond.span,
             ty: self.ctx[phi_var].ty,
             kind: IrExprKind::Var(phi_var)
+        })
+    }
+    
+    /// Lower a match expression, returning an IrExpr representing a load of the phi allocation
+    fn lower_match(
+        &mut self,
+        module: IntermediateModuleId,
+        file: FileId,
+        fun: FunId,
+        expr: &Match,
+        span: Span,
+        bb: BBId,
+    ) -> Result<IrExpr, Diagnostic<FileId>> {
+        let matched = self.lower_expr(module, file, fun, &expr.matched, bb)?;
+        let after_bb = self.ctx.bb();
+        let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", bb)) });
+
+        self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+        let cases = expr
+            .cases
+            .iter()
+            .map(|(ty, stmt)| {
+                let ty = self.resolve_type(ty, module, file, span)?;
+                let arm_bb = self.ctx.bb();
+                self.lower_stmt(module, file, fun, stmt, arm_bb)?;
+                if matches!(self.ctx[arm_bb].terminator, IrTerminator::Invalid) {
+                    self.ctx[arm_bb].terminator = IrTerminator::Jmp(after_bb);
+                }
+                Ok((ty, arm_bb))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        self.ctx[bb].terminator = IrTerminator::JmpMatch { variant: matched, discriminants: cases, default_jmp: after_bb };
+        self.scope_stack.pop();
+
+        Ok(IrExpr {
+            span,
+            ty: self.ctx[phi_var].ty,
+            kind: IrExprKind::Var(phi_var),
         })
     }
 

@@ -45,7 +45,7 @@ pub type VarId = Index<IrVar>;
 pub type FunId = Index<IrFun>;
 
 /// ID referencing an [IrType::Type] that is an enum discriminant in an [Ir::Sum]
-pub type DiscriminantId = Index<TypeId>;
+pub type DiscriminantId = TypeId;
 
 /// A single basic block in the IR containing a list of statements
 #[derive(Clone, Debug)]
