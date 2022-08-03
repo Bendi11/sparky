@@ -816,13 +816,15 @@ impl<'src> Parser<'src> {
         let end_span = loop {
             let next = self.peek_tok(&[
                 TokenData::CloseBracket(BracketType::Curly),
-                TokenData::Ident("typename"),
+                TokenData::Ident("type name"),
+                TokenData::Comma,
             ])?;
             match next.data {
                 TokenData::CloseBracket(BracketType::Curly) => {
                     let tok = self.toks.next().unwrap();
                     break tok.span.to;
-                }
+                },
+                TokenData::Comma => { self.toks.next(); },
                 _ => {
                     let ty = self.parse_typename()?;
                     self.expect_next(&[TokenData::Arrow])?;
