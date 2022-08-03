@@ -72,6 +72,10 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
         fpm.add_promote_memory_to_register_pass();
         fpm.add_instruction_combining_pass();
         fpm.add_reassociate_pass();
+        
+        if opts.stripped {
+            fpm.add_strip_symbol_pass();
+        }
 
         fpm.initialize();
         

@@ -2,7 +2,7 @@ imp mod:puts
 type str = *u8
 type strbuf = *str
 type structure = {
-    i32 a,
+    [5]i64 a,
     *u8 b
 }
 
@@ -13,6 +13,10 @@ fun ext printf(str fmt, i32 b)
 fun ext test()
 
 fun ext main(i32 argc, **u8 a) -> i32 {
-    puts("Hello World!")
+    let b = #mod:structure {
+        a = [0x4848484848484848, 72, 72, 72, 0],
+        b = "testing"
+    }
+    mod:puts(b.b)
     return 0
 }

@@ -1,15 +1,25 @@
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use hashbrown::HashMap;
-use inkwell::{values::{BasicValueEnum, PointerValue, ArrayValue, CallableValue}, types::BasicType};
+use inkwell::{values::{BasicValueEnum, PointerValue, ArrayValue, CallableValue}, types::{BasicType, BasicTypeEnum}};
 
-use crate::ir::{IrContext, value::{IrExpr, IrExprKind, IrLiteral}, types::IrType};
+use crate::{ir::{IrContext, value::{IrExpr, IrExprKind, IrLiteral}, types::IrType}, parse::token::Op};
 
 use super::{LLVMCodeGeneratorState, LLVMCodeGenerator};
 
 
 
 impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
+    fn array_vals<T: TryFrom<BasicValueEnum<'llvm>>>(&mut self, irctx: &IrContext, vals: &[IrExpr]) -> Vec<T> 
+    where 
+        <T as TryFrom<BasicValueEnum<'llvm>>>::Error: std::fmt::Debug 
+    {
+        vals
+            .iter()
+            .map(|val| self.gen_expr(irctx, val).try_into().unwrap())
+            .collect::<Vec<_>>()
+    }
+
     ///Generate LLVM bytecode for a single IR expression
     pub fn gen_expr(&mut self, irctx: &IrContext, expr: &IrExpr) -> BasicValueEnum<'llvm> {
         match &expr.kind {
@@ -37,16 +47,23 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .into(),
                 IrLiteral::Array(vals) => {
                     let ty = expr.ty;
-                    let vals = vals
-                        .iter()
-                        .map(|val| ArrayValue::try_from(self.gen_expr(irctx, val)).unwrap())
-                        .collect::<Vec<_>>();
-                    self
+                    let elem = if let IrType::Array(ty, _) = &irctx[ty] {
+                        *ty
+                    } else { unreachable!() };
+
+                    
+
+                    match self
                         .llvm_types
-                        .get_secondary(ty)
-                        .into_array_type()
-                        .const_array(&vals)
-                        .into()
+                        .get_secondary(elem) {
+                            BasicTypeEnum::ArrayType(ty) => ty.const_array(&self.array_vals(irctx, vals)),
+                            BasicTypeEnum::PointerType(ty) => ty.const_array(&self.array_vals(irctx, vals)),
+                            BasicTypeEnum::StructType(ty) => ty.const_array(&self.array_vals(irctx, vals)),
+                            BasicTypeEnum::FloatType(ty) => ty.const_array(&self.array_vals(irctx, vals)),
+                            BasicTypeEnum::IntType(ty) => ty.const_array(&self.array_vals(irctx, vals)),
+                            BasicTypeEnum::VectorType(ty) => ty.const_array(&self.array_vals(irctx, vals)),
+                        }.into()
+                        
                 },
                 IrLiteral::Unit => self.ctx.i8_type().const_int(0, false).into(),
                 IrLiteral::Struct(s) => {
@@ -95,6 +112,18 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .unwrap_or(self.ctx.i8_type().const_int(0, false).into())
             },
             IrExprKind::Fun(..) | IrExprKind::Member(..) | IrExprKind::Index(..) => self.gen_lval(irctx, expr).into(),
+            IrExprKind::Cast(expr, ty) => {
+                let llvm_expr = self.gen_expr(irctx, expr);
+                if irctx.unwrap_alias(expr.ty) == irctx.unwrap_alias(*ty) {
+                    llvm_expr
+                } else {
+                    todo!("{} is not the same as {}", irctx.typename(expr.ty), irctx.typename(*ty))
+                }
+            },
+            IrExprKind::Unary(op, expr) => match op {
+                Op::AND => self.gen_lval(irctx, expr).into(),
+                _ => todo!(),
+            }
             _ => todo!("{:?} is not yet implemented", expr)
         }
     }
@@ -111,10 +140,11 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
             IrExprKind::Member(obj, field) => {
                 let obj = self.gen_lval(irctx, obj);
 
-                self
+                unsafe{ self
                     .build
-                    .build_struct_gep(obj, *field as u32, "struct_gep")
-                    .unwrap()
+                    .build_in_bounds_gep(obj, &[self.ctx.i64_type().const_zero(), self.ctx.i32_type().const_int(*field as u64, false)], "struct_gep")
+                    //.unwrap()
+                }
             },
             IrExprKind::Index(arr, elem) => {
                 let arr = self.gen_lval(irctx, arr);
@@ -124,7 +154,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                         .build
                         .build_in_bounds_gep(
                             arr,
-                            &[self.ctx.i8_type().const_zero(), elem],
+                            &[self.ctx.i32_type().const_zero(), elem],
                             "arr_index"
                         )
                         .into()

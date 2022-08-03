@@ -165,6 +165,14 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             }
         }
 
+        for child_parsed in parsed.children.iter() {
+            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
+                IntermediateDefId::Module(module) => *module,
+                _ => unreachable!(),
+            };
+            self.populate_fn_bodies_impl(child_module, child_parsed)?;
+        }
+
         Ok(())
     }
 

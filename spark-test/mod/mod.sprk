@@ -1,6 +1,13 @@
 
 fun test() -> u8 {
-    return 0xffu8
+    return 0xf3
+}
+
+type int = i32
+
+type structure = {
+    [5]i64 a,
+    *u8 b
 }
 
 fun ext puts(*u8 s)

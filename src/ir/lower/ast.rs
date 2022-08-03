@@ -174,27 +174,19 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             }
                         };
 
-                        (ty, IrExpr {
-                            span: let_stmt.let_expr.span,
-                            ty: self.ctx.types.insert(IrType::Ptr(ty)),
-                            kind: IrExprKind::Unary(
-                                Op::AND,
-                                Box::new(IrExpr {
-                                    span: let_stmt.let_expr.span,
-                                    ty,
-                                    kind: IrExprKind::Var(var),
-                                }),
-                            ),
-                        })
+                        (
+                            ty,
+                            IrExpr {
+                                span: let_stmt.let_expr.span,
+                                ty,
+                                kind: IrExprKind::Var(var),
+                            }
+                        )
                     }
                     _ => {
                         let let_expr =
                             self.lower_expr(module, file, fun, &let_stmt.let_expr, bb)?;
-                        (assigned.ty, IrExpr {
-                            span: let_stmt.let_expr.span,
-                            ty: self.ctx.types.insert(IrType::Ptr(let_expr.ty)),
-                            kind: IrExprKind::Unary(Op::AND, Box::new(let_expr)),
-                        })
+                        (assigned.ty, let_expr)
                     }
                 };
 
