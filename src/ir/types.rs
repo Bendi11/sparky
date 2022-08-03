@@ -77,4 +77,13 @@ impl IrStructType {
             .iter()
             .find_map(|field| if field.name == *name { Some(field.ty) } else { None })
     }
+    
+    /// Get the index of the given field name
+    pub fn field_idx(&self, name: &Symbol) -> Option<usize> {
+        self
+            .fields
+            .iter()
+            .enumerate()
+            .find_map(|(idx, field)| if field.name == *name { Some(idx) } else { None })
+    }
 }

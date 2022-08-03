@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 use clap::{App, Arg, ValueHint};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
+use inkwell::context::Context;
 use spark::{
     ast::ParsedModule,
     error::DiagnosticManager,
     ir::{lower::IrLowerer, IrContext},
     parse::{ParseError, Parser},
     util::files::{CompiledFile, FileId, Files},
-    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol,
+    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol, llvm::LLVMCodeGenerator,
 };
 
 /// Input source code, either a file or a directory containing source files
@@ -192,12 +193,11 @@ fn main() {
         .lower(&root_module)
         .map_err(|e| diags.emit(e))
         .unwrap_or_else(|()| std::process::exit(-1));
-
-    for fun in ctx.funs.iter() {
-        if let Some(ref body) = fun.body {
-            println!("{:?}", ctx[body.entry]);
-        }
-    }
+    
+    drop(lowerer);
+    let llvm = Context::create();
+    let codegen = LLVMCodeGenerator::new(&files, &mut ctx, &llvm);
+    codegen.gen(opts);
 }
 
 fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {
