@@ -566,27 +566,25 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         NumberLiteralAnnotation::F64 => (false, IrContext::F64),
                     };
 
-                    IrExpr {
+                    let lit = match num {
+                        NumberLiteral::Integer(num, _) => IrExpr {
+                            span: expr.span,
+                            ty: if signed { IrContext::I64 } else { IrContext::U64 },
+                            kind: IrExprKind::Lit(IrLiteral::Integer(*num, IrIntegerType { width: IntegerWidth::SixtyFour, signed })),
+                        },
+                        NumberLiteral::Float(num, _) => IrExpr {
+                            span: expr.span,
+                            ty: IrContext::F64,
+                            kind: IrExprKind::Lit(IrLiteral::Float(*num, IrFloatType { doublewide: true }))
+                        },
+                    };
+
+                    lit
+                    /*IrExpr {
                         span: expr.span,
                         ty,
-                        kind: IrExprKind::Cast(
-                            Box::new(
-                                match num {
-                                    NumberLiteral::Integer(num, _) => IrExpr {
-                                        span: expr.span,
-                                        ty: if signed { IrContext::I64 } else { IrContext::U64 },
-                                        kind: IrExprKind::Lit(IrLiteral::Integer(*num, IrIntegerType { width: IntegerWidth::SixtyFour, signed })),
-                                    },
-                                    NumberLiteral::Float(num, _) => IrExpr {
-                                        span: expr.span,
-                                        ty: IrContext::F64,
-                                        kind: IrExprKind::Lit(IrLiteral::Float(*num, IrFloatType { doublewide: true }))
-                                    },
-                                }
-                            ),
-                            ty,
-                        )
-                    }
+                        kind: lit,
+                    }*/
                 }
             },
             ExprNode::Block(b) => {

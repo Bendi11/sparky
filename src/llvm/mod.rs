@@ -2,7 +2,7 @@
 use hashbrown::HashMap;
 use inkwell::{module::{Module, Linkage}, context::Context, builder::Builder, values::{FunctionValue, PointerValue}, types::{AnyTypeEnum, BasicTypeEnum, BasicType, FunctionType, IntType}, AddressSpace, passes::PassManager, targets::{Target, InitializationConfig, RelocMode, CodeModel, TargetMachine, FileType}, OptimizationLevel, basic_block::BasicBlock};
 
-use crate::{util::files::Files, ir::{IrContext, TypeId, types::{IrType, IrFloatType, FunType, IrIntegerType}, FunId, BBId}, arena::Arena, ast::IntegerWidth, CompileOpts};
+use crate::{util::files::Files, ir::{IrContext, TypeId, types::{IrType, IrFloatType, FunType, IrIntegerType}, FunId, BBId}, arena::Arena, ast::IntegerWidth, CompileOpts, OutputOptimizationLevel, OutputFileType};
 
 pub mod stmt;
 pub mod expr;
@@ -77,8 +77,16 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
         
         Target::initialize_native(&InitializationConfig::default()).unwrap();
 
-        let opt = OptimizationLevel::default();
-        let reloc = RelocMode::Default;
+        let opt = match opts.opt_lvl {
+            OutputOptimizationLevel::Release => OptimizationLevel::Aggressive,
+            OutputOptimizationLevel::Medium => OptimizationLevel::Default,
+            OutputOptimizationLevel::Size => OptimizationLevel::Less,
+            OutputOptimizationLevel::Debug => OptimizationLevel::None,
+        };
+        let reloc = match opts.pic {
+            true => RelocMode::PIC,
+            false => RelocMode::Default,
+        };
         let model = CodeModel::Default;
         let target = Target::from_triple(&TargetMachine::get_default_triple()).unwrap();
         let target_machine = target
@@ -91,14 +99,25 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
                 model
             )
             .unwrap();
-
-        target_machine
-            .write_to_file(
-                &self.state.root,
-                FileType::Object,
-                &opts.out_file,
-            )
-            .unwrap();
+        
+        match opts.out_type {
+            OutputFileType::Object => target_machine
+                .write_to_file(
+                    &self.state.root,
+                    FileType::Object,
+                    &opts.out_file,
+                ),
+            OutputFileType::Assembly => target_machine
+                .write_to_file(
+                    &self.state.root,
+                    FileType::Assembly,
+                    &opts.out_file
+                ),
+            OutputFileType::LLVMIR => self
+                .state
+                .root
+                .print_to_file(&opts.out_file)
+        }.unwrap();
 
         self.state.root
     }
