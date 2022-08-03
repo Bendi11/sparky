@@ -29,8 +29,8 @@ fun ext main(i32 argc, **u8 a) -> i32 {
     
     let test_adt = $str_or_num 140
     let struct.a = match test_adt {
-        str -> phi 0,
-        i32 -> phi 1
+        str -> phi "test",
+        i32 -> phi $i32 test_adt
     }
     printf($str "testing", "1")
     printf($str ((["test", "1"])[0]), "1")

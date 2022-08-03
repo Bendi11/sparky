@@ -87,7 +87,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         match &stmt.node {
             StmtNode::Return(val) => match self.lowest_scope().return_var {
-                Some(var) => {
+                Some(_) => {
                     self.ctx[bb].terminator =
                         IrTerminator::Return(self.lower_expr(module, file, fun, val, bb)?);
                 }
@@ -124,6 +124,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             self.ctx.typename(return_val.ty),
                             self.ctx.typename(self.ctx[return_var].ty),
                         ))
+                        .with_labels(vec![
+                            Label::primary(file, val.span)
+                                .with_message(format!(
+                                    "Value of type {} returned here",
+                                    self.ctx.typename(return_val.ty),
+                                ))
+                        ])
                     )
                 }
 
