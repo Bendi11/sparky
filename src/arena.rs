@@ -127,6 +127,13 @@ impl<T: Hash + Eq + Clone> Interner<T> {
     pub fn get_mut(&mut self, idx: Index<T>) -> &mut T {
         self.arena.get_mut(idx)
     }
+    
+    /// Map each element of this [Interner] to a new element created by the given function
+    pub fn secondary<E, F: Fn(&T) -> E>(&self, f: F) -> Arena<E> {
+        self
+            .arena
+            .secondary(f)
+    }
 }
 
 impl<T> Arena<T> {
