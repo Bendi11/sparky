@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use hashbrown::HashMap;
-use inkwell::{values::{BasicValueEnum, PointerValue, ArrayValue, CallableValue}, types::{BasicType, BasicTypeEnum}, FloatPredicate, IntPredicate};
+use inkwell::{values::{BasicValueEnum, PointerValue, ArrayValue, CallableValue}, types::{BasicType, BasicTypeEnum}, FloatPredicate, IntPredicate, AddressSpace};
 
 use crate::{ir::{IrContext, value::{IrExpr, IrExprKind, IrLiteral}, types::{IrType, IrIntegerType}, TypeId}, parse::token::Op};
 
@@ -250,19 +250,70 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
     pub fn gen_cast(&mut self, irctx: &IrContext, expr: &IrExpr, ty: TypeId) -> BasicValueEnum<'llvm> {
         let val = self.gen_expr(irctx, expr);
         let lty = self.llvm_types.get_secondary(ty);
-        match (&self.ctx[expr.ty], &self.ctx[ty]) {
+        match (&irctx[expr.ty], &irctx[ty]) {
             _ if expr.ty == ty => val,
-            (IrType::Integer(_), IrType::Integer(IrIntegerType { signed, .. })) => self.build.build_int_cast_sign_flag(val.into_int_value(), lty.into_int_type(), signed, "icast"),
+            (IrType::Integer(_), IrType::Integer(IrIntegerType { signed, .. })) => self
+                .build
+                .build_int_cast_sign_flag(val.into_int_value(), lty.into_int_type(), *signed, "icast")
+                .into(),
             (IrType::Integer(IrIntegerType { signed: true, .. }), IrType::Float(_)) => self
                 .build
-                .build_signed_int_to_float(val.into_int_value(), lty.into_float_type(), "ifcast"),
+                .build_signed_int_to_float(val.into_int_value(), lty.into_float_type(), "ifcast")
+                .into(),
             (IrType::Integer(IrIntegerType { signed: false, .. }), IrType::Float(_)) => self
                 .build
-                .build_unsigned_int_to_float(val.into_int_value(), lty.into_float_type(), "ufcast"),
+                .build_unsigned_int_to_float(val.into_int_value(), lty.into_float_type(), "ufcast")
+                .into(),
             (IrType::Integer(_), IrType::Ptr(_)) => self
                 .build
-                .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast"),
-            _ => unreachable!(), 
+                .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast")
+                .into(),
+            (_, IrType::Sum(s)) if s.contains(&expr.ty) => {
+                let idx = s.iter().enumerate().find_map(|(idx, variant)| if *variant == expr.ty { Some(idx) } else { None }).unwrap();
+                let lty = lty.into_struct_type();
+
+                let structure = self.build.build_alloca(lty, "sumlit");
+                
+                let ptr_to_discrim = self
+                    .build
+                    .build_struct_gep(
+                        structure,
+                        0,
+                        "sumlit_discrim"
+                    )
+                    .unwrap();
+
+                self
+                    .build
+                    .build_store(ptr_to_discrim, self.ctx.i8_type().const_int(idx as u64, false));
+
+                let ptr_to_val = self
+                    .build
+                    .build_struct_gep(
+                        structure,
+                        1,
+                        "sumlit_val"
+                    )
+                    .unwrap();
+
+                let ptr_to_val = self.build.build_pointer_cast(
+                    ptr_to_val,
+                    self.llvm_types.get_secondary(expr.ty).ptr_type(AddressSpace::Generic),
+                    "sumlit_val"
+                );
+
+                self
+                    .build
+                    .build_store(
+                        ptr_to_val,
+                        val
+                    );
+                
+                self
+                    .build
+                    .build_load(structure, "sumlit")
+            },
+            _ => unreachable!(),
         }
     }
 }
