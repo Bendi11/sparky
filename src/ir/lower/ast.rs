@@ -571,12 +571,11 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         },
                     };
 
-                    lit
-                    /*IrExpr {
+                    IrExpr {
                         span: expr.span,
                         ty,
-                        kind: lit,
-                    }*/
+                        kind: IrExprKind::Cast(Box::new(lit), ty),
+                    }
                 }
             },
             ExprNode::Block(b) => {

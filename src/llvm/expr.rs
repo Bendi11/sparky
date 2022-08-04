@@ -154,7 +154,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                         .build
                         .build_in_bounds_gep(
                             arr,
-                            &[self.ctx.i32_type().const_zero(), elem],
+                            &[self.ctx.i32_type().const_zero(), elem.into_int_value()],
                             "arr_index"
                         )
                         .into()
@@ -242,7 +242,8 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                         ).into(),
                     _ => unreachable!()
                 }
-            }
+            },
+            _ => todo!(),
         }
     }
 }
