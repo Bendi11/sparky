@@ -3,7 +3,7 @@ use std::convert::{TryFrom, TryInto};
 use hashbrown::HashMap;
 use inkwell::{values::{BasicValueEnum, PointerValue, ArrayValue, CallableValue}, types::{BasicType, BasicTypeEnum}, FloatPredicate, IntPredicate};
 
-use crate::{ir::{IrContext, value::{IrExpr, IrExprKind, IrLiteral}, types::{IrType, IrIntegerType}}, parse::token::Op};
+use crate::{ir::{IrContext, value::{IrExpr, IrExprKind, IrLiteral}, types::{IrType, IrIntegerType}, TypeId}, parse::token::Op};
 
 use super::{LLVMCodeGeneratorState, LLVMCodeGenerator};
 
@@ -169,7 +169,6 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
         }
     }
 
-    
     /// Generate LLVM bytecode for a binary expression
     pub fn gen_bin(&mut self, irctx: &IrContext, lhs: &IrExpr, op: Op, rhs: &IrExpr) -> BasicValueEnum<'llvm> {
         let llvm_lhs = self.gen_expr(irctx, lhs);
@@ -244,6 +243,26 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                 }
             },
             _ => todo!(),
+        }
+    }
+    
+    /// Generate llvm IR for casted value 
+    pub fn gen_cast(&mut self, irctx: &IrContext, expr: &IrExpr, ty: TypeId) -> BasicValueEnum<'llvm> {
+        let val = self.gen_expr(irctx, expr);
+        let lty = self.llvm_types.get_secondary(ty);
+        match (&self.ctx[expr.ty], &self.ctx[ty]) {
+            _ if expr.ty == ty => val,
+            (IrType::Integer(_), IrType::Integer(IrIntegerType { signed, .. })) => self.build.build_int_cast_sign_flag(val.into_int_value(), lty.into_int_type(), signed, "icast"),
+            (IrType::Integer(IrIntegerType { signed: true, .. }), IrType::Float(_)) => self
+                .build
+                .build_signed_int_to_float(val.into_int_value(), lty.into_float_type(), "ifcast"),
+            (IrType::Integer(IrIntegerType { signed: false, .. }), IrType::Float(_)) => self
+                .build
+                .build_unsigned_int_to_float(val.into_int_value(), lty.into_float_type(), "ufcast"),
+            (IrType::Integer(_), IrType::Ptr(_)) => self
+                .build
+                .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast"),
+            _ => unreachable!(), 
         }
     }
 }
