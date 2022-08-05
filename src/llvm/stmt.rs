@@ -35,10 +35,17 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                 }
             },
             IrTerminator::Jmp(bb) => {
-                let new_bb = self.ctx.append_basic_block(fun, "bb");
-                self.llvm_bbs.insert(*bb, new_bb);
-                self.build.build_unconditional_branch(new_bb);
-                self.gen_bb(irctx, *bb, fun);
+                match self.llvm_bbs.get(bb) {
+                    Some(new_bb) => {
+                        self.build.build_unconditional_branch(*new_bb);
+                    },
+                    None => {
+                        let new_bb = self.ctx.append_basic_block(fun, "bb");
+                        self.llvm_bbs.insert(*bb, new_bb);
+                        self.build.build_unconditional_branch(new_bb);
+                        self.gen_bb(irctx, *bb, fun);
+                    }
+                }
             },
             IrTerminator::JmpIf { condition, if_true, if_false } => {
                 let if_true_llvm = self.ctx.append_basic_block(fun, "if_t");
