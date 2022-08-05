@@ -582,6 +582,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 let new_bb = self.ctx.bb();
                 let after_bb = self.ctx.bb();
                 let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", new_bb)) });
+                self.ctx[bb].stmts.push(IrStmt { span: expr.span, kind: IrStmtKind::VarLive(phi_var) });
                 self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
                 self.lower_block(module, file, fun, &b, new_bb)?;
                 self.scope_stack.pop();
@@ -620,6 +621,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
                 self.lower_if(module, file, fun, &expr, else_bb)?;
                 self.scope_stack.pop();
+                self.ctx[bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
             },
             Some(ElseExpr::Else(body)) => {
                 let else_bb = self.ctx.bb();
@@ -688,6 +690,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         stmts: &[Stmt],
         bb: BBId,
     ) -> Result<(), Diagnostic<FileId>> {
+        
+
         for stmt in stmts.iter() {
             self.lower_stmt(module, file, fun, stmt, bb)?;
         }

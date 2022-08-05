@@ -42,7 +42,9 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
             },
             IrTerminator::JmpIf { condition, if_true, if_false } => {
                 let if_true_llvm = self.ctx.append_basic_block(fun, "if_t");
+                self.llvm_bbs.insert(*if_true, if_true_llvm);
                 let if_false_llvm = self.ctx.append_basic_block(fun, "if_f");
+                self.llvm_bbs.insert(*if_false, if_false_llvm);
                 let condition = self.gen_expr(irctx, condition).into_int_value();
                 self
                     .build

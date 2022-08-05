@@ -64,6 +64,7 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
         }
 
         let fpm = PassManager::create(&self.state.root);
+        if opts.opt_lvl > OutputOptimizationLevel::Debug {
         fpm.add_instruction_combining_pass();
         fpm.add_reassociate_pass();
         fpm.add_gvn_pass();
@@ -72,6 +73,7 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
         fpm.add_promote_memory_to_register_pass();
         fpm.add_instruction_combining_pass();
         fpm.add_reassociate_pass();
+        }
         
         if opts.stripped {
             fpm.add_strip_symbol_pass();
