@@ -19,7 +19,7 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
     let sum = $str_or_num 101
     let v = match sum {
         str -> phi 0,
-        i32 -> phi 101
+        i32 -> phi $i32 sum
     }
     return v
 }

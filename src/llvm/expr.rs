@@ -164,6 +164,21 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                         .into()
                 }
             },
+            IrExprKind::Cast(expr, _) if matches!(&irctx[expr.ty], IrType::Sum(_)) => {
+                let lval = self.gen_lval(irctx, expr);
+                let ptr = self
+                    .build
+                    .build_struct_gep(lval, 1, "sum_unwrap_ptr")
+                    .unwrap();
+
+                self
+                    .build
+                    .build_pointer_cast(
+                        ptr,
+                        self.llvm_types.get_secondary(expr.ty).ptr_type(AddressSpace::Generic),
+                        "sum_unwrap_ptr"
+                    )
+            },
             _ => {
                 let alloca = self.build.build_alloca(*self.llvm_types.get_secondary(expr.ty), "lval_alloca");
                 let val = self.gen_expr(irctx, expr);
@@ -252,28 +267,49 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
     
     /// Generate llvm IR for casted value 
     pub fn gen_cast(&mut self, irctx: &IrContext, expr: &IrExpr, ty: TypeId) -> BasicValueEnum<'llvm> {
-        let val = self.gen_expr(irctx, expr);
-        let lty = self.llvm_types.get_secondary(ty);
+        let lty = *self.llvm_types.get_secondary(ty);
 
-        if irctx.unwrap_alias(expr.ty) == irctx.unwrap_alias(ty) { return val }
+        if irctx.unwrap_alias(expr.ty) == irctx.unwrap_alias(ty) { return self.gen_expr(irctx, expr) }
 
         match (&irctx[irctx.unwrap_alias(expr.ty)], &irctx[irctx.unwrap_alias(ty)]) {
-            (IrType::Integer(_), IrType::Integer(IrIntegerType { signed, .. })) => self
+            (IrType::Integer(_), IrType::Integer(IrIntegerType { signed, .. })) => {let val = self.gen_expr(irctx, expr);self
                 .build
                 .build_int_cast_sign_flag(val.into_int_value(), lty.into_int_type(), *signed, "icast")
-                .into(),
-            (IrType::Integer(IrIntegerType { signed: true, .. }), IrType::Float(_)) => self
+                .into()
+            },
+            (IrType::Integer(IrIntegerType { signed: true, .. }), IrType::Float(_)) => {let val = self.gen_expr(irctx, expr);self
                 .build
                 .build_signed_int_to_float(val.into_int_value(), lty.into_float_type(), "ifcast")
-                .into(),
-            (IrType::Integer(IrIntegerType { signed: false, .. }), IrType::Float(_)) => self
+                .into()
+            },
+            (IrType::Integer(IrIntegerType { signed: false, .. }), IrType::Float(_)) => {let val = self.gen_expr(irctx, expr);self
                 .build
                 .build_unsigned_int_to_float(val.into_int_value(), lty.into_float_type(), "ufcast")
-                .into(),
-            (IrType::Integer(_), IrType::Ptr(_)) => self
+                .into()
+            },
+            (IrType::Integer(_), IrType::Ptr(_)) => {let val = self.gen_expr(irctx, expr); self
                 .build
                 .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast")
-                .into(),
+                .into()
+            },
+            (IrType::Sum(_), _) => {
+                let lval = self.gen_lval(irctx, expr);
+                let ptr = self
+                    .build
+                    .build_struct_gep(lval, 1, "sum_unwrap_ptr")
+                    .unwrap();
+                let ptr_to_t = self
+                    .build
+                    .build_pointer_cast(
+                        ptr,
+                        self.llvm_types.get_secondary(expr.ty).ptr_type(AddressSpace::Generic),
+                        "sum_unwrap_ptr"
+                    );
+
+                self
+                    .build
+                    .build_load(ptr_to_t, "sum_unwrap")
+            },
             (_, IrType::Sum(s)) if s.contains(&irctx.unwrap_alias(expr.ty)) => {
                 let idx = s.iter().enumerate().find_map(|(idx, variant)| if *variant == expr.ty { Some(idx) } else { None }).unwrap();
                 let lty = lty.into_struct_type();
@@ -307,7 +343,8 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     self.llvm_types.get_secondary(expr.ty).ptr_type(AddressSpace::Generic),
                     "sumlit_val"
                 );
-
+                
+                let val = self.gen_expr(irctx, expr);
                 self
                     .build
                     .build_store(
