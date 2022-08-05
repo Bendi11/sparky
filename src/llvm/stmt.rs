@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use inkwell::values::{BasicValueEnum, AnyValueEnum, CallableValue, FunctionValue};
 
-use crate::ir::{IrStmt, IrStmtKind, IrContext, BBId, IrTerminator};
+use crate::ir::{IrStmt, IrStmtKind, IrContext, BBId, IrTerminator, types::IrType};
 
 use super::{LLVMCodeGenerator, LLVMCodeGeneratorState};
 
@@ -63,8 +63,45 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                 self.gen_bb(irctx, *if_true, fun);
                 self.gen_bb(irctx, *if_false, fun);
             },
+            IrTerminator::JmpMatch { variant, discriminants, default_jmp } => {
+                let sum_ty = if let IrType::Sum(sum) = &irctx[irctx.unwrap_alias(variant.ty)] {
+                    sum
+                } else { unreachable!("{}", irctx.typename(variant.ty)) };
+                let variant = self.gen_lval(irctx, variant);
+                let discrim_ptr = self
+                    .build
+                    .build_struct_gep(variant, 0, "sum_discrim_ptr")
+                    .unwrap();
+                let discrim = self
+                    .build
+                    .build_load(discrim_ptr, "sum_discrim")
+                    .into_int_value();
+
+                let after_bb = self.ctx.append_basic_block(fun, "match_default");
+                self.llvm_bbs.insert(*default_jmp, after_bb);
+                self.gen_bb(irctx, *default_jmp, fun);
+
+                let discriminants = discriminants
+                    .iter()
+                    .map(|(ty, bb)| {
+                        let idx = sum_ty
+                            .iter()
+                            .enumerate()
+                            .find_map(|(idx, variant)| if ty == variant { Some(idx) } else { None })
+                            .unwrap();
+                        let arm = self.ctx.append_basic_block(fun, "matcharm");
+                        self.llvm_bbs.insert(*bb, arm);
+                        self.gen_bb(irctx, *bb, fun);
+
+                        (self.ctx.i8_type().const_int(idx as u64, false), arm)
+                    })
+                    .collect::<Vec<_>>();
+
+                self.build.position_at_end(llvm_bb);
+                self.build.build_switch(discrim, after_bb, &discriminants);
+                self.build.position_at_end(after_bb);
+            },
             IrTerminator::Invalid => panic!("Invalid BB terminator: {}", bb),
-            _ => todo!(),
         }
     }
 
