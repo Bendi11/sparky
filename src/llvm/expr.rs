@@ -164,7 +164,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                         .into()
                 }
             },
-            IrExprKind::Cast(expr, _) if matches!(&irctx[expr.ty], IrType::Sum(_)) => {
+            IrExprKind::Cast(expr, _) if matches!(&irctx[irctx.unwrap_alias(expr.ty)], IrType::Sum(_)) => {
                 let lval = self.gen_lval(irctx, expr);
                 let ptr = self
                     .build
