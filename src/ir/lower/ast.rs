@@ -609,6 +609,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         let if_body_bb = self.ctx.bb();
         let after_bb = self.ctx.bb();
         let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", if_body_bb)) });
+        self.ctx[bb].stmts.push(IrStmt { span: expr.cond.span, kind: IrStmtKind::VarLive(phi_var) });
 
         self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
         self.lower_block(module, file, fun, &expr.body, if_body_bb)?;
@@ -652,6 +653,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         let matched = self.lower_expr(module, file, fun, &expr.matched, bb)?;
         let after_bb = self.ctx.bb();
         let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", bb)) });
+        self.ctx[bb].stmts.push(IrStmt { span, kind: IrStmtKind::VarLive(phi_var) });
 
         self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
         let cases = expr
