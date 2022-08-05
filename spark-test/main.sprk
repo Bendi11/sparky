@@ -22,10 +22,10 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
     mod:puts(b.b)
     printf($str "Hello World: %d\n", $i32 b.c)
 
-    let if_expr = if b.c > 5u8 {
-        phi 0
+    let if_expr = if true {
+        phi 101
     } else {
-        phi 1
+        phi 0
     }
     
     let testing = {

@@ -23,10 +23,9 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         lhs: &Expr,
         op: Op,
         rhs: &Expr,
-        bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
-        let lhs = self.lower_expr(module, file, fun, lhs, bb)?;
-        let rhs = self.lower_expr(module, file, fun, rhs, bb)?;
+        let lhs = self.lower_expr(module, file, fun, lhs)?;
+        let rhs = self.lower_expr(module, file, fun, rhs)?;
 
         let ty = match (&self.ctx[lhs.ty], op, &self.ctx[rhs.ty]) {
             (
@@ -101,9 +100,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         fun: FunId,
         op: Op,
         expr: &Expr,
-        bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
-        let expr = self.lower_expr(module, file, fun, expr, bb)?;
+        let expr = self.lower_expr(module, file, fun, expr)?;
 
         let ty = match (op, self.ctx[expr.ty].clone()) {
             (Op::Star, IrType::Ptr(to)) => to,
@@ -136,9 +134,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         fun: FunId,
         expr: &Expr,
         ty: TypeId,
-        bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
-        let expr = self.lower_expr(module, file, fun, expr, bb)?;
+        let expr = self.lower_expr(module, file, fun, expr)?;
         
 
         let uty = self.ctx.unwrap_alias(ty);

@@ -31,6 +31,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             stmts: vec![],
             terminator: IrTerminator::Invalid,
         });
+        self.bb = Some(entry);
         let return_var = match self.ctx[self.ctx[fun].ty.return_ty] {
             IrType::Unit => None,
             _ => {
@@ -68,7 +69,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         self.ctx[fun].body = Some(IrBody { entry, parent: fun });
 
         for stmt in stmts {
-            self.lower_stmt(module, file, fun, stmt, entry)?;
+            self.lower_stmt(module, file, fun, stmt)?;
         }
 
         self.scope_stack.pop();
@@ -83,13 +84,13 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         file: FileId,
         fun: FunId,
         stmt: &Stmt,
-        bb: BBId,
     ) -> Result<(), Diagnostic<FileId>> {
         match &stmt.node {
             StmtNode::Return(val) => match self.lowest_scope().return_var {
                 Some(_) => {
-                    self.ctx[bb].terminator =
-                        IrTerminator::Return(self.lower_expr(module, file, fun, val, bb)?);
+                    let current = self.bb();
+                    self.ctx[current].terminator =
+                        IrTerminator::Return(self.lower_expr(module, file, fun, val)?);
                 }
                 None => {
                     return Err(Diagnostic::error()
@@ -113,7 +114,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 };
                
 
-                let return_val = self.lower_expr(module, file, fun, val, bb)?;
+                let return_val = self.lower_expr(module, file, fun, val)?;
 
                 if self.ctx[self.ctx[return_var].ty] == IrType::Invalid { self.ctx[return_var].ty = return_val.ty }
 
@@ -133,18 +134,19 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         ])
                     )
                 }
-
-                self.ctx[bb].stmts.push(IrStmt {
+                let current = self.bb();
+                self.ctx[current].stmts.push(IrStmt {
                     span: stmt.span,
                     kind: IrStmtKind::Store {
                         var: return_var,
                         val: return_val,
                     },
                 });
-                self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+                self.ctx[current].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+                *self.bb_mut() = self.current_scope().after_bb;
             }
             StmtNode::Let(let_stmt) => {
-                let assigned = self.lower_expr(module, file, fun, &let_stmt.assigned, bb)?;
+                let assigned = self.lower_expr(module, file, fun, &let_stmt.assigned)?;
                 let (ty, ptr) = match &let_stmt.let_expr.node {
                     ExprNode::Access(name) => {
                         let (ty, var) = match self.lookup_var(&name.last()) {
@@ -165,7 +167,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
 
                                 let var_id = self.ctx.vars.insert(var);
                                 self.current_scope_mut().vars.insert(name.last(), var_id);
-                                self.ctx[bb].stmts.push(IrStmt {
+                                let current = self.bb();
+                                self.ctx[current].stmts.push(IrStmt {
                                     span: let_stmt.let_expr.span,
                                     kind: IrStmtKind::VarLive(var_id),
                                 });
@@ -185,7 +188,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     }
                     _ => {
                         let let_expr =
-                            self.lower_expr(module, file, fun, &let_stmt.let_expr, bb)?;
+                            self.lower_expr(module, file, fun, &let_stmt.let_expr)?;
                         (assigned.ty, let_expr)
                     }
                 };
@@ -205,8 +208,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         ])
                     )
                 } 
-
-                self.ctx[bb].stmts.push(IrStmt {
+                let current = self.bb();
+                self.ctx[current].stmts.push(IrStmt {
                     span: (let_stmt.let_expr.span.from..let_stmt.assigned.span.to).into(),
                     kind: IrStmtKind::Write { ptr, val: assigned },
                 });
@@ -218,12 +221,12 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         let fun_ty = self.ctx[fun_id].ty.clone();
                         let args = args
                             .iter()
-                            .map(|arg| self.lower_expr(module, file, fun, arg, bb))
+                            .map(|arg| self.lower_expr(module, file, fun, arg))
                             .collect::<Result<Vec<_>, _>>()?;
 
                         self.typecheck_fun(file, stmt.span, &fun_ty, &args)?;
-
-                        self.ctx[bb].stmts.push(IrStmt {
+                        let current = self.bb();
+                        self.ctx[current].stmts.push(IrStmt {
                             span: stmt.span,
                             kind: IrStmtKind::Call { fun: fun_id, args },
                         })
@@ -239,24 +242,29 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 }
             },
             StmtNode::If(expr) => {
-                return self.lower_if(module, file, fun, expr, bb).map(|_|())
+                return self.lower_if(module, file, fun, expr).map(|_|())
             },
             StmtNode::Block(b) => {
+                let old_bb = self.bb();
                 let new_bb = self.ctx.bb();
                 let after_bb = self.ctx.bb();
                 self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: None, after_bb });
-                self.lower_block(module, file, fun, &b, bb)?;
+                *self.bb_mut() = new_bb;
+                self.lower_block(module, file, fun, &b)?;
                 self.scope_stack.pop();
-                self.ctx[bb].terminator = IrTerminator::Jmp(new_bb);
+                self.ctx[old_bb].terminator = IrTerminator::Jmp(new_bb);
             },
             StmtNode::Match(match_stmt) => {
-                self.lower_match(module, file, fun, match_stmt, stmt.span, bb)?;
+                self.lower_match(module, file, fun, match_stmt, stmt.span)?;
             },
             StmtNode::Break => {
-                self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+                let current = self.bb();
+                self.ctx[current].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+                *self.bb_mut() = self.current_scope().after_bb;
             },
             StmtNode::Continue => {
-                self.ctx[bb].terminator = IrTerminator::Jmp(bb);
+                let current = self.bb();
+                self.ctx[current].terminator = IrTerminator::Jmp(self.bb());
             },
         }
         Ok(())
@@ -269,7 +277,6 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         file: FileId,
         fun: FunId,
         expr: &Expr,
-        bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         Ok(match &expr.node {
             ExprNode::Access(pat) => match self.resolve_path(module, pat) {
@@ -293,7 +300,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 },
             },
             ExprNode::Member(object, name) => {
-                let object = self.lower_expr(module, file, fun, object, bb)?;
+                let object = self.lower_expr(module, file, fun, object)?;
                 let object_ty = self.ctx.unwrap_alias(object.ty);
                 match &self.ctx[object_ty] {
                     IrType::Struct(s_ty) => {
@@ -328,12 +335,12 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 }
             }
             ExprNode::Call(fun_ast, args) => {
-                let fun_ir = self.lower_expr(module, file, fun, fun_ast, bb)?;
+                let fun_ir = self.lower_expr(module, file, fun, fun_ast)?;
                 match self.ctx[fun_ir.ty].clone() {
                     IrType::Fun(fun_ty) => {
                         let args = args
                             .iter()
-                            .map(|arg| self.lower_expr(module, file, fun, arg, bb))
+                            .map(|arg| self.lower_expr(module, file, fun, arg))
                             .collect::<Result<Vec<IrExpr>, _>>()?;
                         self.typecheck_fun(file, expr.span, &fun_ty, &args)?;
 
@@ -355,23 +362,23 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 }
             },
             ExprNode::If(expr) => {
-                return self.lower_if(module, file, fun, expr, bb)
+                return self.lower_if(module, file, fun, expr)
             },
             ExprNode::Match(match_expr) => {
-                return self.lower_match(module, file, fun, match_expr, expr.span, bb) 
+                return self.lower_match(module, file, fun, match_expr, expr.span) 
             },
             ExprNode::Unary(op, expr) => {
-                return self.lower_unary(module, file, fun, *op, &expr, bb)
+                return self.lower_unary(module, file, fun, *op, &expr)
             },
             ExprNode::Bin(lhs, op, rhs) => {
-                return self.lower_bin(module, file, fun, &lhs, *op, &rhs, bb)
+                return self.lower_bin(module, file, fun, &lhs, *op, &rhs)
             },
             ExprNode::Cast(ty, expr) => {
                 let ty = self.resolve_type(ty, module, file, expr.span)?;
-                return self.lower_cast(module, file, fun, expr, ty, bb)
+                return self.lower_cast(module, file, fun, expr, ty)
             },
             ExprNode::Index(obj, idx) => {
-                let obj = self.lower_expr(module, file, fun, obj, bb)?;
+                let obj = self.lower_expr(module, file, fun, obj)?;
                 let obj_ty = self.ctx.unwrap_alias(obj.ty);
                 let elem_ty = match self.ctx[obj_ty] {
                     IrType::Array(elem, _) => elem,
@@ -389,7 +396,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     }
                 };
 
-                let idx = self.lower_expr(module, file, fun, idx, bb)?;
+                let idx = self.lower_expr(module, file, fun, idx)?;
 
                 let idx_ty = self.ctx.unwrap_alias(idx.ty);
                 if !matches!(&self.ctx[idx_ty], IrType::Integer(_)) {
@@ -433,7 +440,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 Literal::Array(exprs) => {
                     let exprs = exprs
                         .iter()
-                        .map(|expr| self.lower_expr(module, file, fun, expr, bb))
+                        .map(|expr| self.lower_expr(module, file, fun, expr))
                         .collect::<Result<Vec<_>, _>>()?;
 
                     let ty = if exprs.len() > 1 {
@@ -512,7 +519,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 }
                             }
 
-                            Ok((*name, self.lower_expr(module, file, fun, field, bb)? ))
+                            Ok((*name, self.lower_expr(module, file, fun, field)? ))
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
@@ -579,14 +586,17 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 }
             },
             ExprNode::Block(b) => {
+                let old_bb = self.bb();
                 let new_bb = self.ctx.bb();
+                self.ctx[old_bb].terminator = IrTerminator::Jmp(new_bb);
+                *self.bb_mut() = new_bb;
+
                 let after_bb = self.ctx.bb();
                 let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", new_bb)) });
-                self.ctx[bb].stmts.push(IrStmt { span: expr.span, kind: IrStmtKind::VarLive(phi_var) });
+                self.ctx[old_bb].stmts.push(IrStmt { span: expr.span, kind: IrStmtKind::VarLive(phi_var) });
                 self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
-                self.lower_block(module, file, fun, &b, new_bb)?;
+                self.lower_block(module, file, fun, &b)?;
                 self.scope_stack.pop();
-                self.ctx[bb].terminator = IrTerminator::Jmp(new_bb);
                 IrExpr {
                     span: expr.span,
                     ty: self.ctx[phi_var].ty,
@@ -603,37 +613,43 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         file: FileId,
         fun: FunId,
         expr: &If,
-        bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
-        let if_cond = self.lower_expr(module, file, fun, &expr.cond, bb)?;
+        let old_bb = self.bb();
+        let if_cond = self.lower_expr(module, file, fun, &expr.cond)?;
 
         let if_body_bb = self.ctx.bb();
         let after_bb = self.ctx.bb();
         let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", if_body_bb)) });
+        let bb = self.bb();
         self.ctx[bb].stmts.push(IrStmt { span: expr.cond.span, kind: IrStmtKind::VarLive(phi_var) });
 
         self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
-        self.lower_block(module, file, fun, &expr.body, if_body_bb)?;
+        *self.bb_mut() = if_body_bb;
+        self.lower_block(module, file, fun, &expr.body)?;
         self.scope_stack.pop();
         match &expr.else_expr {
             Some(ElseExpr::ElseIf(expr)) => {
                 let else_bb = self.ctx.bb();
                 self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
-                self.lower_if(module, file, fun, &expr, else_bb)?;
+                *self.bb_mut() = else_bb;
+                self.lower_if(module, file, fun, &expr)?;
                 self.scope_stack.pop();
-                self.ctx[bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
+                self.ctx[old_bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
             },
             Some(ElseExpr::Else(body)) => {
                 let else_bb = self.ctx.bb();
                 self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
-                self.lower_block(module, file, fun, &body, else_bb)?;
+                *self.bb_mut() = else_bb;
+                self.lower_block(module, file, fun, &body)?;
                 self.scope_stack.pop();
-                self.ctx[bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
+                self.ctx[old_bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
             },
             None => {
-                self.ctx[bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: after_bb };
+                self.ctx[old_bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: after_bb };
             }
         }
+
+        *self.bb_mut() = after_bb;
 
         Ok(IrExpr {
             span: expr.cond.span,
@@ -650,12 +666,12 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         fun: FunId,
         expr: &Match,
         span: Span,
-        bb: BBId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
-        let matched = self.lower_expr(module, file, fun, &expr.matched, bb)?;
+        let old_bb = self.bb();
+        let matched = self.lower_expr(module, file, fun, &expr.matched)?;
         let after_bb = self.ctx.bb();
-        let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", bb)) });
-        self.ctx[bb].stmts.push(IrStmt { span, kind: IrStmtKind::VarLive(phi_var) });
+        let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", old_bb)) });
+        self.ctx[old_bb].stmts.push(IrStmt { span, kind: IrStmtKind::VarLive(phi_var) });
 
         self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
         let cases = expr
@@ -664,7 +680,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             .map(|(ty, stmt)| {
                 let ty = self.resolve_type(ty, module, file, span)?;
                 let arm_bb = self.ctx.bb();
-                self.lower_stmt(module, file, fun, stmt, arm_bb)?;
+                *self.bb_mut() = arm_bb;
+                self.lower_stmt(module, file, fun, stmt)?;
                 if matches!(self.ctx[arm_bb].terminator, IrTerminator::Invalid) {
                     self.ctx[arm_bb].terminator = IrTerminator::Jmp(after_bb);
                 }
@@ -672,7 +689,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        self.ctx[bb].terminator = IrTerminator::JmpMatch { variant: matched, discriminants: cases, default_jmp: after_bb };
+        self.ctx[old_bb].terminator = IrTerminator::JmpMatch { variant: matched, discriminants: cases, default_jmp: after_bb };
         self.scope_stack.pop();
 
         Ok(IrExpr {
@@ -688,16 +705,15 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         file: FileId,
         fun: FunId,
         stmts: &[Stmt],
-        bb: BBId,
     ) -> Result<(), Diagnostic<FileId>> {
-        
-
         for stmt in stmts.iter() {
-            self.lower_stmt(module, file, fun, stmt, bb)?;
+            self.lower_stmt(module, file, fun, stmt)?;
         }
 
-        if matches!(self.ctx[bb].terminator, IrTerminator::Invalid) {
-            self.ctx[bb].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+        if matches!(self.ctx[self.bb()].terminator, IrTerminator::Invalid) {
+            let current = self.bb();
+            self.ctx[current].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
+            *self.bb_mut() = self.current_scope().after_bb;
         }
 
         Ok(())

@@ -39,6 +39,8 @@ pub struct IrLowerer<'files, 'ctx> {
     scope_stack: Vec<ScopePlate>,
     /// Current function we are lowering
     current_fun: Option<FunId>,
+    /// Current basic block to generate code in
+    bb: Option<BBId>,
 }
 
 /// Represents a type of scope that we are currently in, used to represent the nested
@@ -88,6 +90,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             modules,
             scope_stack: Vec::new(),
             current_fun: None,
+            bb: None,
         }
     }
 
@@ -98,6 +101,21 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         self.populate_fn_bodies_impl(self.root_module, root)?;
 
         Ok(())
+    }
+    
+    /// Get the basic block that code is being generated in
+    pub fn bb(&self) -> BBId {
+        self
+            .bb 
+            .expect("ICE: IR lowerer is not currently in a basic block")
+    }
+
+    /// Get the basic block that code is being generated in
+    pub fn bb_mut(&mut self) -> &mut BBId {
+        self
+            .bb
+            .as_mut()
+            .expect("ICE: IR lowerer is not currently in a basic block")
     }
 
     /// Get forward references to all declared types and modules
