@@ -1,10 +1,9 @@
 imp mod:puts
+imp mod:structure
 type str = *u8
 type strbuf = *str
-type structure = {
-    [5]i64 a,
-    *u8 b
-}
+
+type testing = { *u8 a }
 
 type str_or_num = i32 | str
 
@@ -13,14 +12,14 @@ fun ext printf(str fmt, i32 b)
 fun ext test()
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
-    let(str_or_num) test_enum = 0
+    let(str_or_num) test_enum = $str_or_num 0
     let b = #mod:structure {
-        a = [0x4848484848484848, 72, 72, 72, 0],
+        c = 47u8,
+        a = [0x4848484848484848u32, 72u32, 72u32, 72u32, 0u32],
         b = "testing"
     }
+    let testing_str = #testing { a = "1" }
     let a = "testing1"
-    mod:puts("testing")
-    mod:puts(b.b)
-    mod:puts(a)
+    mod:puts($*u8 testing_str.a)
     return 0
 }

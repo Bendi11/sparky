@@ -11,7 +11,6 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
 
     /// Translate IR to LLVM bytecode for a single basic block
     pub fn gen_bb(&mut self, irctx: &IrContext, bb: BBId, fun: FunctionValue<'llvm>) {
-        
         let llvm_bb = {
             let Self { llvm_bbs, ctx, ..} = self;
             *llvm_bbs

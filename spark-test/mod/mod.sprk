@@ -6,7 +6,8 @@ fun test() -> u8 {
 type int = i32
 
 type structure = {
-    [5]i64 a,
+    u8 c,
+    [5]u32 a,
     *u8 b
 }
 

@@ -111,27 +111,31 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .left()
                     .unwrap_or(self.ctx.i8_type().const_int(0, false).into())
             },
-            IrExprKind::Fun(..) | IrExprKind::Member(..) | IrExprKind::Index(..) => self.gen_lval(irctx, expr).into(),
-            IrExprKind::Cast(expr, ty) => {
-                let llvm_expr = self.gen_expr(irctx, expr);
-                if irctx.unwrap_alias(expr.ty) == irctx.unwrap_alias(*ty) {
-                    llvm_expr
-                } else {
-                    todo!("{} is not the same as {}", irctx.typename(expr.ty), irctx.typename(*ty))
-                }
+            IrExprKind::Fun(..) | IrExprKind::Member(..) | IrExprKind::Index(..) => {
+                let ptr = self.gen_lval(irctx, expr);
+                self
+                    .build
+                    .build_load(ptr, "load")
             },
+            IrExprKind::Cast(expr, ty) => self.gen_cast(irctx, expr, *ty),
             IrExprKind::Unary(op, expr) => match op {
                 Op::AND => self.gen_lval(irctx, expr).into(),
+                Op::Star => {
+                    let ptr = self.gen_expr(irctx, expr).into_pointer_value();
+                    self
+                        .build
+                        .build_load(ptr, "deref")
+                }
                 _ => todo!(),
             }
-            _ => todo!("{:?} is not yet implemented", expr)
+            _ => todo!("{:?} is not yet implemented", expr.kind)
         }
     }
     
     /// Generate code for an Lvalue
     pub fn gen_lval(&mut self, irctx: &IrContext, expr: &IrExpr) -> PointerValue<'llvm> {
         match &expr.kind {
-            IrExprKind::Var(v) => self.llvm_vars.get_secondary(*v).unwrap(),
+            IrExprKind::Var(v) => self.llvm_vars.get_secondary(*v).unwrap_or_else(|| panic!("Unknown variable {}", irctx[*v].name)),
             IrExprKind::Fun(f) => self
                 .llvm_funs
                 .get_secondary(*f)
@@ -250,8 +254,10 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
     pub fn gen_cast(&mut self, irctx: &IrContext, expr: &IrExpr, ty: TypeId) -> BasicValueEnum<'llvm> {
         let val = self.gen_expr(irctx, expr);
         let lty = self.llvm_types.get_secondary(ty);
-        match (&irctx[expr.ty], &irctx[ty]) {
-            _ if expr.ty == ty => val,
+
+        if irctx.unwrap_alias(expr.ty) == irctx.unwrap_alias(ty) { return val }
+
+        match (&irctx[irctx.unwrap_alias(expr.ty)], &irctx[irctx.unwrap_alias(ty)]) {
             (IrType::Integer(_), IrType::Integer(IrIntegerType { signed, .. })) => self
                 .build
                 .build_int_cast_sign_flag(val.into_int_value(), lty.into_int_type(), *signed, "icast")
@@ -268,7 +274,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                 .build
                 .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast")
                 .into(),
-            (_, IrType::Sum(s)) if s.contains(&expr.ty) => {
+            (_, IrType::Sum(s)) if s.contains(&irctx.unwrap_alias(expr.ty)) => {
                 let idx = s.iter().enumerate().find_map(|(idx, variant)| if *variant == expr.ty { Some(idx) } else { None }).unwrap();
                 let lty = lty.into_struct_type();
 
@@ -313,7 +319,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .build
                     .build_load(structure, "sumlit")
             },
-            _ => unreachable!(),
+            _ => unreachable!("{:?} != {:?}", irctx.typename(expr.ty), irctx.typename(ty)),
         }
     }
 }
