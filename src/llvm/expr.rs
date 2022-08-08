@@ -163,17 +163,14 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
             IrExprKind::Member(obj, field) => {
                 let obj = self.gen_lval(irctx, obj);
 
-                unsafe {
-                    self.build.build_in_bounds_gep(
+                    self
+                        .build
+                        .build_struct_gep(
                         obj,
-                        &[
-                            self.ctx.i64_type().const_zero(),
-                            self.ctx.i32_type().const_int(*field as u64, false),
-                        ],
+                        *field as u32,
                         "struct_gep",
                     )
-                    //.unwrap()
-                }
+                    .unwrap()
             }
             IrExprKind::Index(arr, elem) => {
                 let arr = self.gen_lval(irctx, arr);
