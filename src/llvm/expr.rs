@@ -130,8 +130,9 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .try_as_basic_value()
                     .left()
                     .unwrap_or(self.ctx.i8_type().const_int(0, false).into())
-            }
-            IrExprKind::Fun(..) | IrExprKind::Member(..) | IrExprKind::Index(..) => {
+            },
+            IrExprKind::Fun(..) => self.gen_lval(irctx, expr).into(),
+            IrExprKind::Member(..) | IrExprKind::Index(..) => {
                 let ptr = self.gen_lval(irctx, expr);
                 self.build.build_load(ptr, "load")
             }
