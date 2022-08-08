@@ -266,13 +266,19 @@ impl<'src> Parser<'src> {
                             self.trace.push("function argument typename".into());
                             let arg_type = self.parse_typename()?;
                             self.trace.pop();
+                            
+                            let arg_name = match self.toks.peek().map(|t| &t.data) {
+                                Some(TokenData::Ident(_)) => {
+                                    self.trace.push("function argument name".into());
+                                    let arg_name = self
+                                        .expect_next_ident(&[TokenData::Ident("function argument name")])?;
+                                    self.trace.pop();
+                                    Some(self.symbol(arg_name))
+                                },
+                                _ => None,
+                            };
 
-                            self.trace.push("function argument name".into());
-                            let arg_name = self
-                                .expect_next_ident(&[TokenData::Ident("function argument name")])?;
-                            self.trace.pop();
-
-                            args.push((arg_type, Some(self.symbol(arg_name))));
+                            args.push((arg_type, arg_name));
 
                             const EXPECTING_AFTER_ARG: &[TokenData<'static>] = &[
                                 TokenData::OpenBracket(BracketType::Curly),

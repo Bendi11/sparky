@@ -16,7 +16,16 @@ fun test() -> i32 {
     return 101
 }
 
+fun ext malloc(u64) -> *u8
+fun ext free(*u8)
+fun ext memcpy(*u8,*u8,u64)
+
 fun ext main(i32 argc, **u8 argv) -> i32 {
+    let mem = malloc(1000u64)
+    memcpy(mem,$*u8 test,5u64)
+    let (*(mem + 5)) = 0u8
+    puts(mem)
+    free(mem)
     let callback = #cb {
         fn = $fun(*u8) -> i32 test,
     }
