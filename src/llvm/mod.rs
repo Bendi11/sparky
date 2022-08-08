@@ -98,7 +98,7 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
             fpm.add_strip_symbol_pass();
         }
 
-        fpm.initialize();
+        fpm.finalize();
 
         Target::initialize_native(&InitializationConfig::default()).unwrap();
 

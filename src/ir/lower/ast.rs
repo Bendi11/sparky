@@ -284,7 +284,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             ExprNode::Access(pat) => match self.resolve_path(module, pat) {
                 Some(IntermediateDefId::Fun(fun_id)) => IrExpr {
                     kind: IrExprKind::Fun(fun_id),
-                    ty: self.ctx[fun_id].ty_id,
+                    ty: self.ctx.types.insert(IrType::Ptr(self.ctx[fun_id].ty_id)),
                     span: expr.span,
                 },
                 _ => match self.lookup_var(&pat.last()) {
