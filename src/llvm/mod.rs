@@ -13,7 +13,7 @@ use inkwell::{
 
 use crate::{
     arena::Arena,
-    ast::IntegerWidth,
+    ast::{IntegerWidth, FunFlags},
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrType},
         BBId, FunId, IrContext, TypeId,
@@ -47,11 +47,12 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
     /// reference to the IR context
     pub fn new(files: &'files Files, irctx: &'ctx mut IrContext, ctx: &'llvm Context) -> Self {
         let root = ctx.create_module("spark_module");
+        let mut id = 0;
         Self {
             state: LLVMCodeGeneratorState {
                 llvm_funs: irctx.funs.secondary(|(_, fun)| {
                     root.add_function(
-                        fun.name.as_str(),
+                        if fun.flags.contains(FunFlags::EXTERN) { fun.name.to_string() } else { id += 1; id.to_string() }.as_str(),
                         Self::gen_funtype(ctx, irctx, &fun.ty),
                         Some(Linkage::External),
                     )

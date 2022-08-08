@@ -35,7 +35,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
     ///Generate LLVM bytecode for a single IR expression
     pub fn gen_expr(&mut self, irctx: &IrContext, expr: &IrExpr) -> BasicValueEnum<'llvm> {
         match &expr.kind {
-            IrExprKind::Var(v) => {
+            IrExprKind::Var(..) => {
                 let alloca = self.gen_lval(irctx, expr);
                 self.build.build_load(alloca, "var_load")
             }
@@ -372,7 +372,14 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                 self.build
                     .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast")
                     .into()
-            }
+            },
+            (IrType::Ptr(_), IrType::Integer(_)) => {
+                let val = self.gen_expr(irctx, expr);
+                self
+                    .build
+                    .build_ptr_to_int(val.into_pointer_value(), lty.into_int_type(), "picast")
+                    .into()
+            },
             (IrType::Sum(_), _) => {
                 let lval = self.gen_lval(irctx, expr);
                 let ptr = self

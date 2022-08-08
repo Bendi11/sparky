@@ -213,7 +213,7 @@ impl<T> Arena<T> {
     }
 
     /// Create a new arena containing all elements of this [Arena] mapped by the specified function
-    pub fn secondary<E, F: Fn((Index<T>, &T)) -> E>(&self, f: F) -> Arena<E> {
+    pub fn secondary<E, F: FnMut((Index<T>, &T)) -> E>(&self, f: F) -> Arena<E> {
         let data = self
             .data
             .iter()

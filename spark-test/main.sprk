@@ -11,16 +11,6 @@ fun ext printf(str fmt, i32 b)
 fun ext test()
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
-    let cond = if true {
-        phi 101
-    } else {
-        phi 0
-    }
-    let sum = $str_or_num 101
-    let(i32) $i32 sum = 5
-    let v = match sum {
-        str -> phi 0,
-        i32 -> phi $i32 sum
-    }
-    return v
+    mod:puts("Hello, World!")
+    return 0
 }
