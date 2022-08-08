@@ -7,7 +7,8 @@ use hashbrown::HashMap;
 use crate::{
     arena::{Arena, Index},
     ast::{
-        DefData, FunProto, ParsedModule, PathIter, SymbolPath, UnresolvedFunType, UnresolvedType, FunFlags,
+        DefData, FunFlags, FunProto, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
+        UnresolvedType,
     },
     util::{
         files::{FileId, Files},
@@ -239,7 +240,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                             .with_message("Second external function appears here")
                                     ])
                                     .with_notes(vec!["Functions marked as external will appear in the final object file with their original name".to_owned()])
-                                )
+                                );
                             }
                         }
                     }

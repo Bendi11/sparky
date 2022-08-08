@@ -196,11 +196,11 @@ fn main() {
         .lower(&root_module)
         .map_err(|e| diags.emit(e))
         .unwrap_or_else(|()| std::process::exit(-1));
-    
+
     match opts.out_type {
         OutputFileType::IR => {
             std::fs::write(opts.out_file, ctx.to_string()).expect("Write to output file failed");
-        },
+        }
         _ => {
             drop(lowerer);
             let llvm = Context::create();

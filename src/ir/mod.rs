@@ -409,15 +409,28 @@ impl IndexMut<BBId> for IrContext {
 
 impl std::fmt::Display for IrContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn fmt_bb(ctx: &IrContext, f: &mut std::fmt::Formatter<'_>, bb: BBId, indent: usize, written: &mut HashSet<BBId>) -> std::fmt::Result {
+        fn fmt_bb(
+            ctx: &IrContext,
+            f: &mut std::fmt::Formatter<'_>,
+            bb: BBId,
+            indent: usize,
+            written: &mut HashSet<BBId>,
+        ) -> std::fmt::Result {
             if written.contains(&bb) {
-                return Ok(())
+                return Ok(());
             } else {
                 written.insert(bb);
             }
 
-            writeln!(f, "{} BB {}", std::iter::repeat(' ').take(indent * 2).collect::<String>(), bb)?;
-            let indented = std::iter::repeat(' ').take(indent + 1 * 2).collect::<String>();
+            writeln!(
+                f,
+                "{} BB {}",
+                std::iter::repeat(' ').take(indent * 2).collect::<String>(),
+                bb
+            )?;
+            let indented = std::iter::repeat(' ')
+                .take(indent + 1 * 2)
+                .collect::<String>();
             for inst in ctx[bb].stmts.iter() {
                 writeln!(
                     f,
@@ -425,10 +438,21 @@ impl std::fmt::Display for IrContext {
                     indented,
                     match &inst.kind {
                         IrStmtKind::Exec(inst) => format!("EXEC {:?}", inst.kind),
-                        IrStmtKind::VarLive(v) => format!("VARLIVE {} ({})", ctx[*v].name, ctx.typename(ctx[*v].ty)),
-                        IrStmtKind::Store { var, val } => format!("STORE {:?} -> {} ({})", val.kind, ctx[*var].name, ctx[*var].ty),
-                        IrStmtKind::Write { ptr, val } => format!("WRITE {:?} -> {:?}", ptr.kind, val.kind),
-                        IrStmtKind::Call { fun, args } => format!("CALL {} ({:?})", ctx[*fun].name, args.iter().map(|arg| format!("{:?}", arg.kind)).collect::<Vec<_>>()),
+                        IrStmtKind::VarLive(v) =>
+                            format!("VARLIVE {} ({})", ctx[*v].name, ctx.typename(ctx[*v].ty)),
+                        IrStmtKind::Store { var, val } => format!(
+                            "STORE {:?} -> {} ({})",
+                            val.kind, ctx[*var].name, ctx[*var].ty
+                        ),
+                        IrStmtKind::Write { ptr, val } =>
+                            format!("WRITE {:?} -> {:?}", ptr.kind, val.kind),
+                        IrStmtKind::Call { fun, args } => format!(
+                            "CALL {} ({:?})",
+                            ctx[*fun].name,
+                            args.iter()
+                                .map(|arg| format!("{:?}", arg.kind))
+                                .collect::<Vec<_>>()
+                        ),
                     }
                 )?;
             }
@@ -440,8 +464,19 @@ impl std::fmt::Display for IrContext {
                 match &ctx[bb].terminator {
                     IrTerminator::Return(v) => format!("RETURN {:?}", v.kind),
                     IrTerminator::Jmp(bb) => format!("JMP {}", bb),
-                    IrTerminator::JmpIf { condition, if_true, if_false } => format!("JMPIF {:?} -> {} else {}", condition.kind, if_true, if_false),
-                    IrTerminator::JmpMatch { variant, discriminants, default_jmp } => format!(
+                    IrTerminator::JmpIf {
+                        condition,
+                        if_true,
+                        if_false,
+                    } => format!(
+                        "JMPIF {:?} -> {} else {}",
+                        condition.kind, if_true, if_false
+                    ),
+                    IrTerminator::JmpMatch {
+                        variant,
+                        discriminants,
+                        default_jmp,
+                    } => format!(
                         "JMPMATCH {:?} -> {}else {}",
                         variant.kind,
                         discriminants
@@ -456,23 +491,38 @@ impl std::fmt::Display for IrContext {
 
             match &ctx[bb].terminator {
                 IrTerminator::Jmp(bb) => fmt_bb(ctx, f, *bb, indent + 1, written),
-                IrTerminator::JmpIf { condition: _, if_true, if_false } => {
+                IrTerminator::JmpIf {
+                    condition: _,
+                    if_true,
+                    if_false,
+                } => {
                     fmt_bb(ctx, f, *if_true, indent + 1, written)?;
                     fmt_bb(ctx, f, *if_false, indent + 1, written)
-                },
-                IrTerminator::JmpMatch { variant: _, discriminants, default_jmp } => {
+                }
+                IrTerminator::JmpMatch {
+                    variant: _,
+                    discriminants,
+                    default_jmp,
+                } => {
                     for (_, bb) in discriminants {
                         fmt_bb(ctx, f, *bb, indent + 1, written)?;
                     }
                     fmt_bb(ctx, f, *default_jmp, indent, written)
-                },
+                }
                 _ => Ok(()),
             }
         }
 
         let mut written = HashSet::new();
         for fun in self.funs.indices() {
-            writeln!(f, "{} {} [{:?}] in file {}", self.typename(self[fun].ty_id), self[fun].name, self[fun].flags, self[fun].file)?;
+            writeln!(
+                f,
+                "{} {} [{:?}] in file {}",
+                self.typename(self[fun].ty_id),
+                self[fun].name,
+                self[fun].flags,
+                self[fun].file
+            )?;
             if let Some(body) = self[fun].body.as_ref() {
                 fmt_bb(self, f, body.entry, 0, &mut written)?;
             }

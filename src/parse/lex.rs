@@ -60,7 +60,7 @@ impl<'src> Lexer<'src> {
             '/' => match self.chars.peek() {
                 Some((_, '/')) => {
                     while self.chars.next().unwrap_or((0, '\n')).1 != '\n' {}
-                    return self.token()
+                    return self.token();
                 }
                 _ => Token::new(start_loc, TokenData::Op(Op::Div)),
             },

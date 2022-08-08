@@ -13,7 +13,7 @@ use inkwell::{
 
 use crate::{
     arena::Arena,
-    ast::{IntegerWidth, FunFlags},
+    ast::{FunFlags, IntegerWidth},
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrType},
         BBId, FunId, IrContext, TypeId,
@@ -52,7 +52,13 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
             state: LLVMCodeGeneratorState {
                 llvm_funs: irctx.funs.secondary(|(_, fun)| {
                     root.add_function(
-                        if fun.flags.contains(FunFlags::EXTERN) { fun.name.to_string() } else { id += 1; id.to_string() }.as_str(),
+                        if fun.flags.contains(FunFlags::EXTERN) {
+                            fun.name.to_string()
+                        } else {
+                            id += 1;
+                            id.to_string()
+                        }
+                        .as_str(),
                         Self::gen_funtype(ctx, irctx, &fun.ty),
                         Some(Linkage::External),
                     )

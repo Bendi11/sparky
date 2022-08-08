@@ -12,4 +12,3 @@ type structure = {
 }
 
 fun ext puts(*u8 s)
-fun ext printf(*u8 fmt, i32 d)

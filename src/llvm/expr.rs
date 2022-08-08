@@ -38,7 +38,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
             IrExprKind::Var(..) => {
                 let alloca = self.gen_lval(irctx, expr);
                 self.build.build_load(alloca, "var_load")
-            },
+            }
             IrExprKind::Lit(lit) => match lit {
                 IrLiteral::Integer(v, ty) => self
                     .ctx
@@ -119,7 +119,9 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
             },
             IrExprKind::Call(fun_expr, args) => {
                 let fun = self.gen_expr(irctx, fun_expr).into_pointer_value();
-                let callable = CallableValue::try_from(fun).unwrap_or_else(|_| panic!("{:?} is not a function", irctx.typename(fun_expr.ty)));
+                let callable = CallableValue::try_from(fun).unwrap_or_else(|_| {
+                    panic!("{:?} is not a function", irctx.typename(fun_expr.ty))
+                });
                 let args = args
                     .iter()
                     .map(|arg| self.gen_expr(irctx, arg).into())
@@ -130,7 +132,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .try_as_basic_value()
                     .left()
                     .unwrap_or(self.ctx.i8_type().const_int(0, false).into())
-            },
+            }
             IrExprKind::Fun(..) => self.gen_lval(irctx, expr).into(),
             IrExprKind::Member(..) | IrExprKind::Index(..) => {
                 let ptr = self.gen_lval(irctx, expr);
@@ -164,13 +166,8 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
             IrExprKind::Member(obj, field) => {
                 let obj = self.gen_lval(irctx, obj);
 
-                    self
-                        .build
-                        .build_struct_gep(
-                        obj,
-                        *field as u32,
-                        "struct_gep",
-                    )
+                self.build
+                    .build_struct_gep(obj, *field as u32, "struct_gep")
                     .unwrap()
             }
             IrExprKind::Index(arr, elem) => {
@@ -373,20 +370,17 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                 self.build
                     .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast")
                     .into()
-            },
+            }
             (IrType::Ptr(_), IrType::Integer(_)) => {
                 let val = self.gen_expr(irctx, expr);
-                self
-                    .build
+                self.build
                     .build_ptr_to_int(val.into_pointer_value(), lty.into_int_type(), "picast")
                     .into()
-            },
+            }
             (IrType::Ptr(_) | IrType::Fun(_), IrType::Ptr(_) | IrType::Fun(_)) => {
                 let val = self.gen_expr(irctx, expr);
-                self
-                    .build
-                    .build_bitcast(val, lty, "ppcast")
-            },
+                self.build.build_bitcast(val, lty, "ppcast")
+            }
             (IrType::Sum(_), _) => {
                 let lval = self.gen_lval(irctx, expr);
                 let ptr = self

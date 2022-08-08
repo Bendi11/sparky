@@ -474,7 +474,7 @@ impl<'src> Parser<'src> {
                 };
 
                 self.trace.pop();
-                
+
                 const EXPECTING_ASSIGN: &[TokenData<'static>] = &[TokenData::Assign];
                 let peeked = self.peek_tok(EXPECTING_ASSIGN)?;
                 let assigned = if peeked.data == TokenData::Assign {
@@ -719,7 +719,7 @@ impl<'src> Parser<'src> {
             | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr()?,
             _ => return Err(self.unexpected(peeked.span, peeked, Self::EXPECTED_FOR_EXPRESSION)),
         };
-        
+
         self.parse_expr_rhs(expr)
     }
 
