@@ -450,7 +450,7 @@ impl<'src> Parser<'src> {
             TokenData::Ident("let") | TokenData::Ident("mut") => {
                 const EXPECTING_AFTER_LET: &[TokenData<'static>] = &[
                     TokenData::Ident("expression"),
-                    TokenData::OpenBracket(BracketType::Smooth),
+                    TokenData::OpenBracket(BracketType::Square),
                 ];
 
                 self.toks.next();
@@ -461,10 +461,10 @@ impl<'src> Parser<'src> {
 
                 let mut var_type = None;
                 let expr = match next.data {
-                    TokenData::OpenBracket(BracketType::Smooth) => {
+                    TokenData::OpenBracket(BracketType::Square) => {
                         self.toks.next();
                         let typename = self.parse_typename()?;
-                        self.expect_next(&[TokenData::CloseBracket(BracketType::Smooth)])?;
+                        self.expect_next(&[TokenData::CloseBracket(BracketType::Square)])?;
 
                         var_type = Some(typename);
 
@@ -516,7 +516,7 @@ impl<'src> Parser<'src> {
                     node: StmtNode::Return(Box::new(returned)),
                 })
             }
-            TokenData::Ident(name) => {
+            TokenData::Ident(_) => {
                 const EXPECTING_FOR_CALL: &[TokenData<'static>] =
                     &[TokenData::Ident("Function name")];
 
@@ -719,7 +719,7 @@ impl<'src> Parser<'src> {
             | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr()?,
             _ => return Err(self.unexpected(peeked.span, peeked, Self::EXPECTED_FOR_EXPRESSION)),
         };
-
+        
         self.parse_expr_rhs(expr)
     }
 

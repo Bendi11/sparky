@@ -24,7 +24,7 @@
 <retstmt> ::= "return" <expr>?
 <phistmt> ::= "phi" <expr>
 <assignstmt> ::= <varstmt> "=" <expr>
-<letstmt> ::= "let" ( "(" <typename> ")" )? <expr> ( '=' <expr> )?
+<letstmt> ::= "let" ( "[" <typename> "]" )? <expr> ( '=' <expr> )?
 <loopstmt> ::= "loop" <body>
 <ifexpr> ::= "if" <expr> <body> ( ( "else" <body> ) | ( "else" <ifstmt> ) )
 
