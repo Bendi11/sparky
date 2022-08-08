@@ -133,6 +133,7 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
                 target_machine.write_to_file(&self.state.root, FileType::Assembly, &opts.out_file)
             }
             OutputFileType::LLVMIR => self.state.root.print_to_file(&opts.out_file),
+            OutputFileType::IR => unreachable!(),
         }
         .unwrap();
 

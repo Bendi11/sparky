@@ -186,7 +186,7 @@ pub struct Let {
     pub let_expr: Box<Expr>,
 
     /// Optional value being assigned to the expression
-    pub assigned: Box<Expr>,
+    pub assigned: Option<Box<Expr>>,
 }
 
 /// A match expression that matches an enum expression based on its type

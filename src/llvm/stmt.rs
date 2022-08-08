@@ -131,7 +131,10 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .map(|arg| self.gen_expr(irctx, arg).into())
                     .collect::<Vec<_>>();
                 self.build.build_call(fun, &args, "call");
-            }
+            },
+            IrStmtKind::Exec(expr) => {
+                self.gen_expr(irctx, expr);
+            },
         }
     }
 }

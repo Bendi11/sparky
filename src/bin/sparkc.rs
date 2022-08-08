@@ -194,11 +194,18 @@ fn main() {
         .lower(&root_module)
         .map_err(|e| diags.emit(e))
         .unwrap_or_else(|()| std::process::exit(-1));
-
-    drop(lowerer);
-    let llvm = Context::create();
-    let codegen = LLVMCodeGenerator::new(&files, &mut ctx, &llvm);
-    codegen.gen(opts);
+    
+    match opts.out_type {
+        OutputFileType::IR => {
+            
+        },
+        _ => {
+            drop(lowerer);
+            let llvm = Context::create();
+            let codegen = LLVMCodeGenerator::new(&files, &mut ctx, &llvm);
+            codegen.gen(opts);
+        }
+    }
 }
 
 fn handle_parse_error<T>(res: Result<T, ParseError>, files: &Files, file: FileId) -> T {

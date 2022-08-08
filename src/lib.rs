@@ -18,6 +18,7 @@ pub enum OutputFileType {
     Assembly,
     Object,
     LLVMIR,
+    IR,
 }
 
 /// Enumeration representing all supported optimization profiles for the

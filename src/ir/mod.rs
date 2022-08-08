@@ -148,6 +148,8 @@ pub enum IrStmtKind {
     },
     /// Call a function directly
     Call { fun: FunId, args: Vec<IrExpr> },
+    /// Execute the given expression for side effects
+    Exec(IrExpr),
 }
 
 impl IrContext {

@@ -87,13 +87,17 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         stmt: &Stmt,
     ) -> Result<(), Diagnostic<FileId>> {
         match &stmt.node {
-            StmtNode::Return(val) => match self.lowest_scope().return_var {
-                Some(_) => {
+            StmtNode::Return(val) => match (self.lower_expr(module, file, fun, val)?, self.lowest_scope().return_var) {
+                (val, Some(_)) => {
                     let current = self.bb();
                     self.ctx[current].terminator =
-                        IrTerminator::Return(self.lower_expr(module, file, fun, val)?);
-                }
-                None => {
+                        IrTerminator::Return(val);
+                },
+                (val, None) if self.ctx.unwrap_alias(val.ty) == IrContext::UNIT => {
+                    let current = self.bb();
+                    self.ctx[current].terminator = IrTerminator::Return(val);
+                },
+                (_, None) => {
                     return Err(Diagnostic::error()
                         .with_message(
                             "Return statement while current function does not return a value",
@@ -144,75 +148,87 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 *self.bb_mut() = self.current_scope().after_bb;
             }
             StmtNode::Let(let_stmt) => {
-                let assigned = self.lower_expr(module, file, fun, &let_stmt.assigned)?;
-                let (ty, ptr) = match &let_stmt.let_expr.node {
-                    ExprNode::Access(name) => {
-                        let (ty, var) = match self.lookup_var(&name.last()) {
-                            Some(var) => (self.ctx[var].ty, var),
-                            None => {
-                                let ty = let_stmt
-                                    .ty
-                                    .as_ref()
-                                    .map(|ty| {
-                                        self.resolve_type(ty, module, file, let_stmt.let_expr.span)
-                                    })
-                                    .unwrap_or(Ok(assigned.ty))?;
+                match let_stmt.assigned.as_ref() {
+                    None => {
+                        let expr = self.lower_expr(module, file, fun, &let_stmt.let_expr)?;
+                        let current = self.bb();
+                        self.ctx[current].stmts.push(IrStmt {
+                            span: expr.span,
+                            kind: IrStmtKind::Exec(expr),
+                        })
+                    },
+                    Some(assigned) => {
+                        let assigned = self.lower_expr(module, file, fun, &assigned)?;
+                        let (ty, ptr) = match &let_stmt.let_expr.node {
+                            ExprNode::Access(name) => {
+                                let (ty, var) = match self.lookup_var(&name.last()) {
+                                    Some(var) => (self.ctx[var].ty, var),
+                                    None => {
+                                        let ty = let_stmt
+                                            .ty
+                                            .as_ref()
+                                            .map(|ty| {
+                                                self.resolve_type(ty, module, file, let_stmt.let_expr.span)
+                                            })
+                                            .unwrap_or(Ok(assigned.ty))?;
 
-                                let var = IrVar {
-                                    ty,
-                                    name: name.last(),
+                                        let var = IrVar {
+                                            ty,
+                                            name: name.last(),
+                                        };
+
+                                        let var_id = self.ctx.vars.insert(var);
+                                        self.current_scope_mut().vars.insert(name.last(), var_id);
+                                        let current = self.bb();
+                                        self.ctx[current].stmts.push(IrStmt {
+                                            span: let_stmt.let_expr.span,
+                                            kind: IrStmtKind::VarLive(var_id),
+                                        });
+
+                                        (ty, var_id)
+                                    }
                                 };
 
-                                let var_id = self.ctx.vars.insert(var);
-                                self.current_scope_mut().vars.insert(name.last(), var_id);
-                                let current = self.bb();
-                                self.ctx[current].stmts.push(IrStmt {
-                                    span: let_stmt.let_expr.span,
-                                    kind: IrStmtKind::VarLive(var_id),
-                                });
-
-                                (ty, var_id)
+                                (
+                                    ty,
+                                    IrExpr {
+                                        span: let_stmt.let_expr.span,
+                                        ty,
+                                        kind: IrExprKind::Var(var),
+                                    },
+                                )
+                            }
+                            _ => {
+                                let let_expr = self.lower_expr(module, file, fun, &let_stmt.let_expr)?;
+                                (assigned.ty, let_expr)
                             }
                         };
 
-                        (
-                            ty,
-                            IrExpr {
-                                span: let_stmt.let_expr.span,
-                                ty,
-                                kind: IrExprKind::Var(var),
-                            },
-                        )
+                        if ty != assigned.ty {
+                            return Err(Diagnostic::error()
+                                .with_message(format!(
+                                    "Assigning a value of type {} to a value of incompatible type {}",
+                                    self.ctx.typename(assigned.ty),
+                                    self.ctx.typename(ty)
+                                ))
+                                .with_labels(vec![
+                                    Label::primary(file, assigned.span).with_message(format!(
+                                        "Assigned value of type {} appears here",
+                                        self.ctx.typename(assigned.ty)
+                                    )),
+                                    Label::secondary(file, ptr.span).with_message(format!(
+                                        "Assignee of type {} appears here",
+                                        self.ctx.typename(ty)
+                                    )),
+                                ]));
+                        }
+                        let current = self.bb();
+                        self.ctx[current].stmts.push(IrStmt {
+                            span: (let_stmt.let_expr.span.from..assigned.span.to).into(),
+                            kind: IrStmtKind::Write { ptr, val: assigned },
+                        });
                     }
-                    _ => {
-                        let let_expr = self.lower_expr(module, file, fun, &let_stmt.let_expr)?;
-                        (assigned.ty, let_expr)
-                    }
-                };
-
-                if ty != assigned.ty {
-                    return Err(Diagnostic::error()
-                        .with_message(format!(
-                            "Assigning a value of type {} to a value of incompatible type {}",
-                            self.ctx.typename(assigned.ty),
-                            self.ctx.typename(ty)
-                        ))
-                        .with_labels(vec![
-                            Label::primary(file, assigned.span).with_message(format!(
-                                "Assigned value of type {} appears here",
-                                self.ctx.typename(assigned.ty)
-                            )),
-                            Label::secondary(file, ptr.span).with_message(format!(
-                                "Assignee of type {} appears here",
-                                self.ctx.typename(ty)
-                            )),
-                        ]));
                 }
-                let current = self.bb();
-                self.ctx[current].stmts.push(IrStmt {
-                    span: (let_stmt.let_expr.span.from..let_stmt.assigned.span.to).into(),
-                    kind: IrStmtKind::Write { ptr, val: assigned },
-                });
             }
             StmtNode::Call(ident, args) => {
                 let def = self.resolve_path(module, ident);
