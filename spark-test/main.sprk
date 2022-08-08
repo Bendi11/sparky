@@ -3,19 +3,24 @@ imp mod:structure
 type str = *u8
 type strbuf = *str
 
+type cb = {
+    fun(*u8) -> i32 fn,
+}
 
 type str_or_num = i32 | str
 
 fun ext printf(*u8 fmt, *u8 b)
 
-fun test() {
+fun test() -> i32 {
     puts("Hi!")
-    return ()
 }
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
+    let callback = #cb {
+        fn = $fun(*u8) -> i32 test,
+    }
     let testing = test
-    let ((testing)())
+    let ((callback.fn)($*u8 0))
     mod:puts("Hello, World!")
     printf("Here: %p\n", $*u8 printf)
     return 0

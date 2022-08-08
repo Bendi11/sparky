@@ -73,6 +73,25 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             self.lower_stmt(module, file, fun, stmt)?;
         }
 
+        match (self.ctx.unwrap_alias(self.ctx[fun].ty.return_ty), &self.ctx[entry].terminator) {
+            (ty, IrTerminator::Invalid) if ty == IrContext::UNIT => self.ctx[entry].terminator = IrTerminator::Return(IrExpr {
+                span: self.ctx[fun].span,
+                ty: IrContext::UNIT,
+                kind: IrExprKind::Lit(IrLiteral::Unit),
+            }),
+            (ty, IrTerminator::Invalid) => return Err(Diagnostic::error()
+                .with_message(format!(
+                    "Function {} must return a value of type {} but no return statement terminates the function",
+                    self.ctx[fun].name,
+                    self.ctx.typename(ty),
+                ))
+                .with_labels(vec![
+                    Label::primary(file, self.ctx[fun].span)
+                ])
+            ),
+            _ => (),
+        }
+
         self.scope_stack.pop();
 
         Ok(())
