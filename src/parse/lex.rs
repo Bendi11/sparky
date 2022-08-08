@@ -57,7 +57,13 @@ impl<'src> Lexer<'src> {
             '+' => Token::new(start_loc, TokenData::Op(Op::Add)),
 
             '*' => Token::new(start_loc, TokenData::Op(Op::Star)),
-            '/' => Token::new(start_loc, TokenData::Op(Op::Div)),
+            '/' => match self.chars.peek() {
+                Some((_, '/')) => {
+                    while self.chars.next().unwrap_or((0, '\n')).1 != '\n' {}
+                    return self.token()
+                }
+                _ => Token::new(start_loc, TokenData::Op(Op::Div)),
+            },
             '%' => Token::new(start_loc, TokenData::Op(Op::Mod)),
             '!' => Token::new(start_loc, TokenData::Op(Op::LogicalNot)),
             '~' => Token::new(start_loc, TokenData::Op(Op::NOT)),

@@ -117,9 +117,9 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .as_pointer_value()
                     .into(),
             },
-            IrExprKind::Call(fun, args) => {
-                let fun = self.gen_expr(irctx, fun).into_pointer_value();
-                let callable = CallableValue::try_from(fun).unwrap();
+            IrExprKind::Call(fun_expr, args) => {
+                let fun = self.gen_expr(irctx, fun_expr).into_pointer_value();
+                let callable = CallableValue::try_from(fun).unwrap_or_else(|_| panic!("{:?} is not a function", irctx.typename(fun_expr.ty)));
                 let args = args
                     .iter()
                     .map(|arg| self.gen_expr(irctx, arg).into())

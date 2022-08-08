@@ -354,8 +354,12 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             }
             ExprNode::Call(fun_ast, args) => {
                 let fun_ir = self.lower_expr(module, file, fun, fun_ast)?;
-                match self.ctx[fun_ir.ty].clone() {
-                    IrType::Fun(fun_ty) => {
+                match self.ctx[self.ctx.unwrap_alias(fun_ir.ty)] {
+                    IrType::Ptr(fun_ty) if matches!(self.ctx[fun_ty], IrType::Fun(_)) => {
+                        let fun_ty = if let IrType::Fun(f) = &self.ctx[fun_ty] {
+                            f.clone()
+                        } else { unreachable!() };
+
                         let args = args
                             .iter()
                             .map(|arg| self.lower_expr(module, file, fun, arg))
@@ -371,7 +375,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     _ => {
                         return Err(Diagnostic::error()
                             .with_message(format!(
-                                "Attempting to call expression of non-function type {}",
+                                "Attempting to call expression of non-function pointer type {}",
                                 self.ctx.typename(fun_ir.ty)
                             ))
                             .with_labels(vec![Label::primary(file, expr.span)

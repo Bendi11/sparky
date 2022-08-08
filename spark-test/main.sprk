@@ -15,8 +15,8 @@ fun test() {
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
     let testing = test
-    let (testing)()
+    //let (*testing)()
     mod:puts("Hello, World!")
-    printf("Here: %p", $*u8 printf)
+    printf("Here: %p\n", $*u8 printf)
     return 0
 }
