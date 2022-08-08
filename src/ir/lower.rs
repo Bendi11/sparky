@@ -7,7 +7,7 @@ use hashbrown::HashMap;
 use crate::{
     arena::{Arena, Index},
     ast::{
-        DefData, FunProto, ParsedModule, PathIter, SymbolPath, UnresolvedFunType, UnresolvedType,
+        DefData, FunProto, ParsedModule, PathIter, SymbolPath, UnresolvedFunType, UnresolvedType, FunFlags,
     },
     util::{
         files::{FileId, Files},
@@ -226,6 +226,24 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                         body: None,
                         flags: proto.flags,
                     };
+
+                    if fun.flags.contains(FunFlags::EXTERN) {
+                        for other in self.ctx.funs.iter() {
+                            if other.flags.contains(FunFlags::EXTERN) && other.name == fun.name {
+                                return Err(Diagnostic::error()
+                                    .with_message(format!("Two external functions declared with the same name '{}'", fun.name))
+                                    .with_labels(vec![
+                                        Label::primary(other.file, other.span)
+                                            .with_message("First external function appears here"),
+                                        Label::secondary(fun.file, fun.span)
+                                            .with_message("Second external function appears here")
+                                    ])
+                                    .with_notes(vec!["Functions marked as external will appear in the final object file with their original name".to_owned()])
+                                )
+                            }
+                        }
+                    }
+
                     let fun = self.ctx.funs.insert(fun);
                     self.modules[module]
                         .defs
