@@ -823,8 +823,10 @@ impl<'src> Parser<'src> {
                 TokenData::CloseBracket(BracketType::Curly) => {
                     let tok = self.toks.next().unwrap();
                     break tok.span.to;
-                },
-                TokenData::Comma => { self.toks.next(); },
+                }
+                TokenData::Comma => {
+                    self.toks.next();
+                }
                 _ => {
                     let ty = self.parse_typename()?;
                     self.expect_next(&[TokenData::Arrow])?;

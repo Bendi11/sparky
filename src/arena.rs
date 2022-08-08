@@ -127,16 +127,14 @@ impl<T: Hash + Eq + Clone> Interner<T> {
     pub fn get_mut(&mut self, idx: Index<T>) -> &mut T {
         self.arena.get_mut(idx)
     }
-    
+
     /// Get an iterator over all indices in this interner
     pub fn indices(&self) -> impl Iterator<Item = Index<T>> {
         self.arena.indices()
     }
     /// Map each element of this [Interner] to a new element created by the given function
     pub fn secondary<E, F: Fn((Index<T>, &T)) -> E>(&self, f: F) -> Arena<E> {
-        self
-            .arena
-            .secondary(f)
+        self.arena.secondary(f)
     }
 }
 
@@ -172,15 +170,19 @@ impl<T> Arena<T> {
     pub fn set(&mut self, idx: Index<T>, val: T) {
         *self.get_mut(idx) = val;
     }
-    
+
     /// Get an item from this [Arena] using the key from a secondary map
     pub fn get_secondary<E>(&self, idx: Index<E>) -> &T {
-        self.data.get(idx.0).expect("Invalid secondary index used to access arena item")
+        self.data
+            .get(idx.0)
+            .expect("Invalid secondary index used to access arena item")
     }
 
     /// Get an item from this [Arena] using the key from a secondary map
     pub fn get_secondary_mut<E>(&mut self, idx: Index<E>) -> &mut T {
-        self.data.get_mut(idx.0).expect("Invalid secondary index used to access arena item")
+        self.data
+            .get_mut(idx.0)
+            .expect("Invalid secondary index used to access arena item")
     }
 
     /// Get an immutable reference to the item referenced by `idx`
@@ -209,7 +211,7 @@ impl<T> Arena<T> {
             .into_iter()
             .map(|idx| Index::new(idx))
     }
-    
+
     /// Create a new arena containing all elements of this [Arena] mapped by the specified function
     pub fn secondary<E, F: Fn((Index<T>, &T)) -> E>(&self, f: F) -> Arena<E> {
         let data = self
@@ -220,9 +222,7 @@ impl<T> Arena<T> {
             .map(f)
             .collect::<Vec<_>>();
 
-        Arena::<E> {
-            data
-        }
+        Arena::<E> { data }
     }
 }
 

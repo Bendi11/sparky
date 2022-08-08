@@ -266,7 +266,7 @@ impl IrContext {
             (false, IntegerWidth::SixtyFour) => Self::U64,
         }
     }
-    
+
     /// Unwrap any type aliases to get a type that is guranteed to not be an alias
     pub fn unwrap_alias(&self, ty: TypeId) -> TypeId {
         match &self[ty] {
@@ -274,10 +274,13 @@ impl IrContext {
             _ => ty,
         }
     }
-    
+
     /// Create a new basic block with invalid terminator and return the ID
     pub fn bb(&mut self) -> BBId {
-        self.bbs.insert(IrBB { stmts: vec![], terminator: IrTerminator::Invalid })
+        self.bbs.insert(IrBB {
+            stmts: vec![],
+            terminator: IrTerminator::Invalid,
+        })
     }
 }
 

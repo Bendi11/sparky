@@ -8,9 +8,10 @@ use spark::{
     ast::ParsedModule,
     error::DiagnosticManager,
     ir::{lower::IrLowerer, IrContext},
+    llvm::LLVMCodeGenerator,
     parse::{ParseError, Parser},
     util::files::{CompiledFile, FileId, Files},
-    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol, llvm::LLVMCodeGenerator,
+    CompileOpts, OutputFileType, OutputOptimizationLevel, Symbol,
 };
 
 /// Input source code, either a file or a directory containing source files
@@ -193,7 +194,7 @@ fn main() {
         .lower(&root_module)
         .map_err(|e| diags.emit(e))
         .unwrap_or_else(|()| std::process::exit(-1));
-    
+
     drop(lowerer);
     let llvm = Context::create();
     let codegen = LLVMCodeGenerator::new(&files, &mut ctx, &llvm);

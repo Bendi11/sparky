@@ -102,18 +102,16 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
 
         Ok(())
     }
-    
+
     /// Get the basic block that code is being generated in
     pub fn bb(&self) -> BBId {
-        self
-            .bb 
+        self.bb
             .expect("ICE: IR lowerer is not currently in a basic block")
     }
 
     /// Get the basic block that code is being generated in
     pub fn bb_mut(&mut self) -> &mut BBId {
-        self
-            .bb
+        self.bb
             .as_mut()
             .expect("ICE: IR lowerer is not currently in a basic block")
     }

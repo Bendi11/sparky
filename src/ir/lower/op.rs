@@ -125,7 +125,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             kind: IrExprKind::Unary(op, Box::new(expr)),
         })
     }
-    
+
     /// Lower and typecheck a cast expression
     pub fn lower_cast(
         &mut self,
@@ -136,7 +136,6 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         ty: TypeId,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         let expr = self.lower_expr(module, file, fun, expr)?;
-        
 
         let uty = self.ctx.unwrap_alias(ty);
         let uexprty = self.ctx.unwrap_alias(expr.ty);
@@ -146,17 +145,16 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             (IrType::Sum(s), _) if s.contains(&uty) => (),
             (_, IrType::Sum(s)) if s.contains(&uexprty) => (),
             (from, to) if from == to => (),
-            _ => return Err(Diagnostic::error()
-                .with_message(format!(
-                    "Cannot cast an expression of type {} to {}",
-                    self.ctx.typename(expr.ty),
-                    self.ctx.typename(ty),
-                ))
-                .with_labels(vec![
-                    Label::primary(file, expr.span)
-                        .with_message("Cast expression appears here")
-                ])
-            )
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                        "Cannot cast an expression of type {} to {}",
+                        self.ctx.typename(expr.ty),
+                        self.ctx.typename(ty),
+                    ))
+                    .with_labels(vec![Label::primary(file, expr.span)
+                        .with_message("Cast expression appears here")]))
+            }
         }
 
         Ok(IrExpr {

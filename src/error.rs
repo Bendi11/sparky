@@ -34,7 +34,7 @@ impl<'files> DiagnosticManager<'files> {
                 tab_width: 2,
                 styles: Styles::default(),
                 chars: Chars::box_drawing(),
-                ..Default::default() 
+                ..Default::default()
             },
             self.files,
             &diag,

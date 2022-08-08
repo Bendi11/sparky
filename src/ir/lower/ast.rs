@@ -3,13 +3,14 @@ use hashbrown::HashMap;
 
 use crate::{
     ast::{
-        Expr, ExprNode, IntegerWidth, Literal, NumberLiteral, NumberLiteralAnnotation,
-        ParsedModule, Stmt, StmtNode, BigInt, If, ElseExpr, Match,
+        BigInt, ElseExpr, Expr, ExprNode, If, IntegerWidth, Literal, Match, NumberLiteral,
+        NumberLiteralAnnotation, ParsedModule, Stmt, StmtNode,
     },
     ir::{
-        types::{FunType, IrType, IrIntegerType, IrFloatType, IrStructType, IrStructField},
+        types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
         value::{IrExpr, IrExprKind, IrLiteral},
-        BBId, FunId, IrBB, IrBody, IrFun, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId, IrContext,
+        BBId, FunId, IrBB, IrBody, IrContext, IrFun, IrStmt, IrStmtKind, IrTerminator, IrVar,
+        VarId,
     },
     parse::token::Op,
     util::{files::FileId, loc::Span},
@@ -112,11 +113,12 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 .with_message("Phi statement appears here")]))
                     }
                 };
-               
 
                 let return_val = self.lower_expr(module, file, fun, val)?;
 
-                if self.ctx[self.ctx[return_var].ty] == IrType::Invalid { self.ctx[return_var].ty = return_val.ty }
+                if self.ctx[self.ctx[return_var].ty] == IrType::Invalid {
+                    self.ctx[return_var].ty = return_val.ty
+                }
 
                 if self.ctx[return_var].ty != return_val.ty {
                     return Err(Diagnostic::error()
@@ -125,14 +127,10 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             self.ctx.typename(return_val.ty),
                             self.ctx.typename(self.ctx[return_var].ty),
                         ))
-                        .with_labels(vec![
-                            Label::primary(file, val.span)
-                                .with_message(format!(
-                                    "Value of type {} returned here",
-                                    self.ctx.typename(return_val.ty),
-                                ))
-                        ])
-                    )
+                        .with_labels(vec![Label::primary(file, val.span).with_message(format!(
+                            "Value of type {} returned here",
+                            self.ctx.typename(return_val.ty),
+                        ))]));
                 }
                 let current = self.bb();
                 self.ctx[current].stmts.push(IrStmt {
@@ -183,12 +181,11 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 span: let_stmt.let_expr.span,
                                 ty,
                                 kind: IrExprKind::Var(var),
-                            }
+                            },
                         )
                     }
                     _ => {
-                        let let_expr =
-                            self.lower_expr(module, file, fun, &let_stmt.let_expr)?;
+                        let let_expr = self.lower_expr(module, file, fun, &let_stmt.let_expr)?;
                         (assigned.ty, let_expr)
                     }
                 };
@@ -201,13 +198,16 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             self.ctx.typename(ty)
                         ))
                         .with_labels(vec![
-                            Label::primary(file, assigned.span)
-                                .with_message(format!("Assigned value of type {} appears here", self.ctx.typename(assigned.ty))),
-                            Label::secondary(file, ptr.span)
-                                .with_message(format!("Assignee of type {} appears here", self.ctx.typename(ty)))
-                        ])
-                    )
-                } 
+                            Label::primary(file, assigned.span).with_message(format!(
+                                "Assigned value of type {} appears here",
+                                self.ctx.typename(assigned.ty)
+                            )),
+                            Label::secondary(file, ptr.span).with_message(format!(
+                                "Assignee of type {} appears here",
+                                self.ctx.typename(ty)
+                            )),
+                        ]));
+                }
                 let current = self.bb();
                 self.ctx[current].stmts.push(IrStmt {
                     span: (let_stmt.let_expr.span.from..let_stmt.assigned.span.to).into(),
@@ -240,32 +240,34 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             .with_labels(vec![Label::primary(file, stmt.span)]))
                     }
                 }
-            },
-            StmtNode::If(expr) => {
-                return self.lower_if(module, file, fun, expr).map(|_|())
-            },
+            }
+            StmtNode::If(expr) => return self.lower_if(module, file, fun, expr).map(|_| ()),
             StmtNode::Block(b) => {
                 let old_bb = self.bb();
                 let new_bb = self.ctx.bb();
                 let after_bb = self.ctx.bb();
-                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: None, after_bb });
+                self.scope_stack.push(ScopePlate {
+                    vars: HashMap::new(),
+                    return_var: None,
+                    after_bb,
+                });
                 *self.bb_mut() = new_bb;
                 self.lower_block(module, file, fun, &b)?;
                 self.scope_stack.pop();
                 self.ctx[old_bb].terminator = IrTerminator::Jmp(new_bb);
-            },
+            }
             StmtNode::Match(match_stmt) => {
                 self.lower_match(module, file, fun, match_stmt, stmt.span)?;
-            },
+            }
             StmtNode::Break => {
                 let current = self.bb();
                 self.ctx[current].terminator = IrTerminator::Jmp(self.current_scope().after_bb);
                 *self.bb_mut() = self.current_scope().after_bb;
-            },
+            }
             StmtNode::Continue => {
                 let current = self.bb();
                 self.ctx[current].terminator = IrTerminator::Jmp(self.bb());
-            },
+            }
         }
         Ok(())
     }
@@ -360,23 +362,19 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 .with_message("Call expression occurs here")]))
                     }
                 }
-            },
-            ExprNode::If(expr) => {
-                return self.lower_if(module, file, fun, expr)
-            },
+            }
+            ExprNode::If(expr) => return self.lower_if(module, file, fun, expr),
             ExprNode::Match(match_expr) => {
-                return self.lower_match(module, file, fun, match_expr, expr.span) 
-            },
-            ExprNode::Unary(op, expr) => {
-                return self.lower_unary(module, file, fun, *op, &expr)
-            },
+                return self.lower_match(module, file, fun, match_expr, expr.span)
+            }
+            ExprNode::Unary(op, expr) => return self.lower_unary(module, file, fun, *op, &expr),
             ExprNode::Bin(lhs, op, rhs) => {
                 return self.lower_bin(module, file, fun, &lhs, *op, &rhs)
-            },
+            }
             ExprNode::Cast(ty, expr) => {
                 let ty = self.resolve_type(ty, module, file, expr.span)?;
-                return self.lower_cast(module, file, fun, expr, ty)
-            },
+                return self.lower_cast(module, file, fun, expr, ty);
+            }
             ExprNode::Index(obj, idx) => {
                 let obj = self.lower_expr(module, file, fun, obj)?;
                 let obj_ty = self.ctx.unwrap_alias(obj.ty);
@@ -388,11 +386,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                 "Cannot index an expression of non-array type {}",
                                 self.ctx.typename(obj.ty),
                             ))
-                            .with_labels(vec![
-                                Label::primary(file, obj.span)
-                                    .with_message("Index expression appears here")
-                            ])
-                        )
+                            .with_labels(vec![Label::primary(file, obj.span)
+                                .with_message("Index expression appears here")]))
                     }
                 };
 
@@ -412,20 +407,20 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                             Label::secondary(file, obj.span)
                                 .with_message(format!("Array expression of type {} appears here", self.ctx.typename(obj.ty))),
                         ])
-                    )
+                    );
                 }
 
                 IrExpr {
                     span: expr.span,
                     ty: elem_ty,
-                    kind: IrExprKind::Index(Box::new(obj), Box::new(idx))
+                    kind: IrExprKind::Index(Box::new(obj), Box::new(idx)),
                 }
-            },
+            }
             ExprNode::Literal(lit) => match lit {
                 Literal::String(s) => IrExpr {
                     span: expr.span,
                     ty: self.ctx.types.insert(IrType::Ptr(IrContext::U8)),
-                    kind: IrExprKind::Lit(IrLiteral::String(s.clone()))
+                    kind: IrExprKind::Lit(IrLiteral::String(s.clone())),
                 },
                 Literal::Bool(b) => IrExpr {
                     span: expr.span,
@@ -466,7 +461,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                                                 self.ctx.typename(ty)
                                             ))
                                     ])
-                                )
+                                );
                             }
                         }
                         ty
@@ -477,28 +472,28 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     IrExpr {
                         span: expr.span,
                         ty: self.ctx.types.insert(IrType::Array(ty, exprs.len() as u64)),
-                        kind: IrExprKind::Lit(IrLiteral::Array(exprs))
+                        kind: IrExprKind::Lit(IrLiteral::Array(exprs)),
                     }
-                },
+                }
                 Literal::Struct { ty, fields } => {
                     let ty = ty
-                        .as_ref().map(|ty| self.resolve_type(ty, module, file, expr.span))
+                        .as_ref()
+                        .map(|ty| self.resolve_type(ty, module, file, expr.span))
                         .map_or(Ok(None), |ty| ty.map(Some))?;
                     let unwrapped = ty.map(|ty| self.ctx.unwrap_alias(ty));
-                    
+
                     let struct_ty = if let Some(unwrapped) = unwrapped {
                         match self.ctx[unwrapped] {
                             IrType::Struct(ref fields) => Some(fields.clone()),
-                            _ => return Err(Diagnostic::error()
-                                .with_message(format!(
+                            _ => {
+                                return Err(Diagnostic::error()
+                                    .with_message(format!(
                                     "Cannot create a structure literal of non-structure type {}",
                                     self.ctx.typename(unwrapped)
                                 ))
-                                .with_labels(vec![
-                                    Label::primary(file, expr.span)
-                                        .with_message("Structure literal appears here")
-                                ])
-                            )
+                                    .with_labels(vec![Label::primary(file, expr.span)
+                                        .with_message("Structure literal appears here")]))
+                            }
                         }
                     } else {
                         None
@@ -525,38 +520,41 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
 
                     let lit_expr = IrExpr {
                         span: expr.span,
-                        ty: self.ctx.types.insert(
-                            IrType::Struct(IrStructType {
-                                fields: fields
-                                    .iter()
-                                    .map(|(name, expr)| IrStructField { name: *name, ty: expr.ty })
-                                    .collect()
-                            })
-                        ),
-                        kind: IrExprKind::Lit(IrLiteral::Struct(fields))
+                        ty: self.ctx.types.insert(IrType::Struct(IrStructType {
+                            fields: fields
+                                .iter()
+                                .map(|(name, expr)| IrStructField {
+                                    name: *name,
+                                    ty: expr.ty,
+                                })
+                                .collect(),
+                        })),
+                        kind: IrExprKind::Lit(IrLiteral::Struct(fields)),
                     };
 
                     match ty {
                         Some(ty) => IrExpr {
                             span: expr.span,
                             ty,
-                            kind: IrExprKind::Cast(Box::new(lit_expr), ty)
+                            kind: IrExprKind::Cast(Box::new(lit_expr), ty),
                         },
-                        None => lit_expr
+                        None => lit_expr,
                     }
-                },
+                }
                 Literal::Number(num) => {
-                    let (signed, ty) = match num
-                        .annotation()
-                        .unwrap_or_else(||
-                            if matches!(num, NumberLiteral::Float(..)) { NumberLiteralAnnotation::F32 } else { NumberLiteralAnnotation::I32 }
-                        ) {
-                        NumberLiteralAnnotation::I8 =>  (true, IrContext::I8 ),
+                    let (signed, ty) = match num.annotation().unwrap_or_else(|| {
+                        if matches!(num, NumberLiteral::Float(..)) {
+                            NumberLiteralAnnotation::F32
+                        } else {
+                            NumberLiteralAnnotation::I32
+                        }
+                    }) {
+                        NumberLiteralAnnotation::I8 => (true, IrContext::I8),
                         NumberLiteralAnnotation::I16 => (true, IrContext::I16),
                         NumberLiteralAnnotation::I32 => (true, IrContext::I32),
                         NumberLiteralAnnotation::I64 => (true, IrContext::I64),
 
-                        NumberLiteralAnnotation::U8 =>  (false, IrContext::U8 ),
+                        NumberLiteralAnnotation::U8 => (false, IrContext::U8),
                         NumberLiteralAnnotation::U16 => (false, IrContext::U16),
                         NumberLiteralAnnotation::U32 => (false, IrContext::U32),
                         NumberLiteralAnnotation::U64 => (false, IrContext::U64),
@@ -568,13 +566,26 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                     let lit = match num {
                         NumberLiteral::Integer(num, _) => IrExpr {
                             span: expr.span,
-                            ty: if signed { IrContext::I64 } else { IrContext::U64 },
-                            kind: IrExprKind::Lit(IrLiteral::Integer(*num, IrIntegerType { width: IntegerWidth::SixtyFour, signed })),
+                            ty: if signed {
+                                IrContext::I64
+                            } else {
+                                IrContext::U64
+                            },
+                            kind: IrExprKind::Lit(IrLiteral::Integer(
+                                *num,
+                                IrIntegerType {
+                                    width: IntegerWidth::SixtyFour,
+                                    signed,
+                                },
+                            )),
                         },
                         NumberLiteral::Float(num, _) => IrExpr {
                             span: expr.span,
                             ty: IrContext::F64,
-                            kind: IrExprKind::Lit(IrLiteral::Float(*num, IrFloatType { doublewide: true }))
+                            kind: IrExprKind::Lit(IrLiteral::Float(
+                                *num,
+                                IrFloatType { doublewide: true },
+                            )),
                         },
                     };
 
@@ -592,9 +603,19 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
                 *self.bb_mut() = new_bb;
 
                 let after_bb = self.ctx.bb();
-                let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", new_bb)) });
-                self.ctx[old_bb].stmts.push(IrStmt { span: expr.span, kind: IrStmtKind::VarLive(phi_var) });
-                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+                let phi_var = self.ctx.vars.insert(IrVar {
+                    ty: IrContext::INVALID,
+                    name: Symbol::new(format!("@phi_var#{}", new_bb)),
+                });
+                self.ctx[old_bb].stmts.push(IrStmt {
+                    span: expr.span,
+                    kind: IrStmtKind::VarLive(phi_var),
+                });
+                self.scope_stack.push(ScopePlate {
+                    vars: HashMap::new(),
+                    return_var: Some(phi_var),
+                    after_bb,
+                });
                 self.lower_block(module, file, fun, &b)?;
                 self.scope_stack.pop();
                 IrExpr {
@@ -605,7 +626,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             }
         })
     }
-    
+
     /// Lower an if statement to IR, including new basic blocks and jumps
     fn lower_if(
         &mut self,
@@ -619,33 +640,63 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
 
         let if_body_bb = self.ctx.bb();
         let after_bb = self.ctx.bb();
-        let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", if_body_bb)) });
+        let phi_var = self.ctx.vars.insert(IrVar {
+            ty: IrContext::INVALID,
+            name: Symbol::new(format!("@phi_var#{}", if_body_bb)),
+        });
         let bb = self.bb();
-        self.ctx[bb].stmts.push(IrStmt { span: expr.cond.span, kind: IrStmtKind::VarLive(phi_var) });
+        self.ctx[bb].stmts.push(IrStmt {
+            span: expr.cond.span,
+            kind: IrStmtKind::VarLive(phi_var),
+        });
 
-        self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+        self.scope_stack.push(ScopePlate {
+            vars: HashMap::new(),
+            return_var: Some(phi_var),
+            after_bb,
+        });
         *self.bb_mut() = if_body_bb;
         self.lower_block(module, file, fun, &expr.body)?;
         self.scope_stack.pop();
         match &expr.else_expr {
             Some(ElseExpr::ElseIf(expr)) => {
                 let else_bb = self.ctx.bb();
-                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+                self.scope_stack.push(ScopePlate {
+                    vars: HashMap::new(),
+                    return_var: Some(phi_var),
+                    after_bb,
+                });
                 *self.bb_mut() = else_bb;
                 self.lower_if(module, file, fun, &expr)?;
                 self.scope_stack.pop();
-                self.ctx[old_bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
-            },
+                self.ctx[old_bb].terminator = IrTerminator::JmpIf {
+                    condition: if_cond,
+                    if_true: if_body_bb,
+                    if_false: else_bb,
+                };
+            }
             Some(ElseExpr::Else(body)) => {
                 let else_bb = self.ctx.bb();
-                self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+                self.scope_stack.push(ScopePlate {
+                    vars: HashMap::new(),
+                    return_var: Some(phi_var),
+                    after_bb,
+                });
                 *self.bb_mut() = else_bb;
                 self.lower_block(module, file, fun, &body)?;
                 self.scope_stack.pop();
-                self.ctx[old_bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: else_bb };
-            },
+                self.ctx[old_bb].terminator = IrTerminator::JmpIf {
+                    condition: if_cond,
+                    if_true: if_body_bb,
+                    if_false: else_bb,
+                };
+            }
             None => {
-                self.ctx[old_bb].terminator = IrTerminator::JmpIf { condition: if_cond, if_true: if_body_bb, if_false: after_bb };
+                self.ctx[old_bb].terminator = IrTerminator::JmpIf {
+                    condition: if_cond,
+                    if_true: if_body_bb,
+                    if_false: after_bb,
+                };
             }
         }
 
@@ -654,10 +705,10 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         Ok(IrExpr {
             span: expr.cond.span,
             ty: self.ctx[phi_var].ty,
-            kind: IrExprKind::Var(phi_var)
+            kind: IrExprKind::Var(phi_var),
         })
     }
-    
+
     /// Lower a match expression, returning an IrExpr representing a load of the phi allocation
     fn lower_match(
         &mut self,
@@ -670,10 +721,20 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         let old_bb = self.bb();
         let matched = self.lower_expr(module, file, fun, &expr.matched)?;
         let after_bb = self.ctx.bb();
-        let phi_var = self.ctx.vars.insert(IrVar { ty: IrContext::INVALID, name: Symbol::new(format!("@phi_var#{}", old_bb)) });
-        self.ctx[old_bb].stmts.push(IrStmt { span, kind: IrStmtKind::VarLive(phi_var) });
+        let phi_var = self.ctx.vars.insert(IrVar {
+            ty: IrContext::INVALID,
+            name: Symbol::new(format!("@phi_var#{}", old_bb)),
+        });
+        self.ctx[old_bb].stmts.push(IrStmt {
+            span,
+            kind: IrStmtKind::VarLive(phi_var),
+        });
 
-        self.scope_stack.push(ScopePlate { vars: HashMap::new(), return_var: Some(phi_var), after_bb });
+        self.scope_stack.push(ScopePlate {
+            vars: HashMap::new(),
+            return_var: Some(phi_var),
+            after_bb,
+        });
         let cases = expr
             .cases
             .iter()
@@ -689,7 +750,11 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        self.ctx[old_bb].terminator = IrTerminator::JmpMatch { variant: matched, discriminants: cases, default_jmp: after_bb };
+        self.ctx[old_bb].terminator = IrTerminator::JmpMatch {
+            variant: matched,
+            discriminants: cases,
+            default_jmp: after_bb,
+        };
         self.scope_stack.pop();
 
         Ok(IrExpr {

@@ -1,7 +1,7 @@
 use crate::{ast::BigInt, parse::token::Op, util::loc::Span, Symbol};
 
 use super::{
-    types::{IrIntegerType, IrType, IrFloatType},
+    types::{IrFloatType, IrIntegerType, IrType},
     FunId, IrContext, TypeId, VarId,
 };
 

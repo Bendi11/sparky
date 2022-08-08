@@ -72,16 +72,18 @@ pub enum IrType {
 impl IrStructType {
     /// Get the field of this structure type by the given name
     pub fn field_ty(&self, name: &Symbol) -> Option<TypeId> {
-        self
-            .fields
-            .iter()
-            .find_map(|field| if field.name == *name { Some(field.ty) } else { None })
+        self.fields.iter().find_map(|field| {
+            if field.name == *name {
+                Some(field.ty)
+            } else {
+                None
+            }
+        })
     }
-    
+
     /// Get the index of the given field name
     pub fn field_idx(&self, name: &Symbol) -> Option<usize> {
-        self
-            .fields
+        self.fields
             .iter()
             .enumerate()
             .find_map(|(idx, field)| if field.name == *name { Some(idx) } else { None })
