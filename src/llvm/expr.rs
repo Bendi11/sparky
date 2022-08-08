@@ -3,7 +3,7 @@ use std::convert::{TryFrom, TryInto};
 use hashbrown::HashMap;
 use inkwell::{
     types::{BasicType, BasicTypeEnum},
-    values::{ArrayValue, BasicValueEnum, CallableValue, PointerValue},
+    values::{BasicValueEnum, CallableValue, PointerValue},
     AddressSpace, FloatPredicate, IntPredicate,
 };
 
@@ -18,7 +18,7 @@ use crate::{
 
 use super::{LLVMCodeGenerator, LLVMCodeGeneratorState};
 
-impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
+impl<'llvm> LLVMCodeGeneratorState<'llvm> {
     fn array_vals<T: TryFrom<BasicValueEnum<'llvm>>>(
         &mut self,
         irctx: &IrContext,

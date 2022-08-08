@@ -7,11 +7,11 @@ use hashbrown::HashMap;
 use crate::{
     arena::{Arena, Index},
     ast::{
-        DefData, FunFlags, FunProto, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
+        DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
         UnresolvedType,
     },
     util::{
-        files::{FileId, Files},
+        files::FileId,
         loc::Span,
     },
     Symbol,
@@ -27,9 +27,7 @@ pub mod op;
 
 /// Structure containing all needed state to lower parsed ASTs into spark's IR, performing type
 /// checking and resolution
-pub struct IrLowerer<'files, 'ctx> {
-    /// Arena containing all files indexed by ID
-    files: &'files Files,
+pub struct IrLowerer<'ctx> {
     /// IR context containing all definitions
     ctx: &'ctx mut IrContext,
     /// The root intermediate module, to be populated with definition data during lowering
@@ -38,8 +36,6 @@ pub struct IrLowerer<'files, 'ctx> {
     modules: Arena<IntermediateModule>,
     /// Stack representing the current scope
     scope_stack: Vec<ScopePlate>,
-    /// Current function we are lowering
-    current_fun: Option<FunId>,
     /// Current basic block to generate code in
     bb: Option<BBId>,
 }
@@ -78,19 +74,17 @@ pub struct IntermediateModule {
     pub name: Symbol,
 }
 
-impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
+impl<'ctx> IrLowerer<'ctx> {
     /// Create a new IR lowerer that writes to the given IR context
-    pub fn new(files: &'files Files, ctx: &'ctx mut IrContext, name: Symbol) -> Self {
+    pub fn new(ctx: &'ctx mut IrContext, name: Symbol) -> Self {
         let mut modules = Arena::new();
         let root_module = modules.insert(IntermediateModule::new(name));
 
         Self {
-            files,
             ctx,
             root_module,
             modules,
             scope_stack: Vec::new(),
-            current_fun: None,
             bb: None,
         }
     }

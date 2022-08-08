@@ -4,8 +4,7 @@ use crate::{
     ast::Expr,
     ir::{
         types::IrType,
-        value::{IrExpr, IrExprKind},
-        BBId, FunId, IrContext, TypeId,
+        value::{IrExpr, IrExprKind}, FunId, IrContext, TypeId,
     },
     parse::token::Op,
     util::{files::FileId, loc::Span},
@@ -13,7 +12,7 @@ use crate::{
 
 use super::{IntermediateModuleId, IrLowerer};
 
-impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
+impl<'ctx> IrLowerer<'ctx> {
     /// Lower a binary expression to IR
     pub fn lower_bin(
         &mut self,

@@ -3,23 +3,21 @@ use hashbrown::HashMap;
 
 use crate::{
     ast::{
-        BigInt, ElseExpr, Expr, ExprNode, If, IntegerWidth, Literal, Match, NumberLiteral,
-        NumberLiteralAnnotation, ParsedModule, Stmt, StmtNode,
+        ElseExpr, Expr, ExprNode, If, IntegerWidth, Literal, Match, NumberLiteral,
+        NumberLiteralAnnotation, Stmt, StmtNode,
     },
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
-        value::{IrExpr, IrExprKind, IrLiteral},
-        BBId, FunId, IrBB, IrBody, IrContext, IrFun, IrStmt, IrStmtKind, IrTerminator, IrVar,
+        value::{IrExpr, IrExprKind, IrLiteral}, FunId, IrBB, IrBody, IrContext, IrStmt, IrStmtKind, IrTerminator, IrVar,
         VarId,
     },
-    parse::token::Op,
     util::{files::FileId, loc::Span},
     Symbol,
 };
 
 use super::{IntermediateDefId, IntermediateModuleId, IrLowerer, ScopePlate};
 
-impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
+impl<'ctx> IrLowerer<'ctx> {
     /// Lower a function's body to IR statements and basic blocks
     pub(super) fn lower_body(
         &mut self,
@@ -903,19 +901,5 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         self.scope_stack
             .first_mut()
             .expect("Internal compiler error: scope stack is empty")
-    }
-
-    /// Get an immutable reference to the currently lowered function
-    fn current_fun(&self) -> &IrFun {
-        &self.ctx.funs[self
-            .current_fun
-            .expect("Internal compiler error: current function is none")]
-    }
-
-    /// Get a mutable reference to the currently lowered function
-    fn current_fun_mut(&mut self) -> &mut IrFun {
-        &mut self.ctx.funs[self
-            .current_fun
-            .expect("Internal compiler error: current function is none")]
     }
 }

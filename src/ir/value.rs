@@ -1,8 +1,8 @@
 use crate::{ast::BigInt, parse::token::Op, util::loc::Span, Symbol};
 
 use super::{
-    types::{IrFloatType, IrIntegerType, IrType},
-    FunId, IrContext, TypeId, VarId,
+    types::{IrFloatType, IrIntegerType},
+    FunId, TypeId, VarId,
 };
 
 /// Structure containing an [IrExprKind] plus location data for error messages

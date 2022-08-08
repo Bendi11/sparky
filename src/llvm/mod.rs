@@ -6,7 +6,7 @@ use inkwell::{
     module::{Linkage, Module},
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType},
+    types::{BasicType, BasicTypeEnum, FunctionType, IntType},
     values::{FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
 };
@@ -16,9 +16,8 @@ use crate::{
     ast::{FunFlags, IntegerWidth},
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrType},
-        BBId, FunId, IrContext, TypeId,
+        BBId, IrContext,
     },
-    util::files::Files,
     CompileOpts, OutputFileType, OutputOptimizationLevel,
 };
 
@@ -26,13 +25,12 @@ pub mod expr;
 pub mod stmt;
 
 /// Structure containing all state needed to generate LLVM IR from spark IR
-pub struct LLVMCodeGenerator<'files, 'ctx, 'llvm> {
-    state: LLVMCodeGeneratorState<'files, 'llvm>,
+pub struct LLVMCodeGenerator<'ctx, 'llvm> {
+    state: LLVMCodeGeneratorState<'llvm>,
     irctx: &'ctx mut IrContext,
 }
 
-pub struct LLVMCodeGeneratorState<'files, 'llvm> {
-    files: &'files Files,
+pub struct LLVMCodeGeneratorState<'llvm> {
     ctx: &'llvm Context,
     root: Module<'llvm>,
     build: Builder<'llvm>,
@@ -42,10 +40,10 @@ pub struct LLVMCodeGeneratorState<'files, 'llvm> {
     llvm_bbs: HashMap<BBId, BasicBlock<'llvm>>,
 }
 
-impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
+impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     /// Create a new [LLVMCodeGenerator] from shared reference to a [Files] structure and unique
     /// reference to the IR context
-    pub fn new(files: &'files Files, irctx: &'ctx mut IrContext, ctx: &'llvm Context) -> Self {
+    pub fn new(irctx: &'ctx mut IrContext, ctx: &'llvm Context) -> Self {
         let root = ctx.create_module("spark_module");
         let mut id = 0;
         Self {
@@ -68,8 +66,6 @@ impl<'files, 'ctx, 'llvm> LLVMCodeGenerator<'files, 'ctx, 'llvm> {
                     .secondary(|(_, ty)| Self::gen_type(ctx, irctx, ty)),
                 llvm_vars: irctx.vars.secondary(|_| None),
                 llvm_bbs: HashMap::new(),
-                files,
-
                 ctx,
                 root,
                 build: ctx.create_builder(),

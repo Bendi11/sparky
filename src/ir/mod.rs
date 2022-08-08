@@ -18,7 +18,7 @@ use crate::{
 
 use self::{
     types::{FunType, IrFloatType, IrIntegerType, IrType},
-    value::{IrExpr, IrExprKind, IrLiteral},
+    value::IrExpr,
 };
 
 /// An IR context containing arenas with all type definitons, function declarations / definitions,

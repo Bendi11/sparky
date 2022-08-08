@@ -1,12 +1,10 @@
-use std::convert::TryFrom;
-
-use inkwell::values::{AnyValueEnum, BasicValueEnum, CallableValue, FunctionValue};
+use inkwell::values::FunctionValue;
 
 use crate::ir::{types::IrType, BBId, IrContext, IrStmt, IrStmtKind, IrTerminator};
 
-use super::{LLVMCodeGenerator, LLVMCodeGeneratorState};
+use super::LLVMCodeGeneratorState;
 
-impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
+impl<'llvm> LLVMCodeGeneratorState<'llvm> {
     /// Translate IR to LLVM bytecode for a single basic block
     pub fn gen_bb(&mut self, irctx: &IrContext, bb: BBId, fun: FunctionValue<'llvm>) {
         let llvm_bb = {

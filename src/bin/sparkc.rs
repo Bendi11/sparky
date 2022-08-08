@@ -190,7 +190,7 @@ fn main() {
     };
 
     let mut ctx = IrContext::new();
-    let mut lowerer = IrLowerer::new(&files, &mut ctx, root_module.name);
+    let mut lowerer = IrLowerer::new(&mut ctx, root_module.name);
     let mut diags = DiagnosticManager::new(&files);
     lowerer
         .lower(&root_module)
@@ -204,7 +204,7 @@ fn main() {
         _ => {
             drop(lowerer);
             let llvm = Context::create();
-            let codegen = LLVMCodeGenerator::new(&files, &mut ctx, &llvm);
+            let codegen = LLVMCodeGenerator::new(&mut ctx, &llvm);
             codegen.gen(opts);
         }
     }
