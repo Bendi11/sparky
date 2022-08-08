@@ -142,6 +142,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
         match (&self.ctx[uexprty], &self.ctx[uty]) {
             (IrType::Float(_) | IrType::Integer(_), IrType::Integer(_) | IrType::Float(_)) => (),
             (IrType::Ptr(_) | IrType::Integer(_), IrType::Ptr(_) | IrType::Integer(_)) => (),
+            (IrType::Ptr(_) | IrType::Fun(_), IrType::Ptr(_) | IrType::Fun(_)) => (),
             (IrType::Sum(s), _) if s.contains(&uty) => (),
             (_, IrType::Sum(s)) if s.contains(&uexprty) => (),
             (from, to) if from == to => (),

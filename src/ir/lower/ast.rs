@@ -300,7 +300,7 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             ExprNode::Access(pat) => match self.resolve_path(module, pat) {
                 Some(IntermediateDefId::Fun(fun_id)) => IrExpr {
                     kind: IrExprKind::Fun(fun_id),
-                    ty: self.ctx.types.insert(IrType::Ptr(self.ctx[fun_id].ty_id)),
+                    ty: self.ctx[fun_id].ty_id,
                     span: expr.span,
                 },
                 _ => match self.lookup_var(&pat.last()) {
@@ -354,12 +354,8 @@ impl<'files, 'ctx> IrLowerer<'files, 'ctx> {
             }
             ExprNode::Call(fun_ast, args) => {
                 let fun_ir = self.lower_expr(module, file, fun, fun_ast)?;
-                match self.ctx[self.ctx.unwrap_alias(fun_ir.ty)] {
-                    IrType::Ptr(fun_ty) if matches!(self.ctx[fun_ty], IrType::Fun(_)) => {
-                        let fun_ty = if let IrType::Fun(f) = &self.ctx[fun_ty] {
-                            f.clone()
-                        } else { unreachable!() };
-
+                match self.ctx[self.ctx.unwrap_alias(fun_ir.ty)].clone() {
+                    IrType::Fun(fun_ty) => {
                         let args = args
                             .iter()
                             .map(|arg| self.lower_expr(module, file, fun, arg))

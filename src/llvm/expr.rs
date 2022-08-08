@@ -38,7 +38,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
             IrExprKind::Var(..) => {
                 let alloca = self.gen_lval(irctx, expr);
                 self.build.build_load(alloca, "var_load")
-            }
+            },
             IrExprKind::Lit(lit) => match lit {
                 IrLiteral::Integer(v, ty) => self
                     .ctx
@@ -381,7 +381,7 @@ impl<'files, 'llvm> LLVMCodeGeneratorState<'files, 'llvm> {
                     .build_ptr_to_int(val.into_pointer_value(), lty.into_int_type(), "picast")
                     .into()
             },
-            (IrType::Ptr(_), IrType::Ptr(_)) => {
+            (IrType::Ptr(_) | IrType::Fun(_), IrType::Ptr(_) | IrType::Fun(_)) => {
                 let val = self.gen_expr(irctx, expr);
                 self
                     .build
