@@ -147,7 +147,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 }
                 _ => todo!(),
             },
-            _ => todo!("{:?} is not yet implemented", expr.kind),
+            IrExprKind::Binary(lhs, op, rhs) => self.gen_bin(irctx, lhs, *op, rhs),
         }
     }
 
