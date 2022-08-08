@@ -70,7 +70,8 @@ fn main() {
             .possible_values([
                 "asm",
                 "obj",
-                "ll"
+                "ll",
+                "ir"
             ])
             .help("Set the output type to be written to the output file")
             .help_heading("output")
@@ -102,6 +103,7 @@ fn main() {
                     Some("obj") | Some("o") => OutputFileType::Object,
                     Some("ll") => OutputFileType::LLVMIR,
                     Some("asm") | Some("s") => OutputFileType::Assembly,
+                    Some("sprkir") => OutputFileType::IR,
                     _ => {
                         eprintln!(
                             "Output file '{}' has an unknown extension\nUse -T[type] option to explicitly set output type",
@@ -197,7 +199,7 @@ fn main() {
     
     match opts.out_type {
         OutputFileType::IR => {
-            
+            std::fs::write(opts.out_file, ctx.to_string()).expect("Write to output file failed");
         },
         _ => {
             drop(lowerer);

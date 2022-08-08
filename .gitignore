@@ -6,6 +6,7 @@
 *.s
 *.c
 *.log
+*.sprkir
 out
 paths.txt
 .vscode
