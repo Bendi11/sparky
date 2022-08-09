@@ -13,7 +13,7 @@ use crate::{
         value::{IrExpr, IrExprKind, IrLiteral},
         IrContext, TypeId,
     },
-    parse::token::Op,
+    parse::token::Op, ast::IntegerWidth,
 };
 
 use super::{LLVMCodeGenerator, LLVMCodeGeneratorState};
@@ -211,23 +211,36 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
         }
     }
 
-    /// Generate LLVM bytecode for a binary expression
-    pub fn gen_bin(
-        &mut self,
-        irctx: &IrContext,
-        lhs: &IrExpr,
-        op: Op,
-        rhs: &IrExpr,
-    ) -> BasicValueEnum<'llvm> {
+    pub fn gen_bin(&mut self, irctx: &IrContext, lhs: &IrExpr, op: Op, rhs: &IrExpr) -> BasicValueEnum<'llvm> {
         let llvm_lhs = self.gen_expr(irctx, lhs);
         let llvm_rhs = self.gen_expr(irctx, rhs);
+        self.gen_bin_impl(irctx, lhs.ty, op, rhs.ty, llvm_lhs, llvm_rhs)
+    }
 
-        match (&irctx[lhs.ty], op, &irctx[rhs.ty]) {
-            (IrType::Integer(IrIntegerType { signed, .. }), _, IrType::Integer(_))
-                if lhs.ty == rhs.ty =>
-            {
+    /// Generate LLVM bytecode for a binary expression
+    pub fn gen_bin_impl(
+        &mut self,
+        irctx: &IrContext,
+        lhs_ty: TypeId,
+        op: Op,
+        rhs_ty: TypeId,
+        llvm_lhs: BasicValueEnum<'llvm>,
+        llvm_rhs: BasicValueEnum<'llvm>,
+    ) -> BasicValueEnum<'llvm> {
+        match (&irctx[lhs_ty], op, &irctx[rhs_ty]) {
+            (IrType::Integer(IrIntegerType { signed, .. }), _, IrType::Integer(_)) => {
                 let llvm_lhs = llvm_lhs.into_int_value();
-                let llvm_rhs = llvm_rhs.into_int_value();
+                let llvm_rhs = match lhs_ty == rhs_ty {
+                    true => llvm_rhs.into_int_value(),
+                    false => self
+                        .build
+                        .build_int_cast_sign_flag(
+                            llvm_rhs.into_int_value(),
+                            self.llvm_types.get_secondary(lhs_ty).into_int_type(),
+                            *signed,
+                            "icast"
+                        )
+                };
                 match (op, *signed) {
                     (Op::Star, _) => self.build.build_int_mul(llvm_lhs, llvm_rhs, "imul").into(),
                     (Op::Div, true) => self
@@ -312,8 +325,30 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                         .into(),
                     _ => unreachable!(),
                 }
-            }
-            _ => todo!("{:?} is not {:?}", irctx.typename(lhs.ty), irctx.typename(rhs.ty)),
+            },
+            (IrType::Ptr(_), op, IrType::Integer(_)) => {
+                let expr = self.gen_bin_impl(
+                    irctx,
+                    IrContext::U64,
+                    op,
+                    rhs_ty,
+                    self.build.build_ptr_to_int(llvm_lhs.into_pointer_value(), self.ctx.i64_type(), "picast").into(),
+                    llvm_rhs
+                );
+                self
+                    .build
+                    .build_int_to_ptr(expr.into_int_value(), self.llvm_types.get_secondary(lhs_ty).into_pointer_type(), "ipcast")
+                    .into()
+            },
+            (IrType::Integer(_), op, IrType::Ptr(_)) => self.gen_bin_impl(
+                irctx,
+                lhs_ty,
+                op,
+                IrContext::U64,
+                llvm_lhs,
+                self.build.build_ptr_to_int(llvm_rhs.into_pointer_value(), self.ctx.i64_type(), "picast").into(),
+            ),
+            _ => todo!("{} {} {}", irctx.typename(lhs_ty), op, irctx.typename(rhs_ty)),
         }
     }
 

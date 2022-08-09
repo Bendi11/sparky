@@ -23,11 +23,11 @@ fun ext memcpy(*u8,*u8,u64)
 fun ext main(i32 argc, **u8 argv) -> i32 {
     let mem = malloc(1000u64)
     memcpy(mem,$*u8 test,5u64)
-    let *($*u8 ($u64 mem + 5u64)) = 0u8
+    let *(mem + 5) = 0u8
     puts(mem)
     free(mem)
     let callback = #cb {
-        fn = $fun(*u8) -> i32 test,
+        fn = $(fun(*u8) -> i32) test,
     }
     let testing = test
     let res = ((callback.fn)($*u8 0))
