@@ -581,7 +581,7 @@ impl<'src> Parser<'src> {
                 let casted_to = self.parse_typename()?;
                 self.trace.pop();
                 self.trace.push("cast expression".into());
-                let expr = self.parse_expr()?;
+                let expr = self.parse_primary_expr()?;
                 self.trace.pop();
                 Expr {
                     span: (peeked.span.from, expr.span.to).into(),
@@ -592,7 +592,7 @@ impl<'src> Parser<'src> {
             TokenData::Op(unaryop) => {
                 self.toks.next();
                 self.trace.push("unary operation".into());
-                let rhs = self.parse_expr()?;
+                let rhs = self.parse_primary_expr()?;
                 self.trace.pop();
 
                 Expr {

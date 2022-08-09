@@ -30,8 +30,9 @@
 
 <body> ::= "{" <stmt>* "}"
 
-<expr> ::= <literal> | <prefix> | <op> <expr> | <expr> <op> <expr> | <ifexpr> | <matchexpr>
-        | "$" <typename> <expr>
+<expr> ::= <primary-expr> ( <op> <expr> )?
+<primary-expr> ::= <literal> | <prefix> | <op> <primary-expr>  | <ifexpr> | <matchexpr>
+        | "$" <typename> <primary-expr>
 
 <exprlist> ::= ( <expr> "," )* <expr>?
 
