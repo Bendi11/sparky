@@ -313,7 +313,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     _ => unreachable!(),
                 }
             }
-            _ => todo!(),
+            _ => todo!("{:?} is not {:?}", irctx.typename(lhs.ty), irctx.typename(rhs.ty)),
         }
     }
 

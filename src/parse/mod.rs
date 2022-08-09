@@ -543,10 +543,10 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a full expression from the token stream
-    fn parse_expr(&mut self) -> ParseResult<'src, Expr> {
+    fn parse_primary_expr(&mut self) -> ParseResult<'src, Expr> {
         let peeked = self.peek_tok(Self::EXPECTED_FOR_EXPRESSION)?.clone();
 
-        let expr = match &peeked.data {
+        Ok(match &peeked.data {
             TokenData::Ident("if") => {
                 let if_expr = self.parse_if()?;
                 Expr {
@@ -724,9 +724,12 @@ impl<'src> Parser<'src> {
             | TokenData::Ident(_)
             | TokenData::OpenBracket(BracketType::Curly) => self.parse_prefix_expr()?,
             _ => return Err(self.unexpected(peeked.span, peeked, Self::EXPECTED_FOR_EXPRESSION)),
-        };
+        })
+    }
 
-        self.parse_expr_rhs(expr)
+    fn parse_expr(&mut self) -> ParseResult<'src, Expr> {
+        let primary = self.parse_primary_expr()?;
+        self.parse_expr_rhs(primary, 0)
     }
 
     /// Parse a single string literal, inserting escaped characters
@@ -795,24 +798,30 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse the right hand side of an expression if there is one
-    fn parse_expr_rhs(&mut self, lhs: Expr) -> ParseResult<'src, Expr> {
-        let peeked = self.toks.peek();
-        if let Some(peeked) = peeked {
-            match peeked.data {
-                TokenData::Op(operator) => {
+    fn parse_expr_rhs(&mut self, mut lhs: Expr, precedence: usize) -> ParseResult<'src, Expr> {
+        while let Some(peeked) = self.toks.peek().map(|p| p.data.clone()) {
+            match peeked {
+                TokenData::Op(operator) if operator.precedence() >= precedence => {
                     self.toks.next();
 
-                    let rhs = self.parse_expr()?;
-                    Ok(Expr {
+                    let mut rhs = self.parse_primary_expr()?;
+
+                    if let Some(TokenData::Op(next)) = self.toks.peek().map(|p| &p.data) {
+                        if operator.precedence() < next.precedence() {
+                            rhs = self.parse_expr_rhs(rhs, operator.precedence() + 1)?;
+                        }
+                    }
+    
+                    lhs = Expr {
                         span: (lhs.span.from, rhs.span.to).into(),
                         node: ExprNode::Bin(Box::new(lhs), operator, Box::new(rhs)),
-                    })
+                    };
                 }
-                _ => Ok(lhs),
+                _ => break,
             }
-        } else {
-            Ok(lhs)
         }
+
+        Ok(lhs)
     }
 
     /// Parse a match expression from the token stream

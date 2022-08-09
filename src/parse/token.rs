@@ -93,13 +93,14 @@ impl fmt::Display for TokenData<'_> {
 }
 
 /// A binary or unary operator
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq,)]
 pub enum Op {
     Star,
     Div,
+    Mod,
+
     Add,
     Sub,
-    Mod,
 
     AND,
     OR,
@@ -118,6 +119,37 @@ pub enum Op {
 
     ShLeft,
     ShRight,
+}
+
+impl Op {
+    /// Get the precedence for this operator
+    pub const fn precedence(&self) -> usize {
+        match self {
+            Self::LogicalNot | Self::NOT => 1,
+            Self::Star | Self::Div | Self::Mod => 2,
+            Self::Add | Self::Sub => 3,
+            Self::ShLeft | Self::ShRight => 4,
+            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => 5,
+            Self::Eq => 6,
+            Self::AND => 7,
+            Self::XOR => 8,
+            Self::OR => 9,
+            Self::LogicalAnd => 10,
+            Self::LogicalOr => 11,
+        }
+    }
+}
+
+impl std::cmp::PartialOrd for Op {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.precedence().partial_cmp(&other.precedence())
+    }
+}
+
+impl std::cmp::Ord for Op {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.precedence().cmp(&other.precedence())
+    }
 }
 
 impl fmt::Display for Op {
