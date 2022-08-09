@@ -125,17 +125,17 @@ impl Op {
     /// Get the precedence for this operator
     pub const fn precedence(&self) -> usize {
         match self {
-            Self::LogicalNot | Self::NOT => 1,
-            Self::Star | Self::Div | Self::Mod => 2,
-            Self::Add | Self::Sub => 3,
-            Self::ShLeft | Self::ShRight => 4,
-            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => 5,
+            Self::LogicalNot | Self::NOT => 11,
+            Self::Star | Self::Div | Self::Mod => 10,
+            Self::Add | Self::Sub => 9,
+            Self::ShLeft | Self::ShRight => 8,
+            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => 7,
             Self::Eq => 6,
-            Self::AND => 7,
-            Self::XOR => 8,
-            Self::OR => 9,
-            Self::LogicalAnd => 10,
-            Self::LogicalOr => 11,
+            Self::AND => 5,
+            Self::XOR => 4,
+            Self::OR => 3,
+            Self::LogicalAnd => 2,
+            Self::LogicalOr => 1,
         }
     }
 }

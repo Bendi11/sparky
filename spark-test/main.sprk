@@ -34,5 +34,5 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
     mod:puts("Hello, World!")
     printf("Callback returned %d\n", $*u8 res)
     printf("Here: %p\n", $*u8 printf)
-    return 0
+    return 2 + 4 * 3
 }
