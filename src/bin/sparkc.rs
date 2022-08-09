@@ -264,8 +264,10 @@ fn collect_files(input: &Path, files: &mut Files) -> InputItem {
             let mut items = vec![];
             for entry in input.read_dir().expect("failed to read directory") {
                 if let Ok(entry) = entry {
-                    let item = collect_files(&entry.path(), files);
-                    items.push(item);
+                    if entry.path().extension().map(|s| s.to_str()).flatten() == Some("sprk") || entry.file_type().unwrap().is_dir() {
+                        let item = collect_files(&entry.path(), files);
+                        items.push(item);
+                    }
                 }
             }
             InputItem::Dir(
