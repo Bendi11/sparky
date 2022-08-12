@@ -313,7 +313,7 @@ pub struct Stmt {
 #[derive(Clone)]
 pub enum DefData {
     /// A function definition with body and prototype
-    FunDef(FunProto, Vec<Stmt>),
+    FunDef(FunProto, Vec<Stmt>, GenericParams),
     /// A function declaration with no body
     FunDec(FunProto),
     /// A type alias binding a name to a type
@@ -322,6 +322,8 @@ pub enum DefData {
         name: Symbol,
         /// The aliased type
         aliased: UnresolvedType,
+        /// The generic type parameters for this alias
+        params: GenericParams,
     },
     /// An imported module definition
     ImportDef { name: SymbolPath },
@@ -330,7 +332,7 @@ impl DefData {
     /// Get the name of this definition
     pub fn name(&self) -> Symbol {
         match self {
-            Self::FunDef(proto, _) | Self::FunDec(proto) => proto.name,
+            Self::FunDef(proto, ..) | Self::FunDec(proto) => proto.name,
             Self::AliasDef { name, .. } => *name,
             Self::ImportDef { name } => name.last(),
         }
@@ -413,6 +415,13 @@ pub enum NumberLiteralAnnotation {
     I16,
     I32,
     I64,
+}
+
+/// Container of generic type parameters for a function or type definition 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GenericParams {
+    /// A list of type parameters for this generic
+    pub params: Vec<Symbol>,
 }
 
 /// Type representing a function's type in spark

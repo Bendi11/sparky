@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Let, Literal, Match},
+    ast::{BigInt, Let, Literal, Match, GenericParams},
     Symbol,
 };
 use smallvec::SmallVec;
@@ -242,6 +242,8 @@ impl<'src> Parser<'src> {
                         other => (other, FunFlags::empty()),
                     };
 
+                let generic_params = self.parse_generic_params()?;
+
                 self.trace
                     .push(format!("function declaration '{}'", name).into());
 
@@ -333,7 +335,7 @@ impl<'src> Parser<'src> {
                     Ok(Def {
                         file,
                         span: body.1,
-                        data: DefData::FunDef(proto, body.0),
+                        data: DefData::FunDef(proto, body.0, generic_params),
                     })
                 } else {
                     Ok(Def {
@@ -347,6 +349,7 @@ impl<'src> Parser<'src> {
                 let name = self.expect_next_ident(&[TokenData::Ident("type name")])?;
                 self.trace
                     .push(format!("type definition '{}'", name).into());
+                let params = self.parse_generic_params()?;
 
                 self.expect_next(&[TokenData::Assign])?;
                 let aliased = self.parse_typename()?;
@@ -357,6 +360,7 @@ impl<'src> Parser<'src> {
                     data: DefData::AliasDef {
                         name: self.symbol(name),
                         aliased,
+                        params,
                     },
                     file,
                 })
@@ -370,6 +374,37 @@ impl<'src> Parser<'src> {
                 },
             }),
         }
+    }
+    
+    /// Parse generic type parameters of a definition
+    fn parse_generic_params(&mut self) -> ParseResult<'src, GenericParams> {
+        let peek = self.toks.peek().map(|t| t.data);
+        if let Some(TokenData::Op(Op::Less)) = peek {
+            self.toks.next();
+        } else {
+            return Ok(GenericParams{params:vec![]})
+        }
+
+        let mut params = vec![];
+        loop {
+            const EXPECTING_FOR_PARAM: &[TokenData<'static>] = &[
+                TokenData::Op(Op::Greater),
+                TokenData::Ident("generic type parameter"),
+                TokenData::Comma,
+            ];
+
+            let next = self.next_tok(EXPECTING_FOR_PARAM)?;
+            match next.data {
+                TokenData::Ident(name) => params.push(self.symbol(name)),
+                TokenData::Comma => continue,
+                TokenData::Op(Op::Greater) => break,
+                other => return Err(self.unexpected(next.span, next, EXPECTING_FOR_PARAM)),
+            }
+        }
+
+        Ok(GenericParams {
+            params,
+        })
     }
 
     /// Parse a curly brace enclosed AST body
