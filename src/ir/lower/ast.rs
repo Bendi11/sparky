@@ -55,17 +55,21 @@ impl<'ctx> IrLowerer<'ctx> {
         });
 
         let params = self.ctx[fun].ty.params.clone();
+        let mut param_vars = vec![];
         for (ty, name) in params {
             if let Some(name) = name {
                 let param_var = self.ctx.vars.insert(IrVar {
                     ty,
                     name: name.clone(),
                 });
+                param_vars.push(Some(param_var));
                 self.lowest_scope_mut().vars.insert(name.clone(), param_var);
+            } else {
+                param_vars.push(None);
             }
         }
 
-        self.ctx[fun].body = Some(IrBody { entry, parent: fun });
+        self.ctx[fun].body = Some(IrBody { entry, parent: fun, args: param_vars });
 
         for stmt in stmts {
             self.lower_stmt(module, file, fun, stmt)?;

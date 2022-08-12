@@ -7,7 +7,7 @@ use inkwell::{
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, FunctionType, IntType},
-    values::{FunctionValue, PointerValue},
+    values::{FunctionValue, PointerValue, BasicValue},
     AddressSpace, OptimizationLevel,
 };
 
@@ -78,7 +78,18 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     pub fn gen(mut self, opts: CompileOpts) -> Module<'llvm> {
         for fun_id in self.state.llvm_funs.indices() {
             let fun = self.irctx.funs.get_secondary(fun_id);
+            let llvm_fun = self.state.llvm_funs[fun_id];
             if let Some(body) = &fun.body {
+                let bb = self.state.ctx.append_basic_block(llvm_fun, "entry");
+                self.state.llvm_bbs.insert(body.entry, bb);
+                self.state.build.position_at_end(bb);
+                for (idx, (ty, param)) in fun.ty.params.iter().enumerate() {
+                    if let Some(name) = param {
+                        let alloca = self.state.build.build_alloca(*self.state.llvm_types.get_secondary(*ty), name.as_str());
+                        self.state.build.build_store(alloca, llvm_fun.get_nth_param(idx as u32).unwrap());
+                        *self.state.llvm_vars.get_secondary_mut(body.args[idx].unwrap()) = Some(alloca);
+                    }
+                }
                 self.state
                     .gen_bb(self.irctx, body.entry, self.state.llvm_funs[fun_id]);
             }

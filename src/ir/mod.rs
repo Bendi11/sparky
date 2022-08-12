@@ -92,6 +92,8 @@ pub struct IrBody {
     pub entry: BBId,
     /// The parent function
     pub parent: FunId,
+    /// A list of argument allocations for each parameter
+    pub args: Vec<Option<VarId>>,
 }
 
 /// A statement that may terminate a basic block

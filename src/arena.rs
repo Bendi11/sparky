@@ -207,7 +207,7 @@ impl<T> Arena<T> {
 
     /// Get an iterator over all indices in this arena
     pub fn indices(&self) -> impl Iterator<Item = Index<T>> {
-        (0..self.data.len() - 1)
+        (0..self.data.len())
             .into_iter()
             .map(|idx| Index::new(idx))
     }

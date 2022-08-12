@@ -12,7 +12,7 @@ type str_or_num = i32 | str
 fun ext printf(*u8 fmt, *u8 b)
 
 fun test() -> i32 {
-    puts("Hi!")
+    puts("Hi!", 3u64)
     return 101
 }
 
@@ -24,14 +24,15 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
     let mem = malloc(1000u64)
     memcpy(mem,$*u8 test,5u64)
     let *(mem + 5) = 0u8
-    puts(mem)
+    puts(mem, 5u64)
     free(mem)
     let callback = #cb {
         fn = $(fun(*u8) -> i32) test,
     }
     let testing = test
     let res = ((callback.fn)($*u8 0))
-    mod:puts("Hello, World!")
+    mod:puts("Hello, World!", 13u64)
+    printf("puts(\"Hi\\n\") -> %zu\n", $*u8 mod:puts("Hi\n", 3u64))
     printf("Callback returned %d\n", $*u8 res)
     printf("Here: %p\n", $*u8 printf)
     return 2 + 4 * 3

@@ -778,6 +778,7 @@ impl<'src> Parser<'src> {
                         'n' => unescaped.push('\n'),
                         't' => unescaped.push('\t'),
                         'r' => unescaped.push('\r'),
+                        '"' => unescaped.push('\"'),
                         other => {
                             return Err(ParseError {
                                 highlighted_span: Some(next_tok.span),
