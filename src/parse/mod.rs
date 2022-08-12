@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Let, Literal, Match, GenericParams},
+    ast::{BigInt, Let, Literal, Match, GenericParams, GenericArgs, FunDef},
     Symbol,
 };
 use smallvec::SmallVec;
@@ -335,7 +335,7 @@ impl<'src> Parser<'src> {
                     Ok(Def {
                         file,
                         span: body.1,
-                        data: DefData::FunDef(proto, body.0, generic_params),
+                        data: DefData::FunDef(FunDef { proto, body: body.0, params: generic_params } ),
                     })
                 } else {
                     Ok(Def {
@@ -378,12 +378,14 @@ impl<'src> Parser<'src> {
     
     /// Parse generic type parameters of a definition
     fn parse_generic_params(&mut self) -> ParseResult<'src, GenericParams> {
-        let peek = self.toks.peek().map(|t| t.data);
+        let peek = self.toks.peek().map(|t| &t.data);
         if let Some(TokenData::Op(Op::Less)) = peek {
             self.toks.next();
         } else {
             return Ok(GenericParams{params:vec![]})
         }
+
+        self.trace.push("generic type parameters".into());
 
         let mut params = vec![];
         loop {
@@ -398,13 +400,51 @@ impl<'src> Parser<'src> {
                 TokenData::Ident(name) => params.push(self.symbol(name)),
                 TokenData::Comma => continue,
                 TokenData::Op(Op::Greater) => break,
-                other => return Err(self.unexpected(next.span, next, EXPECTING_FOR_PARAM)),
+                _ => return Err(self.unexpected(next.span, next, EXPECTING_FOR_PARAM)),
             }
         }
+
+        self.trace.pop();
 
         Ok(GenericParams {
             params,
         })
+    }
+    
+    /// Parse arguments to a generic symbol
+    fn parse_generic_args(&mut self) -> ParseResult<'src, GenericArgs> {
+        let peek = self.toks.peek().map(|t| &t.data);
+        if let Some(TokenData::Colon) = peek {
+            self.toks.next();
+            self.expect_next(&[TokenData::Op(Op::Less)])?;
+        } else {
+            return Ok(GenericArgs{args:vec![]})
+        }
+        
+        self.trace.push("generic type arguments".into());
+
+        let mut args = vec![];
+        loop {
+            const EXPECTING_FOR_PARAM: &[TokenData<'static>] = &[
+                TokenData::Op(Op::Greater),
+                TokenData::Ident("generic type argument"),
+                TokenData::Comma,
+            ];
+
+            let next = self.next_tok(EXPECTING_FOR_PARAM)?;
+            match next.data {
+                TokenData::Comma => continue,
+                TokenData::Op(Op::Greater) => break,
+                _ => args.push(self.parse_typename()?),
+            }
+        }
+
+        self.trace.pop();
+
+        Ok(GenericArgs {
+            args,
+        })
+
     }
 
     /// Parse a curly brace enclosed AST body
@@ -984,9 +1024,10 @@ impl<'src> Parser<'src> {
             TokenData::Ident(_) => {
                 self.trace.push("variable or function name".into());
                 let name = self.expect_next_path(EXPECTING_NEXT)?;
+                let args = self.parse_generic_args()?;
                 Expr {
                     span: next.span,
-                    node: ExprNode::Access(name),
+                    node: ExprNode::Access(name, args),
                 }
             }
             TokenData::OpenBracket(BracketType::Curly) => {
@@ -1250,8 +1291,9 @@ impl<'src> Parser<'src> {
                     let name = self.symbol(name);
                     let name = self
                         .expect_next_path_with(&[TokenData::Ident("typename path part")], name)?;
+                    let args = self.parse_generic_args()?;
 
-                    let ty = UnresolvedType::UserDefined { name };
+                    let ty = UnresolvedType::UserDefined { name, args };
                     self.trace.pop();
                     Ok(ty)
                 }

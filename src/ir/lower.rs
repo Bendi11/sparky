@@ -8,7 +8,7 @@ use crate::{
     arena::{Arena, Index},
     ast::{
         DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType,
+        UnresolvedType, GenericArgs, FunDef,
     },
     util::{
         files::FileId,
@@ -36,8 +36,30 @@ pub struct IrLowerer<'ctx> {
     modules: Arena<IntermediateModule>,
     /// Stack representing the current scope
     scope_stack: Vec<ScopePlate>,
+    /// All generated generic type specializations
+    generic_types: HashMap<TypeId, GenericSpecializations<TypeId, UnresolvedType>>,
+    /// All generated generic function specializations
+    generic_funs: HashMap<FunId, GenericSpecializations<FunId, FunDef>>,
+    /// Current type bindings for generic arguments
+    generic_args: Vec<HashMap<Symbol, TypeId>>,
     /// Current basic block to generate code in
     bb: Option<BBId>,
+}
+
+/// Structure containing a list of generic arguments passed to a templated definition
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IntermediateGenericArgs {
+    args: Vec<TypeId>,
+}
+
+/// Structure containing multiple specializations of a generic templated value
+pub struct GenericSpecializations<T, E> {
+    /// Parameter names and length
+    params: Vec<Symbol>,
+    /// The template to specialize with new arguments
+    template: E,
+    /// Existing specializations of this value
+    specs: HashMap<IntermediateGenericArgs, T>,
 }
 
 /// Represents a type of scope that we are currently in, used to represent the nested
@@ -85,6 +107,9 @@ impl<'ctx> IrLowerer<'ctx> {
             root_module,
             modules,
             scope_stack: Vec::new(),
+            generic_types: HashMap::new(),
+            generic_funs: HashMap::new(),
+            generic_args: vec![],
             bb: None,
         }
     }
@@ -119,11 +144,14 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, aliased: _ } => {
+                DefData::AliasDef { name, params, aliased } => {
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
                     self.modules[module]
                         .defs
                         .insert(name.clone(), IntermediateDefId::Type(ty));
+                    if !params.params.is_empty() {
+                        self.generic_types.insert(ty, GenericSpecializations::new(params.params.clone(), aliased.clone()));
+                    }
                 }
                 _ => (),
             }
@@ -164,7 +192,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::FunDef(proto, body) => {
+                DefData::FunDef(FunDef { proto, body, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
                         self.lower_body(module, def.file, fun, body)?;
@@ -195,7 +223,11 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, aliased } => {
+                DefData::AliasDef { name, aliased, params } => {
+                    if !params.params.is_empty() {
+                        continue
+                    }
+
                     let ty = *self.modules[module].defs.get(name).unwrap();
                     match ty {
                         IntermediateDefId::Type(ty) => {
@@ -210,7 +242,12 @@ impl<'ctx> IrLowerer<'ctx> {
                         _ => unreachable!(),
                     }
                 }
-                DefData::FunDec(proto) | DefData::FunDef(proto, _) => {
+                DefData::FunDec(proto) | DefData::FunDef(FunDef { proto, .. }) => {
+                    let fundef = match &def.data {
+                        DefData::FunDef(f) => Some(f),
+                        _ => None
+                    };
+
                     let fun_ty = self.resolve_fn_type(&proto.ty, module, def.file, def.span)?;
                     let fun = IrFun {
                         file: def.file,
@@ -243,6 +280,12 @@ impl<'ctx> IrLowerer<'ctx> {
                     self.modules[module]
                         .defs
                         .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
+
+                    if let Some(fundef) = fundef {
+                        if !fundef.params.params.is_empty() {
+                            self.generic_funs.insert(fun, GenericSpecializations::new(fundef.params.params.clone(), fundef.clone()));
+                        }
+                    }
                 }
                 _ => (),
             }
@@ -335,16 +378,19 @@ impl<'ctx> IrLowerer<'ctx> {
                     .types
                     .insert(IrType::Struct(IrStructType { fields }).into())
             }
-            UnresolvedType::UserDefined { name } => match self.resolve_path(module, name) {
-                Some(IntermediateDefId::Type(ty)) => ty,
-                _ => {
-                    return Err(Diagnostic::error()
-                        .with_message(format!(
-                            "Type {} not found in module {}",
-                            name, self.modules[module].name
-                        ))
-                        .with_labels(vec![Label::new(LabelStyle::Primary, file, span)]))
-                }
+            UnresolvedType::UserDefined { name, args } => match self.resolve_path(module, name) {
+                Some(IntermediateDefId::Type(ty)) => self.specialize_type(module, file,span, ty, args)?,
+                _ => match self.resolve_generic_arg(&name.last()) {
+                    Some(ty) => ty,
+                    _ => {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                "Type {} not found in module {}",
+                                name, self.modules[module].name
+                            ))
+                            .with_labels(vec![Label::new(LabelStyle::Primary, file, span)]))
+                    },
+                },
             },
             UnresolvedType::Fun(ty) => {
                 let fn_ty = self.resolve_fn_type(ty, module, file, span)?;
@@ -376,6 +422,70 @@ impl<'ctx> IrLowerer<'ctx> {
 
         Ok(FunType { return_ty, params })
     }
+        
+    /// Retrieve an existing type specialization or create a new one for the given generic type
+    fn specialize_type(&mut self, module: IntermediateModuleId, file: FileId, span: Span, ty: TypeId, args: &GenericArgs) -> Result<TypeId, Diagnostic<FileId>> {
+        let args = IntermediateGenericArgs { args: args
+            .args
+            .iter()
+            .map(|arg| self.resolve_type(arg, module, file, span))
+            .collect::<Result<Vec<_>, _>>()?
+        };
+        match self.generic_types.get(&ty) {
+            Some(ref specs) => match specs.specs.get(&args) {
+                Some(spec) => Ok(*spec),
+                None => {
+                    if args.args.len() != specs.params.len() {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                "Incorrect number of generic arguments passed to type template {}; expected {}, got {}",
+                                self.ctx.typename(ty),
+                                specs.params.len(),
+                                args.args.len(),
+                            ))
+                            .with_labels(vec![
+                                Label::primary(file, span)
+                            ])
+                        )
+                    }
+                    
+                    let bindings = args
+                        .args
+                        .iter()
+                        .zip(specs.params.iter())
+                        .map(|(arg, param)| (*param, *arg))
+                        .collect::<HashMap<_, _>>();
+
+                    self
+                        .generic_args
+                        .push(bindings);
+                    
+                    let template = specs.template.clone();
+                    drop(specs);
+                    let specialized = self.resolve_type(&template, module, file, span)?;
+                    self.generic_types.get_mut(&ty).unwrap().specs.insert(args, specialized); 
+
+                    self
+                        .generic_args
+                        .pop();
+
+                    Ok(specialized)
+                }
+            },
+            None => Ok(ty),
+        }
+    }
+
+    /// Lookup the type bound to this generic argument's name
+    fn resolve_generic_arg(&self, name: &Symbol) -> Option<TypeId> {
+        self
+            .generic_args
+            .iter()
+            .rev()
+            .map(|scope| scope.get(name).copied())
+            .last()
+            .flatten()
+    }
 
     /// Resolve the path in the context of the given intermediate module
     #[inline]
@@ -401,6 +511,16 @@ impl<'ctx> IrLowerer<'ctx> {
                 Some(IntermediateDefId::Module(other)) => self.resolve_path_impl(*other, path),
                 _ => None,
             },
+        }
+    }
+}
+
+impl<T, E> GenericSpecializations<T, E> {
+    pub fn new(params: Vec<Symbol>, template: E) -> Self {
+        Self {
+            specs: HashMap::new(),
+            params,
+            template,
         }
     }
 }

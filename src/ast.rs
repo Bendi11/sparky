@@ -227,7 +227,7 @@ pub enum StmtNode {
 #[derive(Clone, PartialEq, Eq)]
 pub enum ExprNode {
     /// Variable / function access by name or path
-    Access(SymbolPath),
+    Access(SymbolPath, GenericArgs),
     /// Structure member access by field name
     Member(Box<Expr>, Symbol),
     /// Array-like index expression using '[' ']'
@@ -309,11 +309,19 @@ pub struct Stmt {
     pub span: Span,
 }
 
+/// A function definition with body consisting of multiple [Stmt]s
+#[derive(Clone)]
+pub struct FunDef {
+    pub proto: FunProto,
+    pub body: Vec<Stmt>,
+    pub params: GenericParams,
+}
+
 /// An enum representing all parseable definitions
 #[derive(Clone)]
 pub enum DefData {
     /// A function definition with body and prototype
-    FunDef(FunProto, Vec<Stmt>, GenericParams),
+    FunDef(FunDef),
     /// A function declaration with no body
     FunDec(FunProto),
     /// A type alias binding a name to a type
@@ -332,7 +340,7 @@ impl DefData {
     /// Get the name of this definition
     pub fn name(&self) -> Symbol {
         match self {
-            Self::FunDef(proto, ..) | Self::FunDec(proto) => proto.name,
+            Self::FunDef(FunDef{ proto, ..} ) | Self::FunDec(proto) => proto.name,
             Self::AliasDef { name, .. } => *name,
             Self::ImportDef { name } => name.last(),
         }
@@ -424,6 +432,12 @@ pub struct GenericParams {
     pub params: Vec<Symbol>,
 }
 
+/// Container of generic type arguments given to a user-defined alias type or function
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GenericArgs {
+    pub args: Vec<UnresolvedType>,
+}
+
 /// Type representing a function's type in spark
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnresolvedFunType {
@@ -470,6 +484,7 @@ pub enum UnresolvedType {
     UserDefined {
         /// The name of the user-defined type
         name: SymbolPath,
+        args: GenericArgs,
     },
 }
 
