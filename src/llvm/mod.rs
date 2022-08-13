@@ -54,7 +54,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                             fun.name.to_string()
                         } else {
                             id += 1;
-                            id.to_string()
+                            format!("{}#{}", fun.name, id)
                         }
                         .as_str(),
                         Self::gen_funtype(ctx, irctx, &fun.ty),
