@@ -14,7 +14,7 @@ pub struct GenericArgs {
 }
 
 /// A bound that can be placed on a generic type parameter
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenericBound {
     /// Type must be equal to the given type
     Is(TypeId),
@@ -23,9 +23,10 @@ pub enum GenericBound {
 }
 
 /// A collection of [IntermediateGenericBound]s that limit the parameters of a generic value
+#[derive(Debug)]
 pub struct GenericTemplate<T> {
     /// The bounds for this template to be applied
-    params: Vec<GenericBound>,
+    pub(super) params: Vec<GenericBound>,
     template: T,
 }
 
@@ -36,7 +37,7 @@ pub struct GenericSpecializations<Template, Value> {
     /// Parameter names and length
     pub params: Vec<Symbol>,
     /// Existing templates for this value
-    pub(super) templates: BTreeSet<GenericTemplate<Template>>,
+    pub(super) templates: Vec<GenericTemplate<Template>>,
     /// Existing specializations for this generic
     pub(super) specs: HashMap<GenericArgs, Value>,
 }
@@ -216,13 +217,16 @@ impl<'ctx> IrLowerer<'ctx> {
 impl<T, V> GenericSpecializations<T, V> {
     /// Get a template for the given template arguments
     pub fn get(&self, args: &GenericArgs) -> Option<&GenericTemplate<T>> {
-        for spec in self.templates.iter().rev() {
+        let mut best_score = None;
+        for spec in self.templates.iter() {
             if spec.matches(args) {
-                return Some(spec)
+                if best_score.map(|(score, _)| score < spec.ord()).unwrap_or(true) {
+                    best_score = Some((spec.ord(), spec));
+                }
             }
         }
 
-        None
+        best_score.map(|(_, spec)| spec)
     }
     
     /// Create a new empty group of generic specializations
@@ -230,16 +234,15 @@ impl<T, V> GenericSpecializations<T, V> {
         Self {
             name,
             params,
-            templates: BTreeSet::new(),
+            templates: Vec::new(),
             specs: HashMap::new(),
         }
     }
     
     /// Add a template specialization for the given bounds
     pub fn add_spec(&mut self, bounds: Vec<GenericBound>, template: T) {
-        self
-            .templates
-            .insert(GenericTemplate { params: bounds, template });
+        let template = GenericTemplate { params: bounds, template };
+        self.templates.push(template); 
     }
 }
 
@@ -298,9 +301,7 @@ impl Ord for GenericBound {
 
 impl<T> PartialEq for GenericTemplate<T> {
     fn eq(&self, other: &Self) -> bool {
-        self
-            .ord()
-            .eq(&other.ord())
+        self.ord().eq(&other.ord()) 
     }
 }
 impl<T> Eq for GenericTemplate<T> {}
