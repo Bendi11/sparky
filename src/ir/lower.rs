@@ -54,6 +54,8 @@ pub struct IntermediateGenericArgs {
 
 /// Structure containing multiple specializations of a generic templated value
 pub struct GenericSpecializations<T, E> {
+    /// Name of this template
+    name: Symbol,
     /// Parameter names and length
     params: Vec<Symbol>,
     /// The template to specialize with new arguments
@@ -150,7 +152,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         .defs
                         .insert(name.clone(), IntermediateDefId::Type(ty));
                     if !params.params.is_empty() {
-                        self.generic_types.insert(ty, GenericSpecializations::new(params.params.clone(), aliased.clone()));
+                        self.generic_types.insert(ty, GenericSpecializations::new(*name, params.params.clone(), aliased.clone()));
                     }
                 }
                 _ => (),
@@ -269,7 +271,7 @@ impl<'ctx> IrLowerer<'ctx> {
                             self.modules[module]
                                 .defs
                                 .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
-                            self.generic_funs.insert(fun, GenericSpecializations::new(fundef.params.params.clone(), fundef.clone()));
+                            self.generic_funs.insert(fun, GenericSpecializations::new(proto.name, fundef.params.params.clone(), fundef.clone()));
                             continue
                         }
                     }
@@ -481,8 +483,14 @@ impl<'ctx> IrLowerer<'ctx> {
                         .push(bindings);
                     
                     let template = specs.template.clone();
+                    let name = specs.name.clone();
                     drop(specs);
                     let specialized = self.resolve_type(&template, module, file, span)?;
+                    let specialized = IrType::Alias {
+                        name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
+                        ty: specialized
+                    };
+                    let specialized = self.ctx.types.insert(specialized);
                     self.generic_types.get_mut(&ty).unwrap().specs.insert(args, specialized); 
 
                     self
@@ -541,7 +549,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     let specialized = self.ctx.funs.insert(IrFun {
                         file,
                         span,
-                        name: self.ctx[fun].name.clone(),
+                        name: Symbol::new(format!("{}{}", self.ctx[fun].name, self.ctx.generics(&args.args))),
                         ty_id: self.ctx.types.insert(IrType::Fun(ty.clone())),
                         ty,
                         body: None,
@@ -604,8 +612,9 @@ impl<'ctx> IrLowerer<'ctx> {
 }
 
 impl<T, E> GenericSpecializations<T, E> {
-    pub fn new(params: Vec<Symbol>, template: E) -> Self {
+    pub fn new(name: Symbol, params: Vec<Symbol>, template: E) -> Self {
         Self {
+            name,
             specs: HashMap::new(),
             params,
             template,
