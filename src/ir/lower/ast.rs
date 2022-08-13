@@ -787,6 +787,33 @@ impl<'ctx> IrLowerer<'ctx> {
             .iter()
             .map(|(ty, stmt)| {
                 let ty = self.resolve_type(ty, module, file, span)?;
+                if let IrType::Sum(variants) = &self.ctx[self.ctx.unwrap_alias(matched.ty)] {
+                    if !variants.contains(&ty) {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                "Match arm with type {} but sum type {} does not contain this variant",
+                                self.ctx.typename(ty),
+                                self.ctx.typename(matched.ty),
+                            ))
+                            .with_labels(vec![
+                                Label::primary(file, stmt.span)
+                                    .with_message("In this match arm"),
+                                Label::primary(file, matched.span)
+                                    .with_message(format!("Matched value of type {} appears here", self.ctx.typename(matched.ty)))
+                            ])
+                        )
+                    }
+                } else {
+                    return Err(Diagnostic::error()
+                        .with_message(format!("Cannot match an expression of type {}", self.ctx.typename(matched.ty)))
+                        .with_labels(vec![
+                            Label::primary(file, matched.span)
+                                .with_message(format!("Expression of type {} appears here", self.ctx.typename(matched.ty))),
+                            Label::secondary(file, span)
+                                .with_message("Match expression appears here"),
+                        ])
+                    )
+                }
                 let arm_bb = self.ctx.bb();
                 *self.bb_mut() = arm_bb;
                 self.lower_stmt(module, file, fun, stmt)?;

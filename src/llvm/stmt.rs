@@ -59,6 +59,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 discriminants,
                 default_jmp,
             } => {
+                let variant_ty = variant.ty;
                 let sum_ty = if let IrType::Sum(sum) = &irctx[irctx.unwrap_alias(variant.ty)] {
                     sum
                 } else {
@@ -85,7 +86,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                             .iter()
                             .enumerate()
                             .find_map(|(idx, variant)| if ty == variant { Some(idx) } else { None })
-                            .unwrap();
+                            .unwrap_or_else(|| panic!("type {} is not in {}", irctx.typename(*ty), irctx.typename(variant_ty)));
                         let arm = self.ctx.append_basic_block(fun, "matcharm");
                         self.llvm_bbs.insert(*bb, arm);
                         self.gen_bb(irctx, *bb, fun);

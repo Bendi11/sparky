@@ -40,7 +40,7 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
 
     let optional = $opt:<i32> 100
     let unwrapped = $i32 optional
-    //let unwrapped = unwrap:<i32>(optional)
+    let unwrapped = unwrap:<i32>(optional)
 
     testing:<i32>()
     testing:<u64>()
