@@ -1,0 +1,2 @@
+type spec<T> = T
+type spec:<i32> = u64

@@ -1,3 +1,4 @@
+imp mod:spec
 
 type test<T> = {
     T first,
@@ -31,7 +32,7 @@ fun unwrap<T>(opt:<T> opt) -> T {
 }
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
-    let spec = $opt:<u64> $none ()
+    let special = $mod:spec:<i32> 100u64
     let d = $identity:<i32> testing:<i32>
     let c = d(100)
     let a = #test:<i32> {

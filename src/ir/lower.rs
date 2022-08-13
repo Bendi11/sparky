@@ -166,18 +166,11 @@ impl<'ctx> IrLowerer<'ctx> {
         }
 
         for child_parsed in parsed.children.iter() {
-            let child_module = self
-                .modules
-                .insert(IntermediateModule::new(child_parsed.name));
-            self.populate_forward_types_impl(child_module, child_parsed)?;
-        }
-        
-        for child_parsed in parsed.children.iter() {
             let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
                 IntermediateDefId::Module(module) => *module,
                 _ => unreachable!(),
             };
-            self.populate_fn_bodies_impl(child_module, child_parsed)?;
+            self.populate_forward_type_specs_impl(child_module, child_parsed)?;
         }
 
         Ok(())
