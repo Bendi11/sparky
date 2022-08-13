@@ -6,7 +6,7 @@ type test<T> = {
 
 type none = ()
 type opt<T> = T | none
-//type opt:<u64> = none
+type opt:<u64> = none
 type identity<T> = fun(T) -> T
 
 fun ext puts(*u8)
@@ -26,11 +26,12 @@ fun testing:<i32>() -> *i32 {
 fun unwrap<T>(opt:<T> opt) -> T {
     return match opt {
         T -> phi $T opt,
-        () -> phi $T opt
+        none -> phi $T opt
     }
 }
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
+    let spec = $opt:<u64> $none ()
     let d = $identity:<i32> testing:<i32>
     let c = d(100)
     let a = #test:<i32> {

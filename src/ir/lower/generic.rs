@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 
-use crate::{ir::{TypeId, types::IrType, FunId, IrFun}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
+use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
 
 use super::{IrLowerer, IntermediateModuleId};
 
@@ -60,8 +60,8 @@ impl<'ctx> IrLowerer<'ctx> {
         };
         match self.generic_types.get(&ty) {
             Some(ref specs) => match specs.specs.get(&args) {
-                Some(spec) => Ok(*spec),
-                None => match specs.get(&args) {
+                Some(spec) if *spec != IrContext::INVALID => Ok(*spec),
+                _ => match specs.get(&args) {
                     Some(template) => {
                         if args.args.len() != specs.params.len() {
                             return Err(Diagnostic::error()

@@ -105,6 +105,7 @@ impl<'ctx> IrLowerer<'ctx> {
     /// Lower a parsed module to IR
     pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         self.populate_forward_types_impl(self.root_module, root)?;
+        self.populate_forward_type_specs_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
         self.populate_fn_specs_impl(self.root_module, root)?;
         self.populate_fn_bodies_impl(self.root_module, root)?;
@@ -124,6 +125,63 @@ impl<'ctx> IrLowerer<'ctx> {
             .as_mut()
             .expect("ICE: IR lowerer is not currently in a basic block")
     }
+    
+    fn populate_forward_type_specs_impl(
+        &mut self,
+        module: IntermediateModuleId,
+        parsed: &ParsedModule,
+    ) -> Result<(), Diagnostic<FileId>> {
+        for def in parsed.defs.iter() {
+            match &def.data {
+                DefData::AliasDef { name, params, aliased, args } => {
+                    if !args.args.is_empty() {
+                        let template = if let IntermediateDefId::Type(t) = self.modules[module].defs.get(name).unwrap() {
+                            *t
+                        } else {
+                            unreachable!()
+                        };
+                        if let Some(specs) = self.generic_types.get(&template) {
+                            let args = if !args.args.is_empty() {
+                                args
+                                    .args
+                                    .iter()
+                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
+                                        Ok(ty) => Ok(GenericBound::Is(ty)),
+                                        Err(e) => Err(e)
+                                    })
+                                    .collect::<Result<Vec<_>, _>>()?
+                            } else {
+                                vec![GenericBound::Any ; specs.params.len()]
+                            };
+
+                            self.generic_types.get_mut(&template).unwrap().add_spec(
+                                args,
+                                aliased.clone()
+                            );
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        for child_parsed in parsed.children.iter() {
+            let child_module = self
+                .modules
+                .insert(IntermediateModule::new(child_parsed.name));
+            self.populate_forward_types_impl(child_module, child_parsed)?;
+        }
+        
+        for child_parsed in parsed.children.iter() {
+            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
+                IntermediateDefId::Module(module) => *module,
+                _ => unreachable!(),
+            };
+            self.populate_fn_bodies_impl(child_module, child_parsed)?;
+        }
+
+        Ok(())
+    }
 
     /// Get forward references to all declared types and modules
     fn populate_forward_types_impl(
@@ -134,7 +192,9 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::AliasDef { name, params, aliased, args } => {
+                    if !args.args.is_empty() { continue }
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
+
                     self.modules[module]
                         .defs
                         .insert(name.clone(), IntermediateDefId::Type(ty));
@@ -218,29 +278,29 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::FunDef(d @ FunDef { proto, args, body, .. }) => {
+                DefData::FunDef(d @ FunDef { proto, args, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
-                        if let Some(specs) = self.generic_funs.get(&fun) {
-                            let args = if !args.args.is_empty() {
-                                args
-                                    .args
-                                    .iter()
-                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
-                                        Ok(ty) => Ok(GenericBound::Is(ty)),
-                                        Err(e) => Err(e)
-                                    })
-                                    .collect::<Result<Vec<_>, _>>()?
-                            } else {
-                                vec![GenericBound::Any ; specs.params.len()]
-                            };
+                       if let Some(specs) = self.generic_funs.get(&fun) {
+                                            let args = if !args.args.is_empty() {
+                                                args
+                                                    .args
+                                                    .iter()
+                                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
+                                                        Ok(ty) => Ok(GenericBound::Is(ty)),
+                                                        Err(e) => Err(e)
+                                                    })
+                                                    .collect::<Result<Vec<_>, _>>()?
+                                            } else {
+                                                vec![GenericBound::Any ; specs.params.len()]
+                                            };
 
-                            self.generic_funs.get_mut(&fun).unwrap().add_spec(
-                                args,
-                                d.clone()
-                            );
-                        }
-                    } else {
+                                            self.generic_funs.get_mut(&fun).unwrap().add_spec(
+                                                args,
+                                                d.clone()
+                                            );
+                                        }
+                                     } else {
                         panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
                     }
                 }
@@ -269,23 +329,22 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::AliasDef { name, aliased, params, args } => {
-                    if !params.params.is_empty() {
+                    if !params.params.is_empty() || !args.args.is_empty() {
                         continue
                     }
                     
-                    let ty = *self.modules[module].defs.get(name).unwrap();
+                    let ty = *self.modules[module].defs.get(name).unwrap_or_else(|| panic!("ICE: Cannot find definition named {}", name));
                     match ty {
                         IntermediateDefId::Type(ty) => {
-                            let resolved = if args.args.is_empty() {
-                                self.resolve_type(aliased, module, def.file, def.span)?
+                            if args.args.is_empty() {
+                                let resolved = self.resolve_type(aliased, module, def.file, def.span)?;
+                                *self.ctx.types.get_mut(ty) = IrType::Alias {
+                                    name: name.clone(),
+                                    ty: resolved,
+                                };
                             } else {
-                                self.specialize_type(module, def.file, def.span, ty, args)?
-                            };
-                            *self.ctx.types.get_mut(ty) = IrType::Alias {
-                                name: name.clone(),
-                                ty: resolved,
+                                self.specialize_type(module, def.file, def.span, ty, args)?;
                             }
-                            .into();
                         }
                         _ => unreachable!(),
                     }
