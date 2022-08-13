@@ -254,8 +254,14 @@ impl IrContext {
 
     /// Get a human-readable type name for the given type
     #[inline]
-    pub fn typename(&self, ty: TypeId) -> String {
-        TypenameFormatter { ctx: self, ty }.to_string()
+    pub fn typename(&self, ty: TypeId) -> TypenameFormatter<'_> {
+        TypenameFormatter { ctx: self, ty }
+    }
+    
+    /// Get a 
+    #[inline]
+    pub fn generics<'ctx, 'args>(&'ctx self, args: &'args [TypeId]) -> GenericsFormatter<'ctx, 'args> {
+        GenericsFormatter { ctx: self, args }
     }
 
     /// Get the [TypeId] of an integer type with the given width and signededness
@@ -290,9 +296,25 @@ impl IrContext {
     }
 }
 
+/// Structure for more efficiently formatting generic type arguments
+pub struct GenericsFormatter<'ctx, 'args> {
+    ctx: &'ctx IrContext,
+    args: &'args [TypeId],
+}
+
+impl<'ctx, 'args> std::fmt::Display for GenericsFormatter<'ctx, 'args> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<")?;
+        for arg in self.args {
+            write!(f, "{}, ", self.ctx.typename(*arg))?;
+        }
+        write!(f, ">")
+    }
+}
+
 /// Structure for more efficiently formatting typename strings via a std::fmt::Display
 /// implementation avoiding multiple string allocations
-struct TypenameFormatter<'ctx> {
+pub struct TypenameFormatter<'ctx> {
     ctx: &'ctx IrContext,
     ty: TypeId,
 }

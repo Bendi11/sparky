@@ -120,7 +120,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
             IrExprKind::Call(fun_expr, args) => {
                 let fun = self.gen_expr(irctx, fun_expr).into_pointer_value();
                 let callable = CallableValue::try_from(fun).unwrap_or_else(|_| {
-                    panic!("{:?} is not a function", irctx.typename(fun_expr.ty))
+                    panic!("{} is not a function", irctx.typename(fun_expr.ty))
                 });
                 let args = args
                     .iter()
@@ -470,7 +470,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
 
                 self.build.build_load(structure, "sumlit")
             }
-            _ => unreachable!("{:?} != {:?}", irctx.typename(expr.ty), irctx.typename(ty)),
+            _ => unreachable!("{} != {}", irctx.typename(expr.ty), irctx.typename(ty)),
         }
     }
 }
