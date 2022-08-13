@@ -204,8 +204,8 @@ fn main() {
         _ => {
             drop(lowerer);
             let llvm = Context::create();
-            let codegen = LLVMCodeGenerator::new(&mut ctx, &llvm);
-            codegen.gen(opts);
+            let codegen = LLVMCodeGenerator::new(&mut ctx, &llvm, opts);
+            codegen.gen();
         }
     }
 }

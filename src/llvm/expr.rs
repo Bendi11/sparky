@@ -425,7 +425,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 let ptr_to_t = self.build.build_pointer_cast(
                     ptr,
                     self.llvm_types
-                        .get_secondary(expr.ty)
+                        .get_secondary(ty)
                         .ptr_type(AddressSpace::Generic),
                     "sum_unwrap_ptr",
                 );

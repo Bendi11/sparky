@@ -352,6 +352,7 @@ impl<'src> Parser<'src> {
                 self.trace
                     .push(format!("type definition '{}'", name).into());
                 let params = self.parse_generic_params()?;
+                let args = self.parse_generic_args()?;
 
                 self.expect_next(&[TokenData::Assign])?;
                 let aliased = self.parse_typename()?;
@@ -363,6 +364,7 @@ impl<'src> Parser<'src> {
                         name: self.symbol(name),
                         aliased,
                         params,
+                        args,
                     },
                     file,
                 })

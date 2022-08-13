@@ -133,7 +133,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, params, aliased } => {
+                DefData::AliasDef { name, params, aliased, args } => {
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
                     self.modules[module]
                         .defs
@@ -268,16 +268,19 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, aliased, params } => {
+                DefData::AliasDef { name, aliased, params, args } => {
                     if !params.params.is_empty() {
                         continue
                     }
-
+                    
                     let ty = *self.modules[module].defs.get(name).unwrap();
                     match ty {
                         IntermediateDefId::Type(ty) => {
-                            let resolved =
-                                self.resolve_type(aliased, module, def.file, def.span)?;
+                            let resolved = if args.args.is_empty() {
+                                self.resolve_type(aliased, module, def.file, def.span)?
+                            } else {
+                                self.specialize_type(module, def.file, def.span, ty, args)?
+                            };
                             *self.ctx.types.get_mut(ty) = IrType::Alias {
                                 name: name.clone(),
                                 ty: resolved,

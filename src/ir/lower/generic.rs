@@ -97,7 +97,7 @@ impl<'ctx> IrLowerer<'ctx> {
                             ty: specialized
                         };
                         let specialized = self.ctx.types.insert(specialized);
-                        //self.generic_types.get_mut(&ty).unwrap().specs.insert(args, specialized); 
+                        self.generic_types.get_mut(&ty).unwrap().specs.insert(args, specialized); 
 
                         self
                             .generic_args

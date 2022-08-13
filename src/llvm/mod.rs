@@ -5,10 +5,10 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     passes::PassManager,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetData},
     types::{BasicType, BasicTypeEnum, FunctionType, IntType},
     values::{FunctionValue, PointerValue, BasicValue},
-    AddressSpace, OptimizationLevel,
+    AddressSpace, OptimizationLevel, data_layout::{DataLayout, self},
 };
 
 use crate::{
@@ -32,6 +32,9 @@ pub struct LLVMCodeGenerator<'ctx, 'llvm> {
 
 pub struct LLVMCodeGeneratorState<'llvm> {
     ctx: &'llvm Context,
+    target_data: TargetData,
+    target_machine: TargetMachine,
+    opts: CompileOpts,
     root: Module<'llvm>,
     build: Builder<'llvm>,
     llvm_funs: Arena<FunctionValue<'llvm>>,
@@ -43,9 +46,35 @@ pub struct LLVMCodeGeneratorState<'llvm> {
 impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     /// Create a new [LLVMCodeGenerator] from shared reference to a [Files] structure and unique
     /// reference to the IR context
-    pub fn new(irctx: &'ctx mut IrContext, ctx: &'llvm Context) -> Self {
+    pub fn new(irctx: &'ctx mut IrContext, ctx: &'llvm Context, opts: CompileOpts) -> Self {
         let root = ctx.create_module("spark_module");
         let mut id = 0;
+
+        Target::initialize_native(&InitializationConfig::default()).unwrap();
+
+        let opt = match opts.opt_lvl {
+            OutputOptimizationLevel::Release => OptimizationLevel::Aggressive,
+            OutputOptimizationLevel::Medium => OptimizationLevel::Default,
+            OutputOptimizationLevel::Size => OptimizationLevel::Less,
+            OutputOptimizationLevel::Debug => OptimizationLevel::None,
+        };
+        let reloc = match opts.pic {
+            true => RelocMode::PIC,
+            false => RelocMode::Default,
+        };
+        let model = CodeModel::Default;
+        let target = Target::from_triple(&TargetMachine::get_default_triple()).unwrap();
+        let target_machine = target
+            .create_target_machine(
+                &TargetMachine::get_default_triple(),
+                TargetMachine::get_host_cpu_name().to_str().unwrap(),
+                TargetMachine::get_host_cpu_features().to_str().unwrap(),
+                opt,
+                reloc,
+                model,
+            )
+            .unwrap();
+        let target_data = target_machine.get_target_data();
         Self {
             state: LLVMCodeGeneratorState {
                 llvm_funs: irctx.funs.secondary(|(_, fun)| {
@@ -57,16 +86,19 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                             format!("{}#{}", fun.name, id)
                         }
                         .as_str(),
-                        Self::gen_funtype(ctx, irctx, &fun.ty),
+                        Self::gen_funtype(ctx, &target_data, irctx, &fun.ty),
                         Some(Linkage::External),
                     )
                 }),
                 llvm_types: irctx
                     .types
-                    .secondary(|(_, ty)| Self::gen_type(ctx, irctx, ty)),
+                    .secondary(|(_, ty)| Self::gen_type(ctx, &target_data, irctx, ty)),
                 llvm_vars: irctx.vars.secondary(|_| None),
                 llvm_bbs: HashMap::new(),
                 ctx,
+                target_data,
+                target_machine,
+                opts,
                 root,
                 build: ctx.create_builder(),
             },
@@ -75,7 +107,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     }
 
     /// Generate all LLVM bytecode for the given IR context and return the completed LLVM module
-    pub fn gen(mut self, opts: CompileOpts) -> Module<'llvm> {
+    pub fn gen(mut self) -> Module<'llvm> {
         for fun_id in self.state.llvm_funs.indices() {
             let fun = self.irctx.funs.get_secondary(fun_id);
             let llvm_fun = self.state.llvm_funs[fun_id];
@@ -104,7 +136,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             });
 
         let fpm = PassManager::create(&self.state.root);
-        if opts.opt_lvl > OutputOptimizationLevel::Debug {
+        if self.state.opts.opt_lvl > OutputOptimizationLevel::Debug {
             fpm.add_instruction_combining_pass();
             fpm.add_reassociate_pass();
             fpm.add_gvn_pass();
@@ -115,45 +147,22 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             fpm.add_reassociate_pass();
         }
 
-        if opts.stripped {
+        if self.state.opts.stripped {
             fpm.add_strip_symbol_pass();
         }
 
         fpm.finalize();
 
-        Target::initialize_native(&InitializationConfig::default()).unwrap();
+        
 
-        let opt = match opts.opt_lvl {
-            OutputOptimizationLevel::Release => OptimizationLevel::Aggressive,
-            OutputOptimizationLevel::Medium => OptimizationLevel::Default,
-            OutputOptimizationLevel::Size => OptimizationLevel::Less,
-            OutputOptimizationLevel::Debug => OptimizationLevel::None,
-        };
-        let reloc = match opts.pic {
-            true => RelocMode::PIC,
-            false => RelocMode::Default,
-        };
-        let model = CodeModel::Default;
-        let target = Target::from_triple(&TargetMachine::get_default_triple()).unwrap();
-        let target_machine = target
-            .create_target_machine(
-                &TargetMachine::get_default_triple(),
-                TargetMachine::get_host_cpu_name().to_str().unwrap(),
-                TargetMachine::get_host_cpu_features().to_str().unwrap(),
-                opt,
-                reloc,
-                model,
-            )
-            .unwrap();
-
-        match opts.out_type {
+        match self.state.opts.out_type {
             OutputFileType::Object => {
-                target_machine.write_to_file(&self.state.root, FileType::Object, &opts.out_file)
+                self.state.target_machine.write_to_file(&self.state.root, FileType::Object, &self.state.opts.out_file)
             }
             OutputFileType::Assembly => {
-                target_machine.write_to_file(&self.state.root, FileType::Assembly, &opts.out_file)
+                self.state.target_machine.write_to_file(&self.state.root, FileType::Assembly, &self.state.opts.out_file)
             }
-            OutputFileType::LLVMIR => self.state.root.print_to_file(&opts.out_file),
+            OutputFileType::LLVMIR => self.state.root.print_to_file(&self.state.opts.out_file),
             OutputFileType::IR => unreachable!(),
         }
         .unwrap();
@@ -174,6 +183,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     /// Generate LLVM IR for a single IR type
     pub fn gen_type(
         ctx: &'llvm Context,
+        target_data: &TargetData,
         irctx: &'ctx IrContext,
         ty: &IrType,
     ) -> BasicTypeEnum<'llvm> {
@@ -185,17 +195,17 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             },
             IrType::Bool => ctx.bool_type().into(),
             IrType::Unit => ctx.i8_type().into(),
-            IrType::Ptr(ty) => Self::gen_type(ctx, irctx, &irctx[*ty])
+            IrType::Ptr(ty) => Self::gen_type(ctx, target_data, irctx, &irctx[*ty])
                 .ptr_type(AddressSpace::Generic)
                 .into(),
-            IrType::Fun(f) => Self::gen_funtype(ctx, irctx, f)
+            IrType::Fun(f) => Self::gen_funtype(ctx, target_data, irctx, f)
                 .ptr_type(AddressSpace::Generic)
                 .into(),
             IrType::Struct(s_ty) => {
                 let fields = s_ty
                     .fields
                     .iter()
-                    .map(|field| Self::gen_type(ctx, irctx, &irctx[field.ty]))
+                    .map(|field| Self::gen_type(ctx, target_data, irctx, &irctx[field.ty]))
                     .collect::<Vec<_>>();
                 ctx.struct_type(&fields, false).into()
             }
@@ -205,16 +215,14 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                 }
                 let variants = variants
                     .iter()
-                    .map(|variant| Self::gen_type(ctx, irctx, &irctx[*variant]))
+                    .map(|variant| Self::gen_type(ctx, target_data, irctx, &irctx[*variant]))
                     .collect::<Vec<_>>();
 
                 let largest_size = variants
                     .iter()
                     .map(|ty| {
-                        ty.size_of()
-                            .unwrap()
-                            .get_zero_extended_constant()
-                            .unwrap_or(1)
+                        target_data
+                            .get_store_size(ty)
                     })
                     .max()
                     .unwrap();
@@ -228,10 +236,10 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                 )
                 .into()
             }
-            IrType::Array(ty, sz) => Self::gen_type(ctx, irctx, &irctx[*ty])
+            IrType::Array(ty, sz) => Self::gen_type(ctx, target_data, irctx, &irctx[*ty])
                 .array_type(*sz as u32)
                 .into(),
-            IrType::Alias { ty, .. } => Self::gen_type(ctx, irctx, &irctx[*ty]),
+            IrType::Alias { ty, .. } => Self::gen_type(ctx, target_data, irctx, &irctx[*ty]),
             IrType::Invalid => ctx.i8_type().into(),
         }
     }
@@ -239,14 +247,15 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     /// Generate the LLVM IR signature for the given IR function signature
     fn gen_funtype(
         ctx: &'llvm Context,
+        target_data: &TargetData,
         irctx: &'ctx IrContext,
         ty: &FunType,
     ) -> FunctionType<'llvm> {
-        let return_ty = Self::gen_type(ctx, irctx, &irctx[ty.return_ty]);
+        let return_ty = Self::gen_type(ctx, target_data, irctx, &irctx[ty.return_ty]);
         let params = ty
             .params
             .iter()
-            .map(|(ty, _)| Self::gen_type(ctx, irctx, &irctx[*ty]).into())
+            .map(|(ty, _)| Self::gen_type(ctx, target_data, irctx, &irctx[*ty]).into())
             .collect::<Vec<_>>();
 
         return_ty.fn_type(&params, false)

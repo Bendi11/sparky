@@ -335,6 +335,8 @@ pub enum DefData {
         aliased: UnresolvedType,
         /// The generic type parameters for this alias
         params: GenericParams,
+        /// Generic type arguments for this alias, if it is a specialization
+        args: UnresolvedGenericArgs,
     },
     /// An imported module definition
     ImportDef { name: SymbolPath },
