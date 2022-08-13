@@ -216,7 +216,7 @@ impl<'ctx> IrLowerer<'ctx> {
 impl<T, V> GenericSpecializations<T, V> {
     /// Get a template for the given template arguments
     pub fn get(&self, args: &GenericArgs) -> Option<&GenericTemplate<T>> {
-        for spec in self.templates.iter() {
+        for spec in self.templates.iter().rev() {
             if spec.matches(args) {
                 return Some(spec)
             }

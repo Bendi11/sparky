@@ -221,22 +221,24 @@ impl<'ctx> IrLowerer<'ctx> {
                 DefData::FunDef(d @ FunDef { proto, args, body, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
-                        if self.generic_funs.contains_key(&fun) {
-                            if !args.args.is_empty() {
-                                let args = args
-                                        .args
-                                        .iter()
-                                        .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
-                                            Ok(ty) => Ok(GenericBound::Is(ty)),
-                                            Err(e) => Err(e)
-                                        })
-                                        .collect::<Result<Vec<_>, _>>()?;
+                        if let Some(specs) = self.generic_funs.get(&fun) {
+                            let args = if !args.args.is_empty() {
+                                args
+                                    .args
+                                    .iter()
+                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
+                                        Ok(ty) => Ok(GenericBound::Is(ty)),
+                                        Err(e) => Err(e)
+                                    })
+                                    .collect::<Result<Vec<_>, _>>()?
+                            } else {
+                                vec![GenericBound::Any ; specs.params.len()]
+                            };
 
-                                self.generic_funs.get_mut(&fun).unwrap().add_spec(
-                                    args,
-                                    d.clone()
-                                );
-                            }
+                            self.generic_funs.get_mut(&fun).unwrap().add_spec(
+                                args,
+                                d.clone()
+                            );
                         }
                     } else {
                         panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
@@ -286,38 +288,32 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
                 }
                 DefData::FunDec(proto) | DefData::FunDef(FunDef { proto, .. }) => {
-                    let fundef = match &def.data {
-                        DefData::FunDef(f) => Some(f),
-                        _ => None
-                    };
-
-                    if let Some(fundef) = fundef {
+                    if let DefData::FunDef(ref fundef) = &def.data {
                         if !fundef.args.args.is_empty() {
                             continue
                         }
+                    }
 
-                        if !fundef.params.params.is_empty() {
-                            let ty = FunType {
-                                return_ty: IrContext::INVALID,
-                                params: vec![]
-                            };
-                            let fun = self.ctx.funs.insert(IrFun {
-                                name: proto.name,
-                                ty,
-                                ty_id: IrContext::INVALID,
-                                file: def.file,
-                                span: def.span,
-                                body: None,
-                                flags: proto.flags 
-                            });
-                            self.modules[module]
-                                .defs
-                                .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
-                            let mut specs = GenericSpecializations::new(proto.name, fundef.params.params.clone());
-                            specs.add_spec(vec![GenericBound::Any ; fundef.params.params.len()], fundef.clone());
-                            self.generic_funs.insert(fun, specs);
-                            continue
-                        }
+                    if !proto.params.params.is_empty() {
+                        let ty = FunType {
+                            return_ty: IrContext::INVALID,
+                            params: vec![]
+                        };
+                        let fun = self.ctx.funs.insert(IrFun {
+                            name: proto.name,
+                            ty,
+                            ty_id: IrContext::INVALID,
+                            file: def.file,
+                            span: def.span,
+                            body: None,
+                            flags: proto.flags 
+                        });
+                        self.modules[module]
+                            .defs
+                            .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
+                        let specs = GenericSpecializations::new(proto.name, proto.params.params.clone());
+                        self.generic_funs.insert(fun, specs);
+                        continue
                     }
 
                     let fun_ty = self.resolve_fn_type(&proto.ty, module, def.file, def.span)?;

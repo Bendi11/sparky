@@ -322,6 +322,7 @@ impl<'src> Parser<'src> {
                     name: self.symbol(name),
                     ty,
                     flags,
+                    params: generic_params,
                 };
 
                 self.trace.pop();
@@ -336,7 +337,7 @@ impl<'src> Parser<'src> {
                     Ok(Def {
                         file,
                         span: body.1,
-                        data: DefData::FunDef(FunDef { proto, body: body.0, params: generic_params, args: generic_args } ),
+                        data: DefData::FunDef(FunDef { proto, body: body.0, args: generic_args } ),
                     })
                 } else {
                     Ok(Def {

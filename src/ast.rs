@@ -170,6 +170,8 @@ pub struct FunProto {
     pub flags: FunFlags,
     /// Function's signature
     pub ty: UnresolvedFunType,
+    /// Generic parameters for the function
+    pub params: GenericParams,
 }
 
 /// A let statement that either assigns a value to an expression or
@@ -314,7 +316,6 @@ pub struct Stmt {
 pub struct FunDef {
     pub proto: FunProto,
     pub body: Vec<Stmt>,
-    pub params: GenericParams,
     /// Generic arguments passed to the parameters, if this is a specialization
     pub args: UnresolvedGenericArgs,
 }
