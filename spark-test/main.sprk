@@ -6,6 +6,7 @@ type test<T> = {
 
 type none = ()
 type opt<T> = T | none
+type identity<T> = fun(T) -> T
 
 type test_with_i32<T> = test:<T> | opt:<T>
 
@@ -14,6 +15,8 @@ fun testing<T>() -> *T {
 }
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
+    let d = $identity:<i32> testing:<i32>
+    let c = d(100)
     let a = #test:<i32> {
         first = 31,
         second = 1

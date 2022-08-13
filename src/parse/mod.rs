@@ -1193,8 +1193,9 @@ impl<'src> Parser<'src> {
         let next = self.next_tok(EXPECTING_NEXT)?;
 
         match next.data {
-            TokenData::Ident(name) => match &name[0..1] {
-                "i" | "u" => {
+            TokenData::Ident(name) => match name {
+                "i8" | "i16" | "i32" | "i64"  | 
+                    "u8" | "u16" | "u32" | "u64" => {
                     let signed = &name[0..1] == "i";
 
                     match &name[1..] {
@@ -1224,7 +1225,8 @@ impl<'src> Parser<'src> {
                         }),
                     }
                 }
-                "f" => match &name[1..] {
+                "fun" | 
+                    "f32" | "f64" => match &name[1..] {
                     "32" => Ok(UnresolvedType::Float { doublewide: false }),
                     "64" => Ok(UnresolvedType::Float { doublewide: true }),
                     "un" => {
