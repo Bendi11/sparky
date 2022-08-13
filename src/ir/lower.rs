@@ -195,6 +195,9 @@ impl<'ctx> IrLowerer<'ctx> {
                 DefData::FunDef(FunDef { proto, body, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
+                        if self.generic_funs.contains_key(&fun) {
+                            continue
+                        }
                         self.lower_body(module, def.file, fun, body)?;
                     } else {
                         panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
@@ -248,6 +251,29 @@ impl<'ctx> IrLowerer<'ctx> {
                         _ => None
                     };
 
+                    if let Some(fundef) = fundef {
+                        if !fundef.params.params.is_empty() {
+                            let ty = FunType {
+                                return_ty: IrContext::INVALID,
+                                params: vec![]
+                            };
+                            let fun = self.ctx.funs.insert(IrFun {
+                                name: proto.name,
+                                ty,
+                                ty_id: IrContext::INVALID,
+                                file: def.file,
+                                span: def.span,
+                                body: None,
+                                flags: proto.flags 
+                            });
+                            self.modules[module]
+                                .defs
+                                .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
+                            self.generic_funs.insert(fun, GenericSpecializations::new(fundef.params.params.clone(), fundef.clone()));
+                            continue
+                        }
+                    }
+
                     let fun_ty = self.resolve_fn_type(&proto.ty, module, def.file, def.span)?;
                     let fun = IrFun {
                         file: def.file,
@@ -280,12 +306,6 @@ impl<'ctx> IrLowerer<'ctx> {
                     self.modules[module]
                         .defs
                         .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
-
-                    if let Some(fundef) = fundef {
-                        if !fundef.params.params.is_empty() {
-                            self.generic_funs.insert(fun, GenericSpecializations::new(fundef.params.params.clone(), fundef.clone()));
-                        }
-                    }
                 }
                 _ => (),
             }
@@ -473,6 +493,74 @@ impl<'ctx> IrLowerer<'ctx> {
                 }
             },
             None => Ok(ty),
+        }
+    }
+
+    /// Retrieve an existing type specialization or create a new one for the given generic type
+    fn specialize_fn(&mut self, module: IntermediateModuleId, file: FileId, span: Span, fun: FunId, args: &GenericArgs) -> Result<FunId, Diagnostic<FileId>> {
+        let args = IntermediateGenericArgs { args: args
+            .args
+            .iter()
+            .map(|arg| self.resolve_type(arg, module, file, span))
+            .collect::<Result<Vec<_>, _>>()?
+        };
+        match self.generic_funs.get(&fun) {
+            Some(specs) => match specs.specs.get(&args) {
+                Some(spec) => Ok(*spec),
+                None => {
+                    if args.args.len() != specs.params.len() {
+                        return Err(Diagnostic::error()
+                            .with_message(format!(
+                                "Incorrect number of generic arguments passed to function template {}; expected {}, got {}",
+                                self.ctx[fun].name,
+                                specs.params.len(),
+                                args.args.len(),
+                            ))
+                            .with_labels(vec![
+                                Label::primary(file, span)
+                            ])
+                        )
+                    }
+                    
+                    let bindings = args
+                        .args
+                        .iter()
+                        .zip(specs.params.iter())
+                        .map(|(arg, param)| (*param, *arg))
+                        .collect::<HashMap<_, _>>();
+                    
+                    let template = specs.template.clone();
+                    drop(specs);
+
+                    self
+                        .generic_args
+                        .push(bindings);
+                    
+                    let ty = self.resolve_fn_type(&template.proto.ty, module, file, span)?;
+                    
+                    let specialized = self.ctx.funs.insert(IrFun {
+                        file,
+                        span,
+                        name: self.ctx[fun].name.clone(),
+                        ty_id: self.ctx.types.insert(IrType::Fun(ty.clone())),
+                        ty,
+                        body: None,
+                        flags: template.proto.flags,
+                    });
+                    
+                    let old_bb = self.bb;
+                    self.lower_body(module, file, specialized, &template.body)?;
+                    self.bb = old_bb;
+                    self.generic_funs.get_mut(&fun).unwrap().specs.insert(args, specialized); 
+
+                    self
+                        .generic_args
+                        .pop();
+
+                    Ok(specialized)
+                }
+            },
+            None => Ok(fun),
         }
     }
 

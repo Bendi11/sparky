@@ -431,10 +431,10 @@ impl<'src> Parser<'src> {
                 TokenData::Comma,
             ];
 
-            let next = self.next_tok(EXPECTING_FOR_PARAM)?;
+            let next = self.peek_tok(EXPECTING_FOR_PARAM)?;
             match next.data {
-                TokenData::Comma => continue,
-                TokenData::Op(Op::Greater) => break,
+                TokenData::Comma => { self.toks.next(); continue },
+                TokenData::Op(Op::Greater) => { self.toks.next(); break },
                 _ => args.push(self.parse_typename()?),
             }
         }
@@ -602,13 +602,14 @@ impl<'src> Parser<'src> {
                     &[TokenData::Ident("Function name")];
 
                 let name = self.expect_next_path(EXPECTING_FOR_CALL)?;
+                let targs = self.parse_generic_args()?;
                 let args = self.parse_fun_args()?;
 
                 Ok(Stmt {
                     span: (peeked.span.from
                         ..args.last().map(|arg| arg.span.to).unwrap_or(peeked.span.to))
                         .into(),
-                    node: StmtNode::Call(name, args),
+                    node: StmtNode::Call(name, args, targs),
                 })
             }
             _ => Err(self.unexpected(peeked.span, peeked.clone(), EXPECTING_FOR_STMT)),

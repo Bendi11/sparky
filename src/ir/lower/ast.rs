@@ -257,10 +257,11 @@ impl<'ctx> IrLowerer<'ctx> {
                     });
                 }
             },
-            StmtNode::Call(ident, args) => {
+            StmtNode::Call(ident, args, targs) => {
                 let def = self.resolve_path(module, ident);
                 match def {
                     Some(IntermediateDefId::Fun(fun_id)) => {
+                        let fun_id = self.specialize_fn(module, file, stmt.span, fun_id, targs)?;
                         let fun_ty = self.ctx[fun_id].ty.clone();
                         let args = args
                             .iter()
@@ -324,11 +325,14 @@ impl<'ctx> IrLowerer<'ctx> {
         expr: &Expr,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         Ok(match &expr.node {
-            ExprNode::Access(pat, _) => match self.resolve_path(module, pat) {
-                Some(IntermediateDefId::Fun(fun_id)) => IrExpr {
-                    kind: IrExprKind::Fun(fun_id),
-                    ty: self.ctx[fun_id].ty_id,
-                    span: expr.span,
+            ExprNode::Access(pat, args) => match self.resolve_path(module, pat) {
+                Some(IntermediateDefId::Fun(fun_id)) => {
+                    let fun_id = self.specialize_fn(module, file, expr.span, fun_id, args)?;
+                    IrExpr {
+                        kind: IrExprKind::Fun(fun_id),
+                        ty: self.ctx[fun_id].ty_id,
+                        span: expr.span,
+                    }
                 },
                 _ => match self.lookup_var(&pat.last()) {
                     Some(var) if pat.len() == 1 => IrExpr {

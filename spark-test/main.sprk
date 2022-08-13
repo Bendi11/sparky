@@ -4,6 +4,28 @@ type test<T> = {
     i32 second
 }
 
-fun ext main(i32 argc, **u8 argv) {
+type none = ()
+type opt<T> = T | none
+
+type test_with_i32<T> = test:<T> | opt:<T>
+
+fun testing<T>() -> *T {
+    return $*T 0u64
+}
+
+fun ext main(i32 argc, **u8 argv) -> i32 {
+    let a = #test:<i32> {
+        first = 31,
+        second = 1
+    }
+
+    let b = #test:<*u8> {
+        first = *argv,
+        second = 12
+    }
     
+    testing:<i32>()
+    testing:<u64>()
+    testing:<i32>()
+    return 0
 }
