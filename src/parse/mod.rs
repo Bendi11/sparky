@@ -243,6 +243,7 @@ impl<'src> Parser<'src> {
                     };
 
                 let generic_params = self.parse_generic_params()?;
+                let generic_args = self.parse_generic_args()?;
 
                 self.trace
                     .push(format!("function declaration '{}'", name).into());
@@ -335,7 +336,7 @@ impl<'src> Parser<'src> {
                     Ok(Def {
                         file,
                         span: body.1,
-                        data: DefData::FunDef(FunDef { proto, body: body.0, params: generic_params } ),
+                        data: DefData::FunDef(FunDef { proto, body: body.0, params: generic_params, args: generic_args } ),
                     })
                 } else {
                     Ok(Def {

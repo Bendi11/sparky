@@ -8,7 +8,7 @@ use crate::{
     arena::{Arena, Index},
     ast::{
         DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType, GenericArgs, FunDef,
+        UnresolvedType, GenericArgs, FunDef, Stmt,
     },
     util::{
         files::FileId,
@@ -120,6 +120,7 @@ impl<'ctx> IrLowerer<'ctx> {
     pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         self.populate_forward_types_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
+        self.populate_fn_specs_impl(self.root_module, root)?;
         self.populate_fn_bodies_impl(self.root_module, root)?;
 
         Ok(())
@@ -194,12 +195,13 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::FunDef(FunDef { proto, body, .. }) => {
+                DefData::FunDef(FunDef { proto, body, args, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
                         if self.generic_funs.contains_key(&fun) {
                             continue
                         }
+
                         self.lower_body(module, def.file, fun, body)?;
                     } else {
                         panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
@@ -218,6 +220,42 @@ impl<'ctx> IrLowerer<'ctx> {
         }
 
         Ok(())
+    }
+    
+    /// Populate all function specializations that the user manually created
+    fn populate_fn_specs_impl(
+        &mut self,
+        module: IntermediateModuleId,
+        parsed: &ParsedModule,
+    ) -> Result<(), Diagnostic<FileId>> {
+        for def in parsed.defs.iter() {
+            match &def.data {
+                DefData::FunDef(FunDef { proto, args, body, .. }) => {
+                    let def_id = self.modules[module].defs[&proto.name];
+                    if let IntermediateDefId::Fun(fun) = def_id {
+                        if self.generic_funs.contains_key(&fun) {
+                            if !args.args.is_empty() {
+                                self.specialize_fn(module, def.file, def.span, fun, args, Some(&body))?;
+                            }
+                        }
+                    } else {
+                        panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        for child_parsed in parsed.children.iter() {
+            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
+                IntermediateDefId::Module(module) => *module,
+                _ => unreachable!(),
+            };
+            self.populate_fn_specs_impl(child_module, child_parsed)?;
+        }
+
+        Ok(())
+
     }
 
     /// Populate all type definitions and function declaratations
@@ -255,6 +293,10 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     if let Some(fundef) = fundef {
                         if !fundef.params.params.is_empty() {
+                            if !fundef.args.args.is_empty() {
+                                continue
+                            }
+
                             let ty = FunType {
                                 return_ty: IrContext::INVALID,
                                 params: vec![]
@@ -505,7 +547,7 @@ impl<'ctx> IrLowerer<'ctx> {
     }
 
     /// Retrieve an existing type specialization or create a new one for the given generic type
-    fn specialize_fn(&mut self, module: IntermediateModuleId, file: FileId, span: Span, fun: FunId, args: &GenericArgs) -> Result<FunId, Diagnostic<FileId>> {
+    fn specialize_fn(&mut self, module: IntermediateModuleId, file: FileId, span: Span, fun: FunId, args: &GenericArgs, body: Option<&[Stmt]>) -> Result<FunId, Diagnostic<FileId>> {
         let args = IntermediateGenericArgs { args: args
             .args
             .iter()
@@ -557,7 +599,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     });
                     
                     let old_bb = self.bb;
-                    self.lower_body(module, file, specialized, &template.body)?;
+                    self.lower_body(module, file, specialized, body.unwrap_or(&template.body))?;
                     self.bb = old_bb;
                     self.generic_funs.get_mut(&fun).unwrap().specs.insert(args, specialized); 
 

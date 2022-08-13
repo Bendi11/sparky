@@ -315,6 +315,8 @@ pub struct FunDef {
     pub proto: FunProto,
     pub body: Vec<Stmt>,
     pub params: GenericParams,
+    /// Generic arguments passed to the parameters, if this is a specialization
+    pub args: GenericArgs,
 }
 
 /// An enum representing all parseable definitions
