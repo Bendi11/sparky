@@ -17,6 +17,7 @@ fun testing<T>() -> *T {
 fun ext main(i32 argc, **u8 argv) -> i32 {
     let d = $identity:<i32> testing:<i32>
     let c = d(100)
+    return c
     let a = #test:<i32> {
         first = 31,
         second = 1

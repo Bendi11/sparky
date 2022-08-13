@@ -95,6 +95,14 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             }
         }
 
+        self
+            .state
+            .root
+            .verify()
+            .unwrap_or_else(|e| {
+                eprintln!("ICE: LLVM module verification failed: {}", e)
+            });
+
         let fpm = PassManager::create(&self.state.root);
         if opts.opt_lvl > OutputOptimizationLevel::Debug {
             fpm.add_instruction_combining_pass();
