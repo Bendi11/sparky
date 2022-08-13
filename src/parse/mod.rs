@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Let, Literal, Match, GenericParams, GenericArgs, FunDef},
+    ast::{BigInt, Let, Literal, Match, GenericParams, UnresolvedGenericArgs, FunDef},
     Symbol,
 };
 use smallvec::SmallVec;
@@ -413,13 +413,13 @@ impl<'src> Parser<'src> {
     }
     
     /// Parse arguments to a generic symbol
-    fn parse_generic_args(&mut self) -> ParseResult<'src, GenericArgs> {
+    fn parse_generic_args(&mut self) -> ParseResult<'src, UnresolvedGenericArgs> {
         let peek = self.toks.peek().map(|t| &t.data);
         if let Some(TokenData::Colon) = peek {
             self.toks.next();
             self.expect_next(&[TokenData::Op(Op::Less)])?;
         } else {
-            return Ok(GenericArgs{args:vec![]})
+            return Ok(UnresolvedGenericArgs{args:vec![]})
         }
         
         self.trace.push("generic type arguments".into());
@@ -442,7 +442,7 @@ impl<'src> Parser<'src> {
 
         self.trace.pop();
 
-        Ok(GenericArgs {
+        Ok(UnresolvedGenericArgs {
             args,
         })
 

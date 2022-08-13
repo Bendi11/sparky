@@ -208,7 +208,7 @@ pub enum StmtNode {
     /// Matching an enum based on its type
     Match(Match),
     /// Calling a function by name
-    Call(SymbolPath, Vec<Expr>, GenericArgs),
+    Call(SymbolPath, Vec<Expr>, UnresolvedGenericArgs),
     /// Break from something with a value
     Phi(Box<Expr>),
     /// Return a value from the currently defined function
@@ -227,7 +227,7 @@ pub enum StmtNode {
 #[derive(Clone, PartialEq, Eq)]
 pub enum ExprNode {
     /// Variable / function access by name or path
-    Access(SymbolPath, GenericArgs),
+    Access(SymbolPath, UnresolvedGenericArgs),
     /// Structure member access by field name
     Member(Box<Expr>, Symbol),
     /// Array-like index expression using '[' ']'
@@ -316,7 +316,7 @@ pub struct FunDef {
     pub body: Vec<Stmt>,
     pub params: GenericParams,
     /// Generic arguments passed to the parameters, if this is a specialization
-    pub args: GenericArgs,
+    pub args: UnresolvedGenericArgs,
 }
 
 /// An enum representing all parseable definitions
@@ -436,7 +436,7 @@ pub struct GenericParams {
 
 /// Container of generic type arguments given to a user-defined alias type or function
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct GenericArgs {
+pub struct UnresolvedGenericArgs {
     pub args: Vec<UnresolvedType>,
 }
 
@@ -486,7 +486,7 @@ pub enum UnresolvedType {
     UserDefined {
         /// The name of the user-defined type
         name: SymbolPath,
-        args: GenericArgs,
+        args: UnresolvedGenericArgs,
     },
 }
 

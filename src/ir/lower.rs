@@ -8,7 +8,7 @@ use crate::{
     arena::{Arena, Index},
     ast::{
         DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType, GenericArgs, FunDef, Stmt,
+        UnresolvedType, UnresolvedGenericArgs, FunDef, Stmt,
     },
     util::{
         files::FileId,
@@ -40,9 +40,9 @@ pub struct IrLowerer<'ctx> {
     /// Stack representing the current scope
     scope_stack: Vec<ScopePlate>,
     /// All generated generic type specializations
-    generic_types: HashMap<TypeId, GenericSpecializations<TypeId, UnresolvedType>>,
+    generic_types: HashMap<TypeId, GenericSpecializations<UnresolvedType>>,
     /// All generated generic function specializations
-    generic_funs: HashMap<FunId, GenericSpecializations<FunId, FunDef>>,
+    generic_funs: HashMap<FunId, GenericSpecializations<FunDef>>,
     /// Current type bindings for generic arguments
     generic_args: Vec<HashMap<Symbol, TypeId>>,
     /// Current basic block to generate code in
@@ -472,7 +472,6 @@ impl<'ctx> IrLowerer<'ctx> {
 
         Ok(FunType { return_ty, params })
     }
-        
     
     /// Resolve the path in the context of the given intermediate module
     #[inline]
