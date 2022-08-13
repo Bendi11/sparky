@@ -17,7 +17,7 @@ use crate::{
     Symbol,
 };
 
-use self::generic::GenericSpecializations;
+use self::generic::{GenericSpecializations, GenericBound};
 
 use super::{
     types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
@@ -40,9 +40,9 @@ pub struct IrLowerer<'ctx> {
     /// Stack representing the current scope
     scope_stack: Vec<ScopePlate>,
     /// All generated generic type specializations
-    generic_types: HashMap<TypeId, GenericSpecializations<UnresolvedType>>,
+    generic_types: HashMap<TypeId, GenericSpecializations<UnresolvedType, TypeId>>,
     /// All generated generic function specializations
-    generic_funs: HashMap<FunId, GenericSpecializations<FunDef>>,
+    generic_funs: HashMap<FunId, GenericSpecializations<FunDef, FunId>>,
     /// Current type bindings for generic arguments
     generic_args: Vec<HashMap<Symbol, TypeId>>,
     /// Current basic block to generate code in
@@ -139,7 +139,9 @@ impl<'ctx> IrLowerer<'ctx> {
                         .defs
                         .insert(name.clone(), IntermediateDefId::Type(ty));
                     if !params.params.is_empty() {
-                        self.generic_types.insert(ty, GenericSpecializations::new(*name, params.params.clone(), aliased.clone()));
+                        let mut specs = GenericSpecializations::new(*name, params.params.clone());
+                        specs.add_spec(vec![GenericBound::Any ; params.params.len()], aliased.clone());
+                        self.generic_types.insert(ty, specs);
                     }
                 }
                 _ => (),
@@ -216,12 +218,24 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::FunDef(FunDef { proto, args, body, .. }) => {
+                DefData::FunDef(d @ FunDef { proto, args, body, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
                         if self.generic_funs.contains_key(&fun) {
                             if !args.args.is_empty() {
-                                self.specialize_fn(module, def.file, def.span, fun, args, Some(&body))?;
+                                let args = args
+                                        .args
+                                        .iter()
+                                        .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
+                                            Ok(ty) => Ok(GenericBound::Is(ty)),
+                                            Err(e) => Err(e)
+                                        })
+                                        .collect::<Result<Vec<_>, _>>()?;
+
+                                self.generic_funs.get_mut(&fun).unwrap().add_spec(
+                                    args,
+                                    d.clone()
+                                );
                             }
                         }
                     } else {
@@ -278,11 +292,11 @@ impl<'ctx> IrLowerer<'ctx> {
                     };
 
                     if let Some(fundef) = fundef {
-                        if !fundef.params.params.is_empty() {
-                            if !fundef.args.args.is_empty() {
-                                continue
-                            }
+                        if !fundef.args.args.is_empty() {
+                            continue
+                        }
 
+                        if !fundef.params.params.is_empty() {
                             let ty = FunType {
                                 return_ty: IrContext::INVALID,
                                 params: vec![]
@@ -299,7 +313,9 @@ impl<'ctx> IrLowerer<'ctx> {
                             self.modules[module]
                                 .defs
                                 .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
-                            self.generic_funs.insert(fun, GenericSpecializations::new(proto.name, fundef.params.params.clone(), fundef.clone()));
+                            let mut specs = GenericSpecializations::new(proto.name, fundef.params.params.clone());
+                            specs.add_spec(vec![GenericBound::Any ; fundef.params.params.len()], fundef.clone());
+                            self.generic_funs.insert(fun, specs);
                             continue
                         }
                     }

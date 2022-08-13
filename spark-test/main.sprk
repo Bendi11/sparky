@@ -17,7 +17,7 @@ fun testing<T>() -> *T {
     return $*T 0u64
 }
 
-fun testing<T>:<i32>() -> *i32 {
+fun testing:<i32>() -> *i32 {
     puts("Hello from i32 function")
     return $*i32 0u64
 }
