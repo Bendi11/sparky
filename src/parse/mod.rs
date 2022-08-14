@@ -401,7 +401,6 @@ impl<'src> Parser<'src> {
                 
                 let (val, to) = if self.toks.peek().map(|t| matches!(t.data, TokenData::Assign)).unwrap_or(false) {
                     self.toks.next();
-                    self.expect_next(&[TokenData::Assign])?;
                     let expr = self.parse_expr()?;
                     let to = expr.span.to;
                     (Some(expr), to)

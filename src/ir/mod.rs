@@ -448,6 +448,18 @@ impl IndexMut<BBId> for IrContext {
     }
 }
 
+impl std::ops::Index<GlobalId> for IrContext {
+    type Output = IrGlobal;
+    fn index(&self, index: GlobalId) -> &Self::Output {
+        &self.globals[index]
+    }
+}
+impl IndexMut<GlobalId> for IrContext {
+    fn index_mut(&mut self, index: GlobalId) -> &mut Self::Output {
+        &mut self.globals[index]
+    }
+}
+
 impl std::fmt::Display for IrContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn fmt_bb(

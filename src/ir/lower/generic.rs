@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 
-use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
+use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
 
 use super::{IrLowerer, IntermediateModuleId};
 
@@ -126,23 +126,23 @@ impl<'ctx> IrLowerer<'ctx> {
         span: Span,
         glob: GlobalId,
         args: &UnresolvedGenericArgs
-    ) -> Result<TypeId, Diagnostic<FileId>> {
+    ) -> Result<GlobalId, Diagnostic<FileId>> {
         let args = GenericArgs { args: args
             .args
             .iter()
             .map(|arg| self.resolve_type(arg, module, file, span))
             .collect::<Result<Vec<_>, _>>()?
         };
-        match self.generic_globs.get(&ty) {
+        match self.generic_globs.get(&glob) {
             Some(ref specs) => match specs.specs.get(&args) {
-                Some(spec) if *spec != IrContext::INVALID => Ok(*spec),
+                Some(spec) => Ok(*spec),
                 _ => match specs.get(&args) {
                     Some(template) => {
                         if args.args.len() != specs.params.len() {
                             return Err(Diagnostic::error()
                                 .with_message(format!(
-                                    "Incorrect number of generic arguments passed to type template {}; expected {}, got {}",
-                                    self.ctx.typename(ty),
+                                    "Incorrect number of generic arguments passed to global variable template {}; expected {}, got {}",
+                                    self.ctx[glob].name,
                                     specs.params.len(),
                                     args.args.len(),
                                 ))
@@ -166,13 +166,14 @@ impl<'ctx> IrLowerer<'ctx> {
                         let name = specs.name.clone();
                         let template = template.template.clone();
                         drop(specs);
-                        let specialized = self.resolve_type(&template, module, file, span)?;
-                        let specialized = IrType::Alias {
+                        let specialized = self.lower_expr(module, file, self.global_setup_fun, &template)?;
+                        let specialized = IrGlobal {
                             name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
-                            ty: specialized
+                            ty: specialized.ty,
+                            ct_val: Some(specialized),
                         };
-                        let specialized = self.ctx.types.insert(specialized);
-                        self.generic_types.get_mut(&ty).unwrap().specs.insert(args, specialized); 
+                        let specialized = self.ctx.globals.insert(specialized);
+                        self.generic_globs.get_mut(&glob).unwrap().specs.insert(args, specialized); 
 
                         self
                             .generic_args
@@ -188,7 +189,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     )
                 }
             },
-            None => Ok(ty),
+            None => Ok(glob),
         }
     }
 

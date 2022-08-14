@@ -100,20 +100,23 @@ impl<'ctx> IrLowerer<'ctx> {
             return_ty: IrContext::UNIT,
             params: vec![]
         };
+        
+        let setup = IrFun {
+            name: Symbol::from("__global_setup"),
+            file: unsafe { FileId::from_raw(0) },
+            span: Span::from(0..0),
+            ty: setup_ty.clone(),
+            ty_id: ctx.types.insert(IrType::Fun(setup_ty)),
+            body: None,
+            flags: FunFlags::empty(),
+        };
+        let global_setup_fun = ctx.funs.insert(setup);
 
         Self {
             ctx,
             root_module,
             modules,
-            global_setup_fun: ctx.funs.insert(IrFun {
-                name: Symbol::from("__global_setup"),
-                file: unsafe { FileId::from_raw(0) },
-                span: Span::from(0..0),
-                ty: setup_ty.clone(),
-                ty_id: ctx.types.insert(IrType::Fun(setup_ty)),
-                body: None,
-                flags: FunFlags::empty(),
-            }),
+            global_setup_fun,
             scope_stack: Vec::new(),
             generic_types: HashMap::new(),
             generic_funs: HashMap::new(),
@@ -391,33 +394,36 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::Global { name, comptime, params, args, val, ty } => {
+                    let glob = if let IntermediateDefId::Global(glob) = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name)) {
+                        glob
+                    } else {
+                        unreachable!()
+                    };
+
                     if !params.params.is_empty() || !args.args.is_empty() {
+                        if !args.args.is_empty() {
+                            self.specialize_global(module, def.file, def.span, glob, args);
+                        }
                         continue
                     }
 
-                    let glob = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name));
-                    match glob {
-                        IntermediateDefId::Global(glob_id) => {
-                            let (ty, ct_val) = match val {
-                                Some(expr) => {
-                                    let expr = self.lower_expr(module, def.file, self.global_setup_fun, expr)?;
-                                    (expr.ty, Some(expr))
-                                },
-                                None => match ty {
-                                    Some(ty) => (self.resolve_type(ty, module, def.file, def.span)?, None),
-                                    None => return Err(Diagnostic::error()
-                                        .with_message(format!("Global with no declared type or assigned value"))
-                                        .with_labels(vec![
-                                            Label::primary(def.file, def.span)
-                                        ])
-                                    )
-                                }
-                            };
-                            self.ctx.globals[glob_id].ct_val = ct_val;
-                            self.ctx.globals[glob_id].ty = ty;
+                    let (ty, ct_val) = match val {
+                        Some(expr) => {
+                            let expr = self.lower_expr(module, def.file, self.global_setup_fun, expr)?;
+                            (expr.ty, Some(expr))
                         },
-                        _ => unreachable!(),
-                    }
+                        None => match ty {
+                            Some(ty) => (self.resolve_type(ty, module, def.file, def.span)?, None),
+                            None => return Err(Diagnostic::error()
+                                .with_message(format!("Global with no declared type or assigned value"))
+                                .with_labels(vec![
+                                    Label::primary(def.file, def.span)
+                                ])
+                            )
+                        }
+                    };
+                    self.ctx.globals[glob].ct_val = ct_val;
+                    self.ctx.globals[glob].ty = ty;
                 }
                 _ => (),
             }

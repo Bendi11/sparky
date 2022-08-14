@@ -1,5 +1,7 @@
 imp mod:spec
 
+glob a = 3
+
 type test<T> = {
     T first,
     i32 second
