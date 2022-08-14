@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 
-use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
+use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
 
 use super::{IrLowerer, IntermediateModuleId};
 
@@ -117,6 +117,81 @@ impl<'ctx> IrLowerer<'ctx> {
             None => Ok(ty),
         }
     }
+
+    /// Specialize a global value with the given type arguments
+    pub(super) fn specialize_global(
+        &mut self,
+        module: IntermediateModuleId,
+        file: FileId,
+        span: Span,
+        glob: GlobalId,
+        args: &UnresolvedGenericArgs
+    ) -> Result<TypeId, Diagnostic<FileId>> {
+        let args = GenericArgs { args: args
+            .args
+            .iter()
+            .map(|arg| self.resolve_type(arg, module, file, span))
+            .collect::<Result<Vec<_>, _>>()?
+        };
+        match self.generic_globs.get(&ty) {
+            Some(ref specs) => match specs.specs.get(&args) {
+                Some(spec) if *spec != IrContext::INVALID => Ok(*spec),
+                _ => match specs.get(&args) {
+                    Some(template) => {
+                        if args.args.len() != specs.params.len() {
+                            return Err(Diagnostic::error()
+                                .with_message(format!(
+                                    "Incorrect number of generic arguments passed to type template {}; expected {}, got {}",
+                                    self.ctx.typename(ty),
+                                    specs.params.len(),
+                                    args.args.len(),
+                                ))
+                                .with_labels(vec![
+                                    Label::primary(file, span)
+                                ])
+                            )
+                        }
+                        
+                        let bindings = args
+                            .args
+                            .iter()
+                            .zip(specs.params.iter())
+                            .map(|(arg, param)| (*param, *arg))
+                            .collect::<HashMap<_, _>>();
+
+                        self
+                            .generic_args
+                            .push(bindings);
+                        
+                        let name = specs.name.clone();
+                        let template = template.template.clone();
+                        drop(specs);
+                        let specialized = self.resolve_type(&template, module, file, span)?;
+                        let specialized = IrType::Alias {
+                            name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
+                            ty: specialized
+                        };
+                        let specialized = self.ctx.types.insert(specialized);
+                        self.generic_types.get_mut(&ty).unwrap().specs.insert(args, specialized); 
+
+                        self
+                            .generic_args
+                            .pop();
+
+                        Ok(specialized)
+                    },
+                    None => Err(Diagnostic::error()
+                        .with_message(format!("No generic template found matching arguments {}", self.ctx.generics(&args.args)))
+                        .with_labels(vec![
+                            Label::primary(file, span)
+                        ])
+                    )
+                }
+            },
+            None => Ok(ty),
+        }
+    }
+
 
     /// Retrieve an existing type specialization or create a new one for the given generic type
     pub(super) fn specialize_fn(

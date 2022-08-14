@@ -347,6 +347,7 @@ pub enum DefData {
         params: GenericParams,
         args: UnresolvedGenericArgs,
         val: Option<Expr>,
+        ty: Option<UnresolvedType>,
     }
 }
 impl DefData {

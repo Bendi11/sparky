@@ -370,6 +370,23 @@ impl<'src> Parser<'src> {
                 })
             },
             TokenData::Ident("glob") => {
+                const EXPECTING_AFTER_GLOB: &[TokenData<'static>] = &[
+                    TokenData::Ident("global name"),
+                    TokenData::OpenBracket(BracketType::Square),
+                ];
+
+                let next = self.peek_tok(EXPECTING_AFTER_GLOB)?.clone();
+
+                let ty = match next.data {
+                    TokenData::OpenBracket(BracketType::Square) => {
+                        self.toks.next();
+                        let typename = self.parse_typename()?;
+                        self.expect_next(&[TokenData::CloseBracket(BracketType::Square)])?;
+                        Some(typename)
+                    }
+                    _ => None,
+                };
+
                 let comptime = if self.toks.peek().map(|t| matches!(t.data, TokenData::Ident("ct"))).unwrap_or(false) {
                     self.toks.next();
                     true
@@ -401,6 +418,7 @@ impl<'src> Parser<'src> {
                         val,
                         params,
                         args,
+                        ty,
                     },
                     file,
                 })

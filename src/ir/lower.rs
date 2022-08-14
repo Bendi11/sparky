@@ -8,7 +8,7 @@ use crate::{
     arena::{Arena, Index},
     ast::{
         DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType, UnresolvedGenericArgs, FunDef, Stmt,
+        UnresolvedType, UnresolvedGenericArgs, FunDef, Stmt, Expr,
     },
     util::{
         files::FileId,
@@ -21,7 +21,7 @@ use self::generic::{GenericSpecializations, GenericBound};
 
 use super::{
     types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
-    BBId, FunId, IrContext, IrFun, TypeId, VarId,
+    BBId, FunId, IrContext, IrFun, TypeId, VarId, GlobalId, IrGlobal,
 };
 
 pub mod ast;
@@ -43,8 +43,12 @@ pub struct IrLowerer<'ctx> {
     generic_types: HashMap<TypeId, GenericSpecializations<UnresolvedType, TypeId>>,
     /// All generated generic function specializations
     generic_funs: HashMap<FunId, GenericSpecializations<FunDef, FunId>>,
+    /// Generic global values
+    generic_globs: HashMap<GlobalId, GenericSpecializations<Expr, GlobalId>>,
     /// Current type bindings for generic arguments
     generic_args: Vec<HashMap<Symbol, TypeId>>,
+    /// Function for setting up global values
+    global_setup_fun: FunId,
     /// Current basic block to generate code in
     bb: Option<BBId>,
 }
@@ -73,6 +77,8 @@ pub enum IntermediateDefId {
     Fun(FunId),
     /// Child module
     Module(IntermediateModuleId),
+    /// Global value
+    Global(GlobalId),
 }
 
 /// Data only used by the [IrLowerer] in order to save what symbols are defined in each
@@ -89,14 +95,29 @@ impl<'ctx> IrLowerer<'ctx> {
     pub fn new(ctx: &'ctx mut IrContext, name: Symbol) -> Self {
         let mut modules = Arena::new();
         let root_module = modules.insert(IntermediateModule::new(name));
+        
+        let setup_ty = FunType {
+            return_ty: IrContext::UNIT,
+            params: vec![]
+        };
 
         Self {
             ctx,
             root_module,
             modules,
+            global_setup_fun: ctx.funs.insert(IrFun {
+                name: Symbol::from("__global_setup"),
+                file: unsafe { FileId::from_raw(0) },
+                span: Span::from(0..0),
+                ty: setup_ty.clone(),
+                ty_id: ctx.types.insert(IrType::Fun(setup_ty)),
+                body: None,
+                flags: FunFlags::empty(),
+            }),
             scope_stack: Vec::new(),
             generic_types: HashMap::new(),
             generic_funs: HashMap::new(),
+            generic_globs: HashMap::new(),
             generic_args: vec![],
             bb: None,
         }
@@ -106,6 +127,7 @@ impl<'ctx> IrLowerer<'ctx> {
     pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         self.populate_forward_types_impl(self.root_module, root)?;
         self.populate_forward_type_specs_impl(self.root_module, root)?;
+        self.populate_global_forwards_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
         self.populate_fn_specs_impl(self.root_module, root)?;
         self.populate_fn_bodies_impl(self.root_module, root)?;
@@ -262,7 +284,54 @@ impl<'ctx> IrLowerer<'ctx> {
 
         Ok(())
     }
-    
+   
+    fn populate_global_forwards_impl(
+        &mut self,
+        module: IntermediateModuleId,
+        parsed: &ParsedModule,
+    ) -> Result<(), Diagnostic<FileId>> {
+        for def in parsed.defs.iter() {
+            match &def.data {
+                DefData::Global { name, comptime, params, args, val, ty } => {
+                    if !args.args.is_empty() { continue }
+                    
+                    let global = IrGlobal {
+                        ty: IrContext::INVALID,
+                        name: name.last(),
+                        ct_val: None,
+                    };
+
+                    let global_id = self.ctx.globals.insert(global);
+
+                    self
+                        .modules[module]
+                        .defs
+                        .insert(name.last(), IntermediateDefId::Global(global_id));
+
+                    if !params.params.is_empty() {
+                        let mut specs = GenericSpecializations::new(name.last(), params.params.clone());
+                        if let Some(expr) = val {
+                            specs.add_spec(vec![GenericBound::Any ; params.params.len()], expr.clone());
+                        }
+                        self.generic_globs.insert(global_id, specs);
+                    }
+                },
+                _ => (),
+            }
+        }
+
+        for child_parsed in parsed.children.iter() {
+            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
+                IntermediateDefId::Module(module) => *module,
+                _ => unreachable!(),
+            };
+            self.populate_global_forwards_impl(child_module, child_parsed)?;
+        }
+
+        Ok(())
+
+    }
+
     /// Populate all function specializations that the user manually created
     fn populate_fn_specs_impl(
         &mut self,
@@ -312,6 +381,57 @@ impl<'ctx> IrLowerer<'ctx> {
 
         Ok(())
 
+    }
+
+    fn populate_global_defs_impl(
+        &mut self,
+        module: IntermediateModuleId,
+        parsed: &ParsedModule,
+    ) -> Result<(), Diagnostic<FileId>> {
+        for def in parsed.defs.iter() {
+            match &def.data {
+                DefData::Global { name, comptime, params, args, val, ty } => {
+                    if !params.params.is_empty() || !args.args.is_empty() {
+                        continue
+                    }
+
+                    let glob = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name));
+                    match glob {
+                        IntermediateDefId::Global(glob_id) => {
+                            let (ty, ct_val) = match val {
+                                Some(expr) => {
+                                    let expr = self.lower_expr(module, def.file, self.global_setup_fun, expr)?;
+                                    (expr.ty, Some(expr))
+                                },
+                                None => match ty {
+                                    Some(ty) => (self.resolve_type(ty, module, def.file, def.span)?, None),
+                                    None => return Err(Diagnostic::error()
+                                        .with_message(format!("Global with no declared type or assigned value"))
+                                        .with_labels(vec![
+                                            Label::primary(def.file, def.span)
+                                        ])
+                                    )
+                                }
+                            };
+                            self.ctx.globals[glob_id].ct_val = ct_val;
+                            self.ctx.globals[glob_id].ty = ty;
+                        },
+                        _ => unreachable!(),
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        for child_parsed in parsed.children.iter() {
+            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
+                IntermediateDefId::Module(module) => *module,
+                _ => unreachable!(),
+            };
+            self.populate_global_defs_impl(child_module, child_parsed)?;
+        }
+
+        Ok(())
     }
 
     /// Populate all type definitions and function declaratations

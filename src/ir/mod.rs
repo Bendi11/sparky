@@ -32,6 +32,8 @@ pub struct IrContext {
     pub bbs: Arena<IrBB>,
     /// All variables in the program
     pub vars: Arena<IrVar>,
+    /// All global values in the program
+    pub globals: Arena<IrGlobal>,
 }
 
 /// ID referencing an [IrType] in an [IrContext]
@@ -49,6 +51,9 @@ pub type FunId = Index<IrFun>;
 /// ID referencing an [IrType::Type] that is an enum discriminant in an [Ir::Sum]
 pub type DiscriminantId = TypeId;
 
+/// ID referencing an [IrGlobal]
+pub type GlobalId = Index<IrGlobal>;
+
 /// A single basic block in the IR containing a list of statements
 #[derive(Clone, Debug)]
 pub struct IrBB {
@@ -65,6 +70,17 @@ pub struct IrVar {
     pub ty: TypeId,
     /// User-asigned name of the variable
     pub name: Symbol,
+}
+
+/// A global variable
+#[derive(Clone, Debug)]
+pub struct IrGlobal {
+    /// Type of the global value
+    pub ty: TypeId,
+    /// Name of this global
+    pub name: Symbol,
+    /// Optional compile-time value assigned to this global
+    pub ct_val: Option<IrExpr>,
 }
 
 /// Function with source location information and optional body
@@ -249,6 +265,7 @@ impl IrContext {
             funs: Arena::new(),
             bbs: Arena::new(),
             vars: Arena::new(),
+            globals: Arena::new(),
         }
     }
 
