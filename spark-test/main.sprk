@@ -14,9 +14,8 @@ fun ext puts(*u8)
 
 type test_with_i32<T> = test:<T> | opt:<T>
 
-fun testing<T>() -> *T
 
-fun testing:<i32>() -> *i32 {
+fun testing<T>:<i32>() -> *i32 {
     puts("Hello from i32 function")
     return $*i32 0u64
 }
@@ -25,8 +24,6 @@ fun testing:<u64>() -> *u64 {
     puts("Hello from generic function")
     return $*u64 0u64
 }
-
-
 
 fun unwrap<T>(opt:<T> opt) -> T {
     return match opt {

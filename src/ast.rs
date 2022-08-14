@@ -340,6 +340,14 @@ pub enum DefData {
     },
     /// An imported module definition
     ImportDef { name: SymbolPath },
+    /// A global value
+    Global {
+        name: SymbolPath,
+        comptime: bool,
+        params: GenericParams,
+        args: UnresolvedGenericArgs,
+        val: Option<Expr>,
+    }
 }
 impl DefData {
     /// Get the name of this definition
@@ -348,6 +356,7 @@ impl DefData {
             Self::FunDef(FunDef{ proto, ..} ) | Self::FunDec(proto) => proto.name,
             Self::AliasDef { name, .. } => *name,
             Self::ImportDef { name } => name.last(),
+            Self::Global { name, .. } => name.last(),
         }
     }
 }

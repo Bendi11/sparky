@@ -1,0 +1,12 @@
+
+type vec<T> = {
+    *T data,
+    u32 len,
+    u32 cap,
+}
+
+fun new<T>() -> vec:<T> {
+    return #vec:<T> {
+        data = $*T 0
+    }
+}

@@ -368,6 +368,42 @@ impl<'src> Parser<'src> {
                     },
                     file,
                 })
+            },
+            TokenData::Ident("glob") => {
+                let comptime = if self.toks.peek().map(|t| matches!(t.data, TokenData::Ident("ct"))).unwrap_or(false) {
+                    self.toks.next();
+                    true
+                } else {
+                    false
+                };
+                
+                let name = self.expect_next_path(&[TokenData::Ident("Global value name")])?;
+                self.trace.push("global value definition".into());
+                let params = self.parse_generic_params()?;
+                let args = self.parse_generic_args()?;
+                
+                let (val, to) = if self.toks.peek().map(|t| matches!(t.data, TokenData::Assign)).unwrap_or(false) {
+                    self.toks.next();
+                    self.expect_next(&[TokenData::Assign])?;
+                    let expr = self.parse_expr()?;
+                    let to = expr.span.to;
+                    (Some(expr), to)
+                } else {
+                    (None, next.span.to)
+                };
+                
+                self.trace.pop();
+                Ok(Def {
+                    span: (next.span.from..to).into(),
+                    data: DefData::Global {
+                        name,
+                        comptime,
+                        val,
+                        params,
+                        args,
+                    },
+                    file,
+                })
             }
             _ => Err(ParseError {
                 highlighted_span: Some(next.span),
