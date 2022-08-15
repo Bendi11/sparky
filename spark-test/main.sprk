@@ -1,6 +1,7 @@
 imp mod:spec
 
-glob a = 3
+glob a<T> = 3
+glob[**u8] b<T> = "testing"
 
 type test<T> = {
     T first,
@@ -46,6 +47,8 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
     let optional = $opt:<i32> 100
     let unwrapped = $i32 optional
     let unwrapped = unwrap:<i32>(optional)
+
+    puts(b:<i32>)
 
     testing:<i32>()
     testing:<u64>()

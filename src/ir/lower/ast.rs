@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use crate::{
     ast::{
         ElseExpr, Expr, ExprNode, If, IntegerWidth, Literal, Match, NumberLiteral,
-        NumberLiteralAnnotation, Stmt, StmtNode,
+        NumberLiteralAnnotation, Stmt, StmtNode, DefData,
     },
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
@@ -332,6 +332,14 @@ impl<'ctx> IrLowerer<'ctx> {
                         kind: IrExprKind::Fun(fun_id),
                         ty: self.ctx[fun_id].ty_id,
                         span: expr.span,
+                    }
+                },
+                Some(IntermediateDefId::Global(g)) => {
+                    let g = self.specialize_global(module, file, expr.span, g, args)?;
+                    IrExpr {
+                        span: expr.span,
+                        ty: self.ctx[g].ty,
+                        kind: IrExprKind::Global(g)
                     }
                 },
                 _ => match self.lookup_var(&pat.last()) {

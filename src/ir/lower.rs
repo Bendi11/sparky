@@ -21,7 +21,7 @@ use self::generic::{GenericSpecializations, GenericBound};
 
 use super::{
     types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
-    BBId, FunId, IrContext, IrFun, TypeId, VarId, GlobalId, IrGlobal,
+    BBId, FunId, IrContext, IrFun, TypeId, VarId, GlobalId, IrGlobal, IrBB, IrTerminator, value::{IrExpr, IrExprKind, IrLiteral}, IrBody, IrStmt, IrStmtKind,
 };
 
 pub mod ast;
@@ -101,6 +101,14 @@ impl<'ctx> IrLowerer<'ctx> {
             params: vec![]
         };
         
+        let entry = ctx.bbs.insert(IrBB {
+            stmts: vec![],
+            terminator: IrTerminator::Return(IrExpr {
+                span: Span::from(0..0),
+                kind: IrExprKind::Lit(IrLiteral::Unit),
+                ty: IrContext::UNIT,
+            }),
+        });
         let setup = IrFun {
             name: Symbol::from("__global_setup"),
             file: unsafe { FileId::from_raw(0) },
@@ -111,6 +119,11 @@ impl<'ctx> IrLowerer<'ctx> {
             flags: FunFlags::empty(),
         };
         let global_setup_fun = ctx.funs.insert(setup);
+        ctx.funs[global_setup_fun].body = Some(IrBody {
+            parent: global_setup_fun,
+            entry,
+            args: vec![]
+        });  
 
         Self {
             ctx,
@@ -131,6 +144,7 @@ impl<'ctx> IrLowerer<'ctx> {
         self.populate_forward_types_impl(self.root_module, root)?;
         self.populate_forward_type_specs_impl(self.root_module, root)?;
         self.populate_global_forwards_impl(self.root_module, root)?;
+        self.populate_global_defs_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
         self.populate_fn_specs_impl(self.root_module, root)?;
         self.populate_fn_bodies_impl(self.root_module, root)?;
@@ -391,6 +405,7 @@ impl<'ctx> IrLowerer<'ctx> {
         module: IntermediateModuleId,
         parsed: &ParsedModule,
     ) -> Result<(), Diagnostic<FileId>> {
+        self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::Global { name, comptime, params, args, val, ty } => {
@@ -402,14 +417,28 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     if !params.params.is_empty() || !args.args.is_empty() {
                         if !args.args.is_empty() {
-                            self.specialize_global(module, def.file, def.span, glob, args);
+                            self.specialize_global(module, def.file, def.span, glob, args)?;
                         }
                         continue
                     }
 
                     let (ty, ct_val) = match val {
                         Some(expr) => {
+                            self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
                             let expr = self.lower_expr(module, def.file, self.global_setup_fun, expr)?;
+                            self.ctx[self.bb.unwrap()].stmts.push(IrStmt {
+                                span: Span::from(0..0),
+                                kind: IrStmtKind::Write {
+                                    ptr: IrExpr {
+                                        span: Span::from(0..0),
+                                        ty: expr.ty,
+                                        kind: IrExprKind::Global(glob),
+                                    },
+                                    val: expr.clone(),
+                                }
+                            });
+
+
                             (expr.ty, Some(expr))
                         },
                         None => match ty {

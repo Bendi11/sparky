@@ -7,7 +7,7 @@ use inkwell::{
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetData},
     types::{BasicType, BasicTypeEnum, FunctionType, IntType},
-    values::{FunctionValue, PointerValue, BasicValue},
+    values::{FunctionValue, PointerValue, BasicValue, GlobalValue},
     AddressSpace, OptimizationLevel, data_layout::{DataLayout, self},
 };
 
@@ -41,6 +41,7 @@ pub struct LLVMCodeGeneratorState<'llvm> {
     llvm_types: Arena<BasicTypeEnum<'llvm>>,
     llvm_vars: Arena<Option<PointerValue<'llvm>>>,
     llvm_bbs: HashMap<BBId, BasicBlock<'llvm>>,
+    llvm_globs: Arena<GlobalValue<'llvm>>,
 }
 
 impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
@@ -75,6 +76,19 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             )
             .unwrap();
         let target_data = target_machine.get_target_data();
+
+        let llvm_types = irctx
+            .types
+            .secondary(|(_, ty)| Self::gen_type(ctx, &target_data, irctx, ty));
+
+        
+        let llvm_globs = irctx
+            .globals
+            .secondary(|(_, glob)| {
+                let ty = *llvm_types.get_secondary(glob.ty);
+                root.add_global(ty, Some(AddressSpace::Const), "glob")
+            });
+
         Self {
             state: LLVMCodeGeneratorState {
                 llvm_funs: irctx.funs.secondary(|(_, fun)| {
@@ -90,9 +104,8 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                         Some(Linkage::External),
                     )
                 }),
-                llvm_types: irctx
-                    .types
-                    .secondary(|(_, ty)| Self::gen_type(ctx, &target_data, irctx, ty)),
+                llvm_types,
+                llvm_globs,
                 llvm_vars: irctx.vars.secondary(|_| None),
                 llvm_bbs: HashMap::new(),
                 ctx,

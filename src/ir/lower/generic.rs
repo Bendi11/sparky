@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 
-use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
+use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal, IrStmt, IrStmtKind, value::{IrExpr, IrExprKind}}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
 
 use super::{IrLowerer, IntermediateModuleId};
 
@@ -166,7 +166,20 @@ impl<'ctx> IrLowerer<'ctx> {
                         let name = specs.name.clone();
                         let template = template.template.clone();
                         drop(specs);
+                        let old_bb = self.bb;
+                        self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
                         let specialized = self.lower_expr(module, file, self.global_setup_fun, &template)?;
+                        self.ctx[self.bb.unwrap()].stmts.push(IrStmt {
+                            span: Span::from(0..0),
+                            kind: IrStmtKind::Write {
+                                ptr: IrExpr {
+                                    span: Span::from(0..0),
+                                    ty: specialized.ty,
+                                    kind: IrExprKind::Global(glob),
+                                },
+                                val: specialized.clone(),
+                            }
+                        });
                         let specialized = IrGlobal {
                             name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
                             ty: specialized.ty,
@@ -175,6 +188,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         let specialized = self.ctx.globals.insert(specialized);
                         self.generic_globs.get_mut(&glob).unwrap().specs.insert(args, specialized); 
 
+                        self.bb = old_bb;
                         self
                             .generic_args
                             .pop();

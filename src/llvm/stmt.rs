@@ -21,12 +21,12 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
 
         match &irctx[bb].terminator {
             IrTerminator::Return(v) => {
-                if v.ty != IrContext::UNIT {
+                //if v.ty != IrContext::UNIT {
                     let return_val = self.gen_expr(irctx, &v);
                     self.build.build_return(Some(&return_val));
-                } else {
+                /*} else {
                     self.build.build_return(None);
-                }
+                }*/
             }
             IrTerminator::Jmp(bb) => match self.llvm_bbs.get(bb) {
                 Some(new_bb) => {

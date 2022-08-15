@@ -2,7 +2,7 @@ use crate::{ast::BigInt, parse::token::Op, util::loc::Span, Symbol};
 
 use super::{
     types::{IrFloatType, IrIntegerType},
-    FunId, TypeId, VarId,
+    FunId, TypeId, VarId, GlobalId,
 };
 
 /// Structure containing an [IrExprKind] plus location data for error messages
@@ -33,6 +33,8 @@ pub enum IrLiteral {
 pub enum IrExprKind {
     /// Variable access with the ID of the variable
     Var(VarId),
+    /// Global variable access
+    Global(GlobalId),
     /// A literal value
     Lit(IrLiteral),
     /// Binary expression

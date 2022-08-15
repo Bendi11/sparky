@@ -35,10 +35,10 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
     ///Generate LLVM bytecode for a single IR expression
     pub fn gen_expr(&mut self, irctx: &IrContext, expr: &IrExpr) -> BasicValueEnum<'llvm> {
         match &expr.kind {
-            IrExprKind::Var(..) => {
+            IrExprKind::Var(..) | IrExprKind::Global(..) => {
                 let alloca = self.gen_lval(irctx, expr);
                 self.build.build_load(alloca, "var_load")
-            }
+            },
             IrExprKind::Lit(lit) => match lit {
                 IrLiteral::Integer(v, ty) => self
                     .ctx
@@ -158,6 +158,10 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 .llvm_vars
                 .get_secondary(*v)
                 .unwrap_or_else(|| panic!("Unknown variable {}", irctx[*v].name)),
+            IrExprKind::Global(g) => self
+                .llvm_globs
+                .get_secondary(*g)
+                .as_pointer_value(),
             IrExprKind::Fun(f) => self
                 .llvm_funs
                 .get_secondary(*f)
