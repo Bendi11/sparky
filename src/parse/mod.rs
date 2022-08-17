@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Let, Literal, Match, GenericParams, UnresolvedGenericArgs, FunDef},
+    ast::{BigInt, Let, Literal, Match, GenericParams, UnresolvedGenericArgs, FunDef, UnresolvedGenericBound},
     Symbol,
 };
 use smallvec::SmallVec;
@@ -454,7 +454,22 @@ impl<'src> Parser<'src> {
 
             let next = self.next_tok(EXPECTING_FOR_PARAM)?;
             match next.data {
-                TokenData::Ident(name) => params.push(self.symbol(name)),
+                TokenData::Ident(name) => {
+                    let name = self.symbol(name);
+                    let peeked = self.peek_tok(EXPECTING_FOR_PARAM)?;
+                    let bound = match peeked.data {
+                        TokenData::Assign => {
+                            self.toks.next();
+                            UnresolvedGenericBound::Is(self.parse_typename()?)
+                        },
+                        TokenData::Colon => {
+                            self.toks.next();
+                            UnresolvedGenericBound::Can(self.parse_expr()?)
+                        },
+                        _ => UnresolvedGenericBound::Any,
+                    };
+                    params.push((name, bound))
+                },
                 TokenData::Comma => continue,
                 TokenData::Op(Op::Greater) => break,
                 _ => return Err(self.unexpected(next.span, next, EXPECTING_FOR_PARAM)),

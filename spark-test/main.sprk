@@ -19,7 +19,7 @@ type test<T> = {
 
 type none = ()
 type opt<T> = T | none
-type opt:<u64> = none
+type opt<T = u64> = none
 type identity<T> = fun(T) -> T
 
 fun ext puts(*u8)
@@ -56,7 +56,6 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
     let optional = $opt:<i32> 100
     let unwrapped = $i32 optional
     let unwrapped = unwrap:<i32>(optional)
-
     let test = b:<i32>
     testing:<i32>()
     testing:<u64>()

@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 
-use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal, IrStmt, IrStmtKind, value::{IrExpr, IrExprKind}}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs}};
+use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal, IrStmt, IrStmtKind, value::{IrExpr, IrExprKind}}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs, Expr}};
 
 use super::{IrLowerer, IntermediateModuleId};
 
@@ -14,8 +14,10 @@ pub struct GenericArgs {
 }
 
 /// A bound that can be placed on a generic type parameter
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone,)]
 pub enum GenericBound {
+    /// Test if the given expression is valid
+    Can(Expr),
     /// Type must be equal to the given type
     Is(TypeId),
     /// There is no bound on the given type
@@ -23,7 +25,7 @@ pub enum GenericBound {
 }
 
 /// A collection of [IntermediateGenericBound]s that limit the parameters of a generic value
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct GenericTemplate<T> {
     /// The bounds for this template to be applied
     pub(super) params: Vec<GenericBound>,
@@ -31,6 +33,7 @@ pub struct GenericTemplate<T> {
 }
 
 /// Structure containing multiple specializations of a generic templated value
+#[derive(Clone)]
 pub struct GenericSpecializations<Template, Value> {
     /// Name of this template
     pub name: Symbol,
@@ -59,11 +62,14 @@ impl<'ctx> IrLowerer<'ctx> {
             .map(|arg| self.resolve_type(arg, module, file, span))
             .collect::<Result<Vec<_>, _>>()?
         };
-        match self.generic_types.get(&ty) {
-            Some(ref specs) => match specs.specs.get(&args) {
+
+        let specs = self.generic_types.get(&ty).cloned();
+        match specs {
+            Some(specs) => match specs.specs.get(&args) {
                 Some(spec) if *spec != IrContext::INVALID => Ok(*spec),
-                _ => match specs.get(&args) {
+                _ => match self.get(module, file, &specs, &args) {
                     Some(template) => {
+                        let template = template.clone();
                         if args.args.len() != specs.params.len() {
                             return Err(Diagnostic::error()
                                 .with_message(format!(
@@ -133,11 +139,14 @@ impl<'ctx> IrLowerer<'ctx> {
             .map(|arg| self.resolve_type(arg, module, file, span))
             .collect::<Result<Vec<_>, _>>()?
         };
-        match self.generic_globs.get(&glob) {
-            Some(ref specs) => match specs.specs.get(&args) {
+
+        let specs = self.generic_globs.get(&glob).cloned();
+        match specs {
+            Some(specs) => match specs.specs.get(&args) {
                 Some(spec) => Ok(*spec),
-                _ => match specs.get(&args) {
+                _ => match self.get(module, file, &specs, &args) {
                     Some(template) => {
+                        let template = template.clone();
                         if args.args.len() != specs.params.len() {
                             return Err(Diagnostic::error()
                                 .with_message(format!(
@@ -223,11 +232,14 @@ impl<'ctx> IrLowerer<'ctx> {
             .map(|arg| self.resolve_type(arg, module, file, span))
             .collect::<Result<Vec<_>, _>>()?
         };
-        match self.generic_funs.get(&fun) {
+
+        let specs = self.generic_funs.get(&fun).cloned();
+        match specs {
             Some(specs) => match specs.specs.get(&args) {
                 Some(spec) => Ok(*spec),
-                None => match specs.get(&args) {
+                None => match self.get(module, file, &specs, &args) {
                     Some(template) => {
+                        let template = template.clone();
                         if args.args.len() != specs.params.len() {
                             return Err(Diagnostic::error()
                                 .with_message(format!(
@@ -304,20 +316,7 @@ impl<'ctx> IrLowerer<'ctx> {
 }
 
 impl<T, V> GenericSpecializations<T, V> {
-    /// Get a template for the given template arguments
-    pub fn get(&self, args: &GenericArgs) -> Option<&GenericTemplate<T>> {
-        let mut best_score = None;
-        for spec in self.templates.iter() {
-            if spec.matches(args) {
-                if best_score.map(|(score, _)| score < spec.ord()).unwrap_or(true) {
-                    best_score = Some((spec.ord(), spec));
-                }
-            }
-        }
-
-        best_score.map(|(_, spec)| spec)
-    }
-    
+        
     /// Create a new empty group of generic specializations
     pub fn new(name: Symbol, params: Vec<Symbol>) -> Self {
         Self {
@@ -336,30 +335,57 @@ impl<T, V> GenericSpecializations<T, V> {
 }
 
 impl<T> GenericTemplate<T> {
+    
+}
+
+impl<'ctx> IrLowerer<'ctx> {
+    
+
+    /// Get a template for the given template arguments
+    pub fn get<'a, T, V>(&'a mut self, module: IntermediateModuleId, file: FileId, specs: &'a GenericSpecializations<T, V>, args: &GenericArgs) -> Option<&'a GenericTemplate<T>> {
+        let mut best_score = None;
+        for spec in specs.templates.iter() {
+            if self.matches(module, file, spec, args) {
+                if best_score.map(|(score, _)| score < spec.ord()).unwrap_or(true) {
+                    best_score = Some((spec.ord(), spec));
+                }
+            }
+        }
+
+        best_score.map(|(_, spec)| spec)
+    }
+
+
+    /// Check if the given type is accepted by this bound
+    pub fn matches_bound(&mut self, module: IntermediateModuleId, file: FileId, bound: &GenericBound, ty: TypeId) -> bool {
+        match bound {
+            GenericBound::Can(expr) => {
+                let old_bb = self.bb;
+                self.bb = Some(self.ctx[self.tmp_fun].body.as_ref().unwrap().entry);
+                let good = self.lower_expr(module, file, self.tmp_fun, expr).is_ok();
+                self.bb = old_bb;
+                good
+            }
+            GenericBound::Is(other) => *other == ty,
+            GenericBound::Any => true,
+        }
+    }
+
     /// Check if this group of bounds allows the given arguments
-    pub fn matches(&self, args: &GenericArgs) -> bool {
-        args.args.len() == self.params.len() &&
-        self
+    pub fn matches<T>(&mut self, module: IntermediateModuleId, file: FileId, template: &GenericTemplate<T>, args: &GenericArgs) -> bool {
+        args.args.len() == template.params.len() &&
+        template
             .params
             .iter()
             .zip(args.args.iter())
-            .all(|(p, a)| p.matches(*a))
-    }
-}
-
-impl GenericBound {
-    /// Check if the given type is accepted by this bound
-    pub fn matches(&self, ty: TypeId) -> bool {
-        match self {
-            Self::Is(other) => *other == ty,
-            Self::Any => true,
-        }
+            .all(|(p, a)| self.matches_bound(module, file, p, *a))
     }
 }
 
 impl GenericBound {
     pub(super) const fn ord(&self) -> usize {
         match self {
+            Self::Can(..) => 1,
             Self::Is(..) => 1,
             Self::Any => 0,
         }
@@ -376,17 +402,6 @@ impl<T> GenericTemplate<T> {
     }
 }
 
-impl PartialOrd for GenericBound {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.ord().partial_cmp(&other.ord()) 
-    } 
-}
-
-impl Ord for GenericBound {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.ord().cmp(&other.ord())
-    }
-}
 
 impl<T> PartialEq for GenericTemplate<T> {
     fn eq(&self, other: &Self) -> bool {

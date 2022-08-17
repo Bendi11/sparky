@@ -8,7 +8,7 @@ use crate::{
     arena::{Arena, Index},
     ast::{
         DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType, UnresolvedGenericArgs, FunDef, Stmt, Expr,
+        UnresolvedType, UnresolvedGenericArgs, FunDef, Stmt, Expr, UnresolvedGenericBound,
     },
     util::{
         files::FileId,
@@ -49,6 +49,8 @@ pub struct IrLowerer<'ctx> {
     generic_args: Vec<HashMap<Symbol, TypeId>>,
     /// Function for setting up global values
     global_setup_fun: FunId,
+    /// Function for checking an expression's validity
+    tmp_fun: FunId,
     /// Current basic block to generate code in
     bb: Option<BBId>,
 }
@@ -101,16 +103,26 @@ impl<'ctx> IrLowerer<'ctx> {
             params: vec![]
         };
         
-        let entry = ctx.bbs.insert(IrBB {
+        let entry = IrBB {
             stmts: vec![],
             terminator: IrTerminator::Return(IrExpr {
                 span: Span::from(0..0),
                 kind: IrExprKind::Lit(IrLiteral::Unit),
                 ty: IrContext::UNIT,
             }),
-        });
+        };
         let setup = IrFun {
             name: Symbol::from("__global_setup"),
+            file: unsafe { FileId::from_raw(0) },
+            span: Span::from(0..0),
+            ty: setup_ty.clone(),
+            ty_id: ctx.types.insert(IrType::Fun(setup_ty.clone())),
+            body: None,
+            flags: FunFlags::empty(),
+        };
+        
+        let tmp = IrFun {
+            name: Symbol::from("__tmp"),
             file: unsafe { FileId::from_raw(0) },
             span: Span::from(0..0),
             ty: setup_ty.clone(),
@@ -118,12 +130,20 @@ impl<'ctx> IrLowerer<'ctx> {
             body: None,
             flags: FunFlags::empty(),
         };
+
         let global_setup_fun = ctx.funs.insert(setup);
         ctx.funs[global_setup_fun].body = Some(IrBody {
             parent: global_setup_fun,
-            entry,
+            entry: ctx.bbs.insert(entry.clone()),
             args: vec![]
         });  
+
+        let tmp_fun = ctx.funs.insert(tmp);
+        ctx.funs[tmp_fun].body = Some(IrBody {
+            parent: tmp_fun,
+            entry: ctx.bbs.insert(entry),
+            args: vec![]
+        });
 
         Self {
             ctx,
@@ -135,6 +155,7 @@ impl<'ctx> IrLowerer<'ctx> {
             generic_funs: HashMap::new(),
             generic_globs: HashMap::new(),
             generic_args: vec![],
+            tmp_fun,
             bb: None,
         }
     }
@@ -164,6 +185,14 @@ impl<'ctx> IrLowerer<'ctx> {
             .as_mut()
             .expect("ICE: IR lowerer is not currently in a basic block")
     }
+
+    fn lower_bound(&mut self, module: IntermediateModuleId, file: FileId, span: Span, bound: &UnresolvedGenericBound) -> Result<GenericBound, Diagnostic<FileId>> {
+        Ok(match bound {
+            UnresolvedGenericBound::Can(expr) => GenericBound::Can(expr.clone()),
+            UnresolvedGenericBound::Is(ty) => GenericBound::Is(self.resolve_type(ty, module, file, span)?),
+            UnresolvedGenericBound::Any => GenericBound::Any,
+        })
+    }
     
     fn populate_forward_type_specs_impl(
         &mut self,
@@ -173,31 +202,18 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::AliasDef { name, params, aliased, args } => {
-                    if !args.args.is_empty() {
-                        let template = if let IntermediateDefId::Type(t) = self.modules[module].defs.get(name).unwrap() {
-                            *t
-                        } else {
-                            unreachable!()
-                        };
-                        if let Some(specs) = self.generic_types.get(&template) {
-                            let args = if !args.args.is_empty() {
-                                args
-                                    .args
-                                    .iter()
-                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
-                                        Ok(ty) => Ok(GenericBound::Is(ty)),
-                                        Err(e) => Err(e)
-                                    })
-                                    .collect::<Result<Vec<_>, _>>()?
-                            } else {
-                                vec![GenericBound::Any ; specs.params.len()]
-                            };
+                    let template = if let IntermediateDefId::Type(t) = self.modules[module].defs.get(name).unwrap() {
+                        *t
+                    } else {
+                        unreachable!()
+                    };
+                    if let Some(specs) = self.generic_types.get(&template) {
+                        let args = params.params.iter().map(|(_, b)| self.lower_bound(module, def.file, def.span, b)).collect::<Result<_, _>>()?;
 
-                            self.generic_types.get_mut(&template).unwrap().add_spec(
-                                args,
-                                aliased.clone()
-                            );
-                        }
+                        self.generic_types.get_mut(&template).unwrap().add_spec(
+                            args,
+                            aliased.clone()
+                        );
                     }
                 }
                 _ => (),
@@ -231,8 +247,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         .defs
                         .insert(name.clone(), IntermediateDefId::Type(ty));
                     if !params.params.is_empty() {
-                        let mut specs = GenericSpecializations::new(*name, params.params.clone());
-                        specs.add_spec(vec![GenericBound::Any ; params.params.len()], aliased.clone());
+                        let specs = GenericSpecializations::new(*name, params.params.iter().map(|(v, _)| *v).collect());
                         self.generic_types.insert(ty, specs);
                     }
                 }
@@ -325,10 +340,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         .insert(name.last(), IntermediateDefId::Global(global_id));
 
                     if !params.params.is_empty() {
-                        let mut specs = GenericSpecializations::new(name.last(), params.params.clone());
-                        if let Some(expr) = val {
-                            specs.add_spec(vec![GenericBound::Any ; params.params.len()], expr.clone());
-                        }
+                        let specs = GenericSpecializations::new(name.last(), params.params.iter().map(|(v, _)| *v).collect());
                         self.generic_globs.insert(global_id, specs);
                     }
                 },
@@ -360,19 +372,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
                        if let Some(specs) = self.generic_funs.get(&fun) {
-                            let args = if !args.args.is_empty() {
-                                args
-                                    .args
-                                    .iter()
-                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
-                                        Ok(ty) => Ok(GenericBound::Is(ty)),
-                                        Err(e) => Err(e)
-                                    })
-                                    .collect::<Result<Vec<_>, _>>()?
-                            } else {
-                                vec![GenericBound::Any ; specs.params.len()]
-                            };
-
+                            let args = proto.params.params.iter().map(|(_, b)| self.lower_bound(module, def.file, def.span, b)).collect::<Result<_, _>>()?;
 
                             self.generic_funs.get_mut(&fun).unwrap().add_spec(
                                 args,
@@ -407,7 +407,7 @@ impl<'ctx> IrLowerer<'ctx> {
         self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::Global { name, comptime, params, args, val, ty } => {
+                DefData::Global { name, comptime, params, val, ty, .. } => {
                     let glob = if let IntermediateDefId::Global(glob) = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name)) {
                         glob
                     } else {
@@ -417,18 +417,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     if val.is_some() {
                         if let Some(specs) = self.generic_globs.get(&glob) {
-                            let args = if !args.args.is_empty() {
-                                args
-                                    .args
-                                    .iter()
-                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
-                                        Ok(ty) => Ok(GenericBound::Is(ty)),
-                                        Err(e) => Err(e)
-                                    })
-                                    .collect::<Result<Vec<_>, _>>()?
-                            } else {
-                                vec![GenericBound::Any ; specs.params.len()]
-                            };
+                            let args = params.params.iter().map(|(_, b)| self.lower_bound(module, def.file, def.span, b)).collect::<Result<_, _>>()?;
 
                             self.generic_globs.get_mut(&glob).unwrap().add_spec(
                                 args,
@@ -538,7 +527,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         self.modules[module]
                             .defs
                             .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
-                        let specs = GenericSpecializations::new(proto.name, proto.params.params.clone());
+                        let specs = GenericSpecializations::new(proto.name, proto.params.params.iter().map(|(v, _)| *v).collect());
                         self.generic_funs.insert(fun, specs);
                         continue
                     }

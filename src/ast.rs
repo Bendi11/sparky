@@ -162,7 +162,7 @@ impl fmt::Display for SymbolPath {
 }
 
 /// Data structure storing a function prototype
-#[derive(Clone, Debug)]
+#[derive(Clone,)]
 pub struct FunProto {
     /// User-defined name of the function
     pub name: Symbol,
@@ -441,11 +441,19 @@ pub enum NumberLiteralAnnotation {
 }
 
 /// Container of generic type parameters for a function or type definition 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq,)]
 pub struct GenericParams {
     /// A list of type parameters for this generic
-    pub params: Vec<Symbol>,
+    pub params: Vec<(Symbol, UnresolvedGenericBound)>,
 }
+
+#[derive(Clone, PartialEq, Eq,)]
+pub enum UnresolvedGenericBound {
+    Is(UnresolvedType),
+    Can(Expr),
+    Any,
+}
+
 
 /// Container of generic type arguments given to a user-defined alias type or function
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
