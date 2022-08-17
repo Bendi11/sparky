@@ -413,26 +413,29 @@ impl<'ctx> IrLowerer<'ctx> {
                     } else {
                         unreachable!()
                     };
+                    
 
-                    if let Some(specs) = self.generic_globs.get(&glob) {
-                        let args = if !args.args.is_empty() {
-                            args
-                                .args
-                                .iter()
-                                .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
-                                    Ok(ty) => Ok(GenericBound::Is(ty)),
-                                    Err(e) => Err(e)
-                                })
-                                .collect::<Result<Vec<_>, _>>()?
-                        } else {
-                            vec![GenericBound::Any ; specs.params.len()]
-                        };
+                    if val.is_some() {
+                        if let Some(specs) = self.generic_globs.get(&glob) {
+                            let args = if !args.args.is_empty() {
+                                args
+                                    .args
+                                    .iter()
+                                    .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
+                                        Ok(ty) => Ok(GenericBound::Is(ty)),
+                                        Err(e) => Err(e)
+                                    })
+                                    .collect::<Result<Vec<_>, _>>()?
+                            } else {
+                                vec![GenericBound::Any ; specs.params.len()]
+                            };
 
-                        self.generic_globs.get_mut(&glob).unwrap().add_spec(
-                            args,
-                            val.clone().unwrap()
-                        );
-                        continue
+                            self.generic_globs.get_mut(&glob).unwrap().add_spec(
+                                args,
+                                val.clone().unwrap()
+                            );
+                            continue
+                        }
                     }
                     
 

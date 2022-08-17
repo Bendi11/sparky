@@ -4,6 +4,14 @@ glob a = 3
 glob b<T> = "test"
 glob b:<i32> = "testing"
 
+glob[{
+    fun(i32) -> i32 a
+}] io<T>
+
+glob io:<i32> = #{
+    a = $fun(i32) -> i32 puts
+}
+
 type test<T> = {
     T first,
     i32 second
