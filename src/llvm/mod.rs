@@ -79,31 +79,35 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
 
         let llvm_types = irctx
             .types
-            .secondary(|(_, ty)| Self::gen_type(ctx, &target_data, irctx, ty));
-
+            .secondary(|(_, ty)| if matches!(ty, IrType::Invalid) { ctx.i8_type().into() } else { Self::gen_type(ctx, &target_data, irctx, ty) });
+        
+        let llvm_funs = irctx.funs.secondary(|(_, fun)| {
+            root.add_function(
+                if fun.flags.contains(FunFlags::EXTERN) {
+                    fun.name.to_string()
+                } else {
+                    id += 1;
+                    format!("{}#{}", fun.name, id)
+                }
+                .as_str(),
+                Self::gen_funtype(ctx, &target_data, irctx, &fun.ty),
+                Some(Linkage::External),
+            )
+        });
         
         let llvm_globs = irctx
             .globals
             .secondary(|(_, glob)| {
+                if glob.ty == IrContext::INVALID {
+                    return root.get_first_function().unwrap().as_global_value()
+                }
                 let ty = *llvm_types.get_secondary(glob.ty);
-                root.add_global(ty, Some(AddressSpace::Const), "glob")
+                root.add_global(ty, Some(AddressSpace::Global), &glob.name)
             });
 
         Self {
             state: LLVMCodeGeneratorState {
-                llvm_funs: irctx.funs.secondary(|(_, fun)| {
-                    root.add_function(
-                        if fun.flags.contains(FunFlags::EXTERN) {
-                            fun.name.to_string()
-                        } else {
-                            id += 1;
-                            format!("{}#{}", fun.name, id)
-                        }
-                        .as_str(),
-                        Self::gen_funtype(ctx, &target_data, irctx, &fun.ty),
-                        Some(Linkage::External),
-                    )
-                }),
+                llvm_funs,
                 llvm_types,
                 llvm_globs,
                 llvm_vars: irctx.vars.secondary(|_| None),

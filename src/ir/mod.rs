@@ -79,8 +79,6 @@ pub struct IrGlobal {
     pub ty: TypeId,
     /// Name of this global
     pub name: Symbol,
-    /// Optional compile-time value assigned to this global
-    pub ct_val: Option<IrExpr>,
 }
 
 /// Function with source location information and optional body

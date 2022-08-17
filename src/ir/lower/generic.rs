@@ -169,31 +169,31 @@ impl<'ctx> IrLowerer<'ctx> {
                         let old_bb = self.bb;
                         self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
                         let specialized = self.lower_expr(module, file, self.global_setup_fun, &template)?;
+                        let specialized_id = IrGlobal {
+                            name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
+                            ty: specialized.ty,
+                        };
+                        let specialized_id = self.ctx.globals.insert(specialized_id);
+
                         self.ctx[self.bb.unwrap()].stmts.push(IrStmt {
                             span: Span::from(0..0),
                             kind: IrStmtKind::Write {
                                 ptr: IrExpr {
                                     span: Span::from(0..0),
                                     ty: specialized.ty,
-                                    kind: IrExprKind::Global(glob),
+                                    kind: IrExprKind::Global(specialized_id),
                                 },
                                 val: specialized.clone(),
                             }
                         });
-                        let specialized = IrGlobal {
-                            name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
-                            ty: specialized.ty,
-                            ct_val: Some(specialized),
-                        };
-                        let specialized = self.ctx.globals.insert(specialized);
-                        self.generic_globs.get_mut(&glob).unwrap().specs.insert(args, specialized); 
+                        self.generic_globs.get_mut(&glob).unwrap().specs.insert(args, specialized_id); 
 
                         self.bb = old_bb;
                         self
                             .generic_args
                             .pop();
 
-                        Ok(specialized)
+                        Ok(specialized_id)
                     },
                     None => Err(Diagnostic::error()
                         .with_message(format!("No generic template found matching arguments {}", self.ctx.generics(&args.args)))
@@ -206,7 +206,6 @@ impl<'ctx> IrLowerer<'ctx> {
             None => Ok(glob),
         }
     }
-
 
     /// Retrieve an existing type specialization or create a new one for the given generic type
     pub(super) fn specialize_fn(

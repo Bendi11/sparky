@@ -315,7 +315,6 @@ impl<'ctx> IrLowerer<'ctx> {
                     let global = IrGlobal {
                         ty: IrContext::INVALID,
                         name: name.last(),
-                        ct_val: None,
                     };
 
                     let global_id = self.ctx.globals.insert(global);
@@ -415,14 +414,29 @@ impl<'ctx> IrLowerer<'ctx> {
                         unreachable!()
                     };
 
-                    if !params.params.is_empty() || !args.args.is_empty() {
-                        if !args.args.is_empty() {
-                            self.specialize_global(module, def.file, def.span, glob, args)?;
-                        }
+                    if let Some(specs) = self.generic_globs.get(&glob) {
+                        let args = if !args.args.is_empty() {
+                            args
+                                .args
+                                .iter()
+                                .map(|ty| match self.resolve_type(ty, module, def.file, def.span) {
+                                    Ok(ty) => Ok(GenericBound::Is(ty)),
+                                    Err(e) => Err(e)
+                                })
+                                .collect::<Result<Vec<_>, _>>()?
+                        } else {
+                            vec![GenericBound::Any ; specs.params.len()]
+                        };
+
+                        self.generic_globs.get_mut(&glob).unwrap().add_spec(
+                            args,
+                            val.clone().unwrap()
+                        );
                         continue
                     }
+                    
 
-                    let (ty, ct_val) = match val {
+                    let ty = match val {
                         Some(expr) => {
                             self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
                             let expr = self.lower_expr(module, def.file, self.global_setup_fun, expr)?;
@@ -439,10 +453,9 @@ impl<'ctx> IrLowerer<'ctx> {
                             });
 
 
-                            (expr.ty, Some(expr))
-                        },
+                            expr.ty                        },
                         None => match ty {
-                            Some(ty) => (self.resolve_type(ty, module, def.file, def.span)?, None),
+                            Some(ty) => self.resolve_type(ty, module, def.file, def.span)?,
                             None => return Err(Diagnostic::error()
                                 .with_message(format!("Global with no declared type or assigned value"))
                                 .with_labels(vec![
@@ -451,7 +464,7 @@ impl<'ctx> IrLowerer<'ctx> {
                             )
                         }
                     };
-                    self.ctx.globals[glob].ct_val = ct_val;
+
                     self.ctx.globals[glob].ty = ty;
                 }
                 _ => (),
