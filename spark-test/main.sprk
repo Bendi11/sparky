@@ -2,13 +2,13 @@ imp mod:spec
 
 glob a = 3
 glob b<T> = "test"
-glob b:<i32> = "testing"
+glob b<T = i32> = "testing"
 
 glob[{
     fun(i32) -> i32 a
 }] io<T>
 
-glob io:<i32> = #{
+glob io<T = i32> = #{
     a = $fun(i32) -> i32 puts
 }
 
@@ -27,12 +27,12 @@ fun ext puts(*u8)
 type test_with_i32<T> = test:<T> | opt:<T>
 
 
-fun testing<T>:<i32>() -> *i32 {
+fun testing<T = i32>() -> *i32 {
     puts("Hello from i32 function")
     return $*i32 0u64
 }
 
-fun testing:<u64>() -> *u64 {
+fun testing<T = u64>() -> *u64 {
     puts("Hello from generic function")
     return $*u64 0u64
 }

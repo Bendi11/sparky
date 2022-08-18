@@ -1,2 +1,2 @@
 type spec<T> = T
-type spec:<i32> = u64
+type spec<T = i32> = u64

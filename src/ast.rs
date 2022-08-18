@@ -316,8 +316,6 @@ pub struct Stmt {
 pub struct FunDef {
     pub proto: FunProto,
     pub body: Vec<Stmt>,
-    /// Generic arguments passed to the parameters, if this is a specialization
-    pub args: UnresolvedGenericArgs,
 }
 
 /// An enum representing all parseable definitions
@@ -335,8 +333,6 @@ pub enum DefData {
         aliased: UnresolvedType,
         /// The generic type parameters for this alias
         params: GenericParams,
-        /// Generic type arguments for this alias, if it is a specialization
-        args: UnresolvedGenericArgs,
     },
     /// An imported module definition
     ImportDef { name: SymbolPath },
@@ -345,7 +341,6 @@ pub enum DefData {
         name: SymbolPath,
         comptime: bool,
         params: GenericParams,
-        args: UnresolvedGenericArgs,
         val: Option<Expr>,
         ty: Option<UnresolvedType>,
     }

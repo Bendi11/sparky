@@ -243,7 +243,6 @@ impl<'src> Parser<'src> {
                     };
 
                 let generic_params = self.parse_generic_params()?;
-                let generic_args = self.parse_generic_args()?;
 
                 self.trace
                     .push(format!("function declaration '{}'", name).into());
@@ -337,7 +336,7 @@ impl<'src> Parser<'src> {
                     Ok(Def {
                         file,
                         span: body.1,
-                        data: DefData::FunDef(FunDef { proto, body: body.0, args: generic_args } ),
+                        data: DefData::FunDef(FunDef { proto, body: body.0 } ),
                     })
                 } else {
                     Ok(Def {
@@ -352,7 +351,6 @@ impl<'src> Parser<'src> {
                 self.trace
                     .push(format!("type definition '{}'", name).into());
                 let params = self.parse_generic_params()?;
-                let args = self.parse_generic_args()?;
 
                 self.expect_next(&[TokenData::Assign])?;
                 let aliased = self.parse_typename()?;
@@ -364,7 +362,6 @@ impl<'src> Parser<'src> {
                         name: self.symbol(name),
                         aliased,
                         params,
-                        args,
                     },
                     file,
                 })
@@ -397,7 +394,6 @@ impl<'src> Parser<'src> {
                 let name = self.expect_next_path(&[TokenData::Ident("Global value name")])?;
                 self.trace.push("global value definition".into());
                 let params = self.parse_generic_params()?;
-                let args = self.parse_generic_args()?;
                 
                 let (val, to) = if self.toks.peek().map(|t| matches!(t.data, TokenData::Assign)).unwrap_or(false) {
                     self.toks.next();
@@ -416,7 +412,6 @@ impl<'src> Parser<'src> {
                         comptime,
                         val,
                         params,
-                        args,
                         ty,
                     },
                     file,

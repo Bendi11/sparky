@@ -201,7 +201,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, params, aliased, args } => {
+                DefData::AliasDef { name, params, aliased } => {
                     let template = if let IntermediateDefId::Type(t) = self.modules[module].defs.get(name).unwrap() {
                         *t
                     } else {
@@ -239,8 +239,8 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, params, aliased, args } => {
-                    if !args.args.is_empty() { continue }
+                DefData::AliasDef { name, params, aliased } => {
+                    if self.modules[module].defs.contains_key(name) { continue }
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
 
                     self.modules[module]
@@ -290,7 +290,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::FunDef(FunDef { proto, body, args, .. }) => {
+                DefData::FunDef(FunDef { proto, body, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
                         if self.generic_funs.contains_key(&fun) {
@@ -324,9 +324,8 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::Global { name, comptime, params, args, val, ty } => {
-                    if !args.args.is_empty() { continue }
-                    
+                DefData::Global { name, comptime, params, val, ty } => {
+                    if self.modules[module].defs.contains_key(&name.last()) { continue }
                     let global = IrGlobal {
                         ty: IrContext::INVALID,
                         name: name.last(),
@@ -368,7 +367,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::FunDef(d @ FunDef { proto, args, .. }) => {
+                DefData::FunDef(d @ FunDef { proto, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
                        if let Some(specs) = self.generic_funs.get(&fun) {
@@ -482,30 +481,26 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, aliased, params, args } => {
-                    if !params.params.is_empty() || !args.args.is_empty() {
+                DefData::AliasDef { name, aliased, params } => {
+                    if !params.params.is_empty() {
                         continue
                     }
                     
                     let ty = *self.modules[module].defs.get(name).unwrap_or_else(|| panic!("ICE: Cannot find definition named {}", name));
                     match ty {
                         IntermediateDefId::Type(ty) => {
-                            if args.args.is_empty() {
-                                let resolved = self.resolve_type(aliased, module, def.file, def.span)?;
-                                *self.ctx.types.get_mut(ty) = IrType::Alias {
-                                    name: name.clone(),
-                                    ty: resolved,
-                                };
-                            } else {
-                                self.specialize_type(module, def.file, def.span, ty, args)?;
-                            }
+                            let resolved = self.resolve_type(aliased, module, def.file, def.span)?;
+                            *self.ctx.types.get_mut(ty) = IrType::Alias {
+                                name: name.clone(),
+                                ty: resolved,
+                            };
                         }
                         _ => unreachable!(),
                     }
                 }
                 DefData::FunDec(proto) | DefData::FunDef(FunDef { proto, .. }) => {
                     if let DefData::FunDef(ref fundef) = &def.data {
-                        if !fundef.args.args.is_empty() && self.modules[module].defs.contains_key(&proto.name) {
+                        if self.modules[module].defs.contains_key(&proto.name) {
                             continue
                         }
                     }
