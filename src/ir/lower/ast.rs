@@ -261,6 +261,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 let def = self.resolve_path(module, ident);
                 match def {
                     Some(IntermediateDefId::Fun(fun_id)) => {
+                        let targs = self.resolve_args(module, file, stmt.span, targs)?;
                         let fun_id = self.specialize_fn(module, file, stmt.span, fun_id, targs, None)?;
                         let fun_ty = self.ctx[fun_id].ty.clone();
                         let args = args
@@ -327,6 +328,7 @@ impl<'ctx> IrLowerer<'ctx> {
         Ok(match &expr.node {
             ExprNode::Access(pat, args) => match self.resolve_path(module, pat) {
                 Some(IntermediateDefId::Fun(fun_id)) => {
+                    let args = self.resolve_args(module, file, expr.span, args)?;
                     let fun_id = self.specialize_fn(module, file, expr.span, fun_id, args, None)?;
                     IrExpr {
                         kind: IrExprKind::Fun(fun_id),
@@ -335,6 +337,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
                 },
                 Some(IntermediateDefId::Global(g)) => {
+                    let args = self.resolve_args(module, file, expr.span, args)?;
                     let g = self.specialize_global(module, file, expr.span, g, args)?;
                     IrExpr {
                         span: expr.span,

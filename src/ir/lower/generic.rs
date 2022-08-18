@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 
 use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal, IrStmt, IrStmtKind, value::{IrExpr, IrExprKind}}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs, Expr}};
 
-use super::{IrLowerer, IntermediateModuleId};
+use super::{IrLowerer, IntermediateModuleId, IntermediateDefId};
 
 /// Structure containing a list of generic arguments passed to a templated definition
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -17,7 +17,7 @@ pub struct GenericArgs {
 #[derive(Clone,)]
 pub enum GenericBound {
     /// Test if the given expression is valid
-    Can(Expr),
+    Can(IntermediateDefId, GenericArgs),
     /// Type must be equal to the given type
     Is(TypeId),
     /// There is no bound on the given type
@@ -47,6 +47,15 @@ pub struct GenericSpecializations<Template, Value> {
 
 
 impl<'ctx> IrLowerer<'ctx> {
+    pub fn resolve_args(&mut self, module: IntermediateModuleId, file: FileId, span: Span, args: &UnresolvedGenericArgs) -> Result<GenericArgs, Diagnostic<FileId>> {
+        Ok(GenericArgs {
+            args: args
+                .args
+                .iter()
+                .map(|arg| self.resolve_type(arg, module, file, span))
+                .collect::<Result<Vec<_>, _>>()?
+        })
+    }
     /// Retrieve an existing type specialization or create a new one for the given generic type
     pub(super) fn specialize_type(
         &mut self,
@@ -54,15 +63,8 @@ impl<'ctx> IrLowerer<'ctx> {
         file: FileId,
         span: Span,
         ty: TypeId,
-        args: &UnresolvedGenericArgs
+        args: GenericArgs
     ) -> Result<TypeId, Diagnostic<FileId>> {
-        let args = GenericArgs { args: args
-            .args
-            .iter()
-            .map(|arg| self.resolve_type(arg, module, file, span))
-            .collect::<Result<Vec<_>, _>>()?
-        };
-
         let specs = self.generic_types.get(&ty).cloned();
         match specs {
             Some(specs) => match specs.specs.get(&args) {
@@ -131,15 +133,8 @@ impl<'ctx> IrLowerer<'ctx> {
         file: FileId,
         span: Span,
         glob: GlobalId,
-        args: &UnresolvedGenericArgs
+        args: GenericArgs
     ) -> Result<GlobalId, Diagnostic<FileId>> {
-        let args = GenericArgs { args: args
-            .args
-            .iter()
-            .map(|arg| self.resolve_type(arg, module, file, span))
-            .collect::<Result<Vec<_>, _>>()?
-        };
-
         let specs = self.generic_globs.get(&glob).cloned();
         match specs {
             Some(specs) => match specs.specs.get(&args) {
@@ -223,16 +218,9 @@ impl<'ctx> IrLowerer<'ctx> {
         file: FileId,
         span: Span,
         fun: FunId,
-        args: &UnresolvedGenericArgs,
+        args: GenericArgs,
         body: Option<&[Stmt]>
     ) -> Result<FunId, Diagnostic<FileId>> {
-        let args = GenericArgs { args: args
-            .args
-            .iter()
-            .map(|arg| self.resolve_type(arg, module, file, span))
-            .collect::<Result<Vec<_>, _>>()?
-        };
-
         let specs = self.generic_funs.get(&fun).cloned();
         match specs {
             Some(specs) => match specs.specs.get(&args) {
@@ -358,14 +346,14 @@ impl<'ctx> IrLowerer<'ctx> {
 
     /// Check if the given type is accepted by this bound
     pub fn matches_bound(&mut self, module: IntermediateModuleId, file: FileId, bound: &GenericBound, ty: TypeId) -> bool {
+        let span = Span::from(0..0);
         match bound {
-            GenericBound::Can(expr) => {
-                let old_bb = self.bb;
-                self.bb = Some(self.ctx[self.tmp_fun].body.as_ref().unwrap().entry);
-                let good = self.lower_expr(module, file, self.tmp_fun, expr).is_ok();
-                self.bb = old_bb;
-                good
-            }
+            GenericBound::Can(id, args) => match id {
+                IntermediateDefId::Type(ty) => self.specialize_type(module, file, span, *ty, args.clone()).is_ok(),
+                IntermediateDefId::Fun(fun) => self.specialize_fn(module, file, span, *fun, args.clone(), None).is_ok(),
+                IntermediateDefId::Global(glob) => self.specialize_global(module, file, span, *glob, args.clone()).is_ok(),
+                _ => false,
+            },
             GenericBound::Is(other) => *other == ty,
             GenericBound::Any => true,
         }

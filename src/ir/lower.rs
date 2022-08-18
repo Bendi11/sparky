@@ -188,7 +188,17 @@ impl<'ctx> IrLowerer<'ctx> {
 
     fn lower_bound(&mut self, module: IntermediateModuleId, file: FileId, span: Span, bound: &UnresolvedGenericBound) -> Result<GenericBound, Diagnostic<FileId>> {
         Ok(match bound {
-            UnresolvedGenericBound::Can(expr) => GenericBound::Can(expr.clone()),
+            UnresolvedGenericBound::Can(specialized, args) => GenericBound::Can(
+                self
+                    .resolve_path(module, specialized)
+                    .ok_or_else(|| Diagnostic::error()
+                        .with_message(format!("Generic bound: no definition named {} found", specialized))
+                        .with_labels(vec![
+                            Label::primary(file, span)
+                        ])
+                    )?,
+                self.resolve_args(module, file, span, args)?
+            ),
             UnresolvedGenericBound::Is(ty) => GenericBound::Is(self.resolve_type(ty, module, file, span)?),
             UnresolvedGenericBound::Any => GenericBound::Any,
         })
@@ -652,7 +662,10 @@ impl<'ctx> IrLowerer<'ctx> {
                     .insert(IrType::Struct(IrStructType { fields }).into())
             }
             UnresolvedType::UserDefined { name, args } => match self.resolve_path(module, name) {
-                Some(IntermediateDefId::Type(ty)) => self.specialize_type(module, file,span, ty, args)?,
+                Some(IntermediateDefId::Type(ty)) => {
+                    let args = self.resolve_args(module, file, span, args)?;
+                    self.specialize_type(module, file,span, ty, args)?
+                },
                 _ => match self.resolve_generic_arg(&name.last()) {
                     Some(ty) => ty,
                     _ => {
