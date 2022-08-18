@@ -233,6 +233,7 @@ impl<'src> Parser<'src> {
                 })
             }
             TokenData::Ident("fun") => {
+                let generic_params = self.parse_generic_params()?;
                 let (name, flags) =
                     match self.expect_next_ident(&[TokenData::Ident("function name")])? {
                         "ext" => (
@@ -242,7 +243,6 @@ impl<'src> Parser<'src> {
                         other => (other, FunFlags::empty()),
                     };
 
-                let generic_params = self.parse_generic_params()?;
 
                 self.trace
                     .push(format!("function declaration '{}'", name).into());
@@ -347,10 +347,11 @@ impl<'src> Parser<'src> {
                 }
             }
             TokenData::Ident("type") => {
+                let params = self.parse_generic_params()?;
                 let name = self.expect_next_ident(&[TokenData::Ident("type name")])?;
                 self.trace
                     .push(format!("type definition '{}'", name).into());
-                let params = self.parse_generic_params()?;
+
 
                 self.expect_next(&[TokenData::Assign])?;
                 let aliased = self.parse_typename()?;
@@ -367,13 +368,15 @@ impl<'src> Parser<'src> {
                 })
             },
             TokenData::Ident("glob") => {
+                let params = self.parse_generic_params()?;
                 const EXPECTING_AFTER_GLOB: &[TokenData<'static>] = &[
                     TokenData::Ident("global name"),
                     TokenData::OpenBracket(BracketType::Square),
                 ];
 
-                let next = self.peek_tok(EXPECTING_AFTER_GLOB)?.clone();
 
+                let next = self.peek_tok(EXPECTING_AFTER_GLOB)?.clone();
+                    
                 let ty = match next.data {
                     TokenData::OpenBracket(BracketType::Square) => {
                         self.toks.next();
@@ -393,8 +396,7 @@ impl<'src> Parser<'src> {
                 
                 let name = self.expect_next_path(&[TokenData::Ident("Global value name")])?;
                 self.trace.push("global value definition".into());
-                let params = self.parse_generic_params()?;
-                
+
                 let (val, to) = if self.toks.peek().map(|t| matches!(t.data, TokenData::Assign)).unwrap_or(false) {
                     self.toks.next();
                     let expr = self.parse_expr()?;

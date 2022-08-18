@@ -5,7 +5,7 @@ glob b<T> = "test"
 glob b<T = i32> = "testing"
 
 glob[{
-    fun(i32) -> i32 a
+    fun(T) -> i32 a
 }] io<T>
 
 glob io<T = i32> = #{
@@ -38,7 +38,7 @@ fun testing<T = u64>() -> *u64 {
 }
 
 fun testing<T: io:<T> >() -> *T {
-    return $*T 0u64
+    return $*T io:<T>.a
 }
 
 fun unwrap<T>(opt:<T> opt) -> T {
