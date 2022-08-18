@@ -1,11 +1,11 @@
 
-type vec<T> = {
+type<T> vec = {
     *T data,
     u32 len,
     u32 cap,
 }
 
-fun new<T>() -> vec:<T> {
+fun<T> new() -> vec:<T> {
     return #vec:<T> {
         data = $*T 0
     }

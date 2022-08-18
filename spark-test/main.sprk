@@ -1,47 +1,47 @@
 imp mod:spec
 
 glob a = 3
-glob b<T> = "test"
-glob b<T = i32> = "testing"
+glob<T> b = "test"
+glob<T = i32> b = "testing"
 
-glob[{
+glob<T> [{
     fun(T) -> i32 a
-}] io<T>
+}] io
 
-glob io<T = i32> = #{
+glob<T = i32> io = #{
     a = $fun(i32) -> i32 puts
 }
 
-type test<T> = {
+type<T> test = {
     T first,
     i32 second
 }
 
 type none = ()
-type opt<T> = T | none
-type opt<T = u64> = none
-type identity<T> = fun(T) -> T
+type<T> opt = T | none
+type<T = u64> opt = none
+type<T> identity = fun(T) -> T
 
 fun ext puts(*u8)
 
-type test_with_i32<T> = test:<T> | opt:<T>
+type<T> test_with_i32 = test:<T> | opt:<T>
 
 
-fun testing<T = i32>() -> *i32 {
+fun<T = i32> testing() -> *i32 {
     puts("Hello from i32 function")
     return $*i32 0u64
 }
 
-fun testing<T = u64>() -> *u64 {
+fun<T = u64> testing() -> *u64 {
     puts("Hello from generic function")
     return $*u64 0u64
 }
 
-fun testing<T: io:<T> >() -> *T {
+fun<T: io:<T> > testing() -> *T {
     return $*T io:<T>.a
 }
 
-fun unwrap<T>(opt:<T> opt) -> T {
+fun<T> unwrap(opt:<T> opt) -> T {
     return match opt {
         T -> phi $T opt,
         none -> phi $T opt
