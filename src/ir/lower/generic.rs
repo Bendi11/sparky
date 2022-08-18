@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use hashbrown::HashMap;
 
-use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal, IrStmt, IrStmtKind, value::{IrExpr, IrExprKind}}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs, Expr}};
+use crate::{ir::{TypeId, types::IrType, FunId, IrFun, IrContext, GlobalId, IrGlobal, IrStmt, IrStmtKind, value::{IrExpr, IrExprKind}}, Symbol, util::{files::FileId, loc::Span}, ast::{Stmt, UnresolvedGenericArgs, Expr, UnresolvedType}};
 
 use super::{IrLowerer, IntermediateModuleId, IntermediateDefId};
 
@@ -17,7 +17,7 @@ pub struct GenericArgs {
 #[derive(Clone,)]
 pub enum GenericBound {
     /// Test if the given expression is valid
-    Can(IntermediateDefId, GenericArgs),
+    Can(IntermediateDefId, UnresolvedGenericArgs),
     /// Type must be equal to the given type
     Is(TypeId),
     /// There is no bound on the given type
@@ -28,7 +28,7 @@ pub enum GenericBound {
 #[derive(Clone)]
 pub struct GenericTemplate<T> {
     /// The bounds for this template to be applied
-    pub(super) params: Vec<GenericBound>,
+    pub(super) params: Vec<(Symbol, GenericBound)>,
     template: T,
 }
 
@@ -63,8 +63,9 @@ impl<'ctx> IrLowerer<'ctx> {
         file: FileId,
         span: Span,
         ty: TypeId,
-        args: GenericArgs
+        args: &UnresolvedGenericArgs
     ) -> Result<TypeId, Diagnostic<FileId>> {
+        let args = self.resolve_args(module, file, span, args)?;
         let specs = self.generic_types.get(&ty).cloned();
         match specs {
             Some(specs) => match specs.specs.get(&args) {
@@ -89,8 +90,8 @@ impl<'ctx> IrLowerer<'ctx> {
                         let bindings = args
                             .args
                             .iter()
-                            .zip(specs.params.iter())
-                            .map(|(arg, param)| (*param, *arg))
+                            .zip(template.params.iter())
+                            .map(|(arg, (param, _))| (*param, *arg))
                             .collect::<HashMap<_, _>>();
 
                         self
@@ -133,8 +134,9 @@ impl<'ctx> IrLowerer<'ctx> {
         file: FileId,
         span: Span,
         glob: GlobalId,
-        args: GenericArgs
+        args: &UnresolvedGenericArgs
     ) -> Result<GlobalId, Diagnostic<FileId>> {
+        let args = self.resolve_args(module, file, span, args)?;
         let specs = self.generic_globs.get(&glob).cloned();
         match specs {
             Some(specs) => match specs.specs.get(&args) {
@@ -159,8 +161,8 @@ impl<'ctx> IrLowerer<'ctx> {
                         let bindings = args
                             .args
                             .iter()
-                            .zip(specs.params.iter())
-                            .map(|(arg, param)| (*param, *arg))
+                            .zip(template.params.iter())
+                            .map(|(arg, (param, _))| (*param, *arg))
                             .collect::<HashMap<_, _>>();
 
                         self
@@ -218,9 +220,10 @@ impl<'ctx> IrLowerer<'ctx> {
         file: FileId,
         span: Span,
         fun: FunId,
-        args: GenericArgs,
+        args: &UnresolvedGenericArgs,
         body: Option<&[Stmt]>
     ) -> Result<FunId, Diagnostic<FileId>> {
+        let args = self.resolve_args(module, file, span, args)?;
         let specs = self.generic_funs.get(&fun).cloned();
         match specs {
             Some(specs) => match specs.specs.get(&args) {
@@ -241,18 +244,16 @@ impl<'ctx> IrLowerer<'ctx> {
                                 ])
                             )
                         }
-                        
                         let bindings = args
                             .args
                             .iter()
-                            .zip(specs.params.iter())
-                            .map(|(arg, param)| (*param, *arg))
+                            .zip(template.params.iter())
+                            .map(|(arg, (param, _))| (*param, *arg))
                             .collect::<HashMap<_, _>>();
-                        
                         self
                             .generic_args
                             .push(bindings);
-                        
+
                         let template = template.template.clone();
                         drop(specs);
                         let ty = self.resolve_fn_type(&template.proto.ty, module, file, span)?;
@@ -316,7 +317,7 @@ impl<T, V> GenericSpecializations<T, V> {
     }
     
     /// Add a template specialization for the given bounds
-    pub fn add_spec(&mut self, bounds: Vec<GenericBound>, template: T) {
+    pub fn add_spec(&mut self, bounds: Vec<(Symbol, GenericBound)>, template: T) {
         let template = GenericTemplate { params: bounds, template };
         self.templates.push(template); 
     }
@@ -331,13 +332,27 @@ impl<'ctx> IrLowerer<'ctx> {
 
     /// Get a template for the given template arguments
     pub fn get<'a, T, V>(&'a mut self, module: IntermediateModuleId, file: FileId, specs: &'a GenericSpecializations<T, V>, args: &GenericArgs) -> Option<&'a GenericTemplate<T>> {
+        
+
         let mut best_score = None;
         for spec in specs.templates.iter() {
+            let bindings = args
+                .args
+                .iter()
+                .zip(spec.params.iter())
+                .map(|(arg, (param, _))| (*param, *arg))
+                .collect::<HashMap<_, _>>();
+            self
+                .generic_args
+                .push(bindings);
+
             if self.matches(module, file, spec, args) {
                 if best_score.map(|(score, _)| score < spec.ord()).unwrap_or(true) {
                     best_score = Some((spec.ord(), spec));
                 }
             }
+
+            self.generic_args.pop();
         }
 
         best_score.map(|(_, spec)| spec)
@@ -349,9 +364,9 @@ impl<'ctx> IrLowerer<'ctx> {
         let span = Span::from(0..0);
         match bound {
             GenericBound::Can(id, args) => match id {
-                IntermediateDefId::Type(ty) => self.specialize_type(module, file, span, *ty, args.clone()).is_ok(),
-                IntermediateDefId::Fun(fun) => self.specialize_fn(module, file, span, *fun, args.clone(), None).is_ok(),
-                IntermediateDefId::Global(glob) => self.specialize_global(module, file, span, *glob, args.clone()).is_ok(),
+                IntermediateDefId::Type(ty) => self.specialize_type(module, file, span, *ty, args).is_ok(),
+                IntermediateDefId::Fun(fun) => self.specialize_fn(module, file, span, *fun, args, None).is_ok(),
+                IntermediateDefId::Global(glob) => self.specialize_global(module, file, span, *glob, args).is_ok(),
                 _ => false,
             },
             GenericBound::Is(other) => *other == ty,
@@ -366,7 +381,7 @@ impl<'ctx> IrLowerer<'ctx> {
             .params
             .iter()
             .zip(args.args.iter())
-            .all(|(p, a)| self.matches_bound(module, file, p, *a))
+            .all(|(p, a)| self.matches_bound(module, file, &p.1, *a))
     }
 }
 
@@ -385,7 +400,7 @@ impl<T> GenericTemplate<T> {
         self
             .params
             .iter()
-            .map(GenericBound::ord)
+            .map(|(_, b)| b.ord())
             .sum()
     }
 }

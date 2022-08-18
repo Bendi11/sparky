@@ -197,7 +197,7 @@ impl<'ctx> IrLowerer<'ctx> {
                             Label::primary(file, span)
                         ])
                     )?,
-                self.resolve_args(module, file, span, args)?
+                args.clone(),
             ),
             UnresolvedGenericBound::Is(ty) => GenericBound::Is(self.resolve_type(ty, module, file, span)?),
             UnresolvedGenericBound::Any => GenericBound::Any,
@@ -218,7 +218,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         unreachable!()
                     };
                     if let Some(specs) = self.generic_types.get(&template) {
-                        let args = params.params.iter().map(|(_, b)| self.lower_bound(module, def.file, def.span, b)).collect::<Result<_, _>>()?;
+                        let args = params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
 
                         self.generic_types.get_mut(&template).unwrap().add_spec(
                             args,
@@ -381,7 +381,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
                        if let Some(specs) = self.generic_funs.get(&fun) {
-                            let args = proto.params.params.iter().map(|(_, b)| self.lower_bound(module, def.file, def.span, b)).collect::<Result<_, _>>()?;
+                            let args = proto.params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
 
                             self.generic_funs.get_mut(&fun).unwrap().add_spec(
                                 args,
@@ -426,7 +426,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     if val.is_some() {
                         if let Some(specs) = self.generic_globs.get(&glob) {
-                            let args = params.params.iter().map(|(_, b)| self.lower_bound(module, def.file, def.span, b)).collect::<Result<_, _>>()?;
+                            let args = params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
 
                             self.generic_globs.get_mut(&glob).unwrap().add_spec(
                                 args,
@@ -663,7 +663,6 @@ impl<'ctx> IrLowerer<'ctx> {
             }
             UnresolvedType::UserDefined { name, args } => match self.resolve_path(module, name) {
                 Some(IntermediateDefId::Type(ty)) => {
-                    let args = self.resolve_args(module, file, span, args)?;
                     self.specialize_type(module, file,span, ty, args)?
                 },
                 _ => match self.resolve_generic_arg(&name.last()) {
