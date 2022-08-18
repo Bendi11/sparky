@@ -407,7 +407,8 @@ impl<'ctx> IrLowerer<'ctx> {
         Ok(())
 
     }
-
+    
+    /// Populate the definitions of all defined global variables
     fn populate_global_defs_impl(
         &mut self,
         module: IntermediateModuleId,
@@ -424,16 +425,15 @@ impl<'ctx> IrLowerer<'ctx> {
                     };
                     
 
-                    if val.is_some() {
-                        if let Some(specs) = self.generic_globs.get(&glob) {
-                            let args = params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
+                    if let Some(specs) = self.generic_globs.get(&glob) {
+                        if val.is_none() { continue }
+                        let args = params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
 
-                            self.generic_globs.get_mut(&glob).unwrap().add_spec(
-                                args,
-                                val.clone().unwrap()
-                            );
-                            continue
-                        }
+                        self.generic_globs.get_mut(&glob).unwrap().add_spec(
+                            args,
+                            val.clone().unwrap()
+                        );
+                        continue
                     }
                     
 
