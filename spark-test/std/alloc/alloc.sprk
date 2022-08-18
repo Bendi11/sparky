@@ -1,6 +1,4 @@
 
 fun alloc(u32 sz) -> *u8 {
-    return __spark_alloc(sz)
+    return root:std:libc:malloc(sz)
 }
-
-fun ext __spark_alloc(u32) -> *u8

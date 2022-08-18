@@ -274,6 +274,14 @@ impl<'ctx> IrLowerer<'ctx> {
                 child_parsed.name.clone(),
                 IntermediateDefId::Module(child_module),
             );
+            self.modules[child_module].defs.insert(
+                Symbol::from("up"),
+                IntermediateDefId::Module(module)
+            );
+            self.modules[child_module].defs.insert(
+                Symbol::from("root"),
+                IntermediateDefId::Module(self.root_module),
+            );
         }
 
         //Create forward references for imported types

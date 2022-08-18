@@ -10,3 +10,7 @@ fun<T> new() -> vec:<T> {
         data = $*T 0
     }
 }
+
+fun<T> extend(*vec:<T> self, usz cap) {
+    
+}

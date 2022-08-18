@@ -102,7 +102,10 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                     return root.get_first_function().unwrap().as_global_value()
                 }
                 let ty = *llvm_types.get_secondary(glob.ty);
-                root.add_global(ty, Some(AddressSpace::Global), &glob.name)
+                let glob = root
+                    .add_global(ty, Some(AddressSpace::Global), &glob.name);
+                glob.set_initializer(&ty.const_zero());
+                glob
             });
 
         Self {
