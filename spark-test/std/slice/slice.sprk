@@ -1,0 +1,5 @@
+
+type<T> slice = {
+    *T ptr,
+    root:std:usz len
+}

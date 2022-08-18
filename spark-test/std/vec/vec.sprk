@@ -11,6 +11,6 @@ fun<T> new() -> vec:<T> {
     }
 }
 
-fun<T> extend(*vec:<T> self, usz cap) {
-    
+fun<T> extend(*vec:<T> self, root:std:usz cap) {
+     
 }

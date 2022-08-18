@@ -1,3 +1,7 @@
 
-fun ext malloc(u32) -> *()
+type cstr = *u8
+type cvoidptr = *()
 
+fun ext malloc(u32) -> cvoidptr
+fun ext free(cvoidptr)
+fun ext puts(cstr)

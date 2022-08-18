@@ -1,4 +1,6 @@
 imp mod:spec
+imp std:libc:puts
+imp std:libc:cstr
 
 glob a = 3
 glob<T> b = "test"
@@ -22,18 +24,16 @@ type<T> opt = T | none
 type<T = u64> opt = none
 type<T> identity = fun(T) -> T
 
-fun ext puts(*u8)
-
 type<T> test_with_i32 = test:<T> | opt:<T>
 
 
 fun<T = i32> testing() -> *i32 {
-    puts("Hello from i32 function")
+    puts($cstr "Hello from i32 function")
     return $*i32 0u64
 }
 
 fun<T = u64> testing() -> *u64 {
-    puts("Hello from generic function")
+    puts($cstr "Hello from generic function")
     return $*u64 0u64
 }
 
