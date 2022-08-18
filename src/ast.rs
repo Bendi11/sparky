@@ -445,7 +445,7 @@ pub struct GenericParams {
 #[derive(Clone, PartialEq, Eq,)]
 pub enum UnresolvedGenericBound {
     Is(UnresolvedType),
-    Can(Expr),
+    Can(SymbolPath, UnresolvedGenericArgs),
     Any,
 }
 

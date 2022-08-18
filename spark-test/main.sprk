@@ -37,6 +37,10 @@ fun testing<T = u64>() -> *u64 {
     return $*u64 0u64
 }
 
+fun testing<T: io:<T> >() -> *T {
+    return $*T 0u64
+}
+
 fun unwrap<T>(opt:<T> opt) -> T {
     return match opt {
         T -> phi $T opt,

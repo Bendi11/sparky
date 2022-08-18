@@ -459,7 +459,9 @@ impl<'src> Parser<'src> {
                         },
                         TokenData::Colon => {
                             self.toks.next();
-                            UnresolvedGenericBound::Can(self.parse_expr()?)
+                            let specialized = self.expect_next_path(EXPECTING_FOR_PARAM)?;
+                            let args = self.parse_generic_args()?;
+                            UnresolvedGenericBound::Can(specialized, args)
                         },
                         _ => UnresolvedGenericBound::Any,
                     };
