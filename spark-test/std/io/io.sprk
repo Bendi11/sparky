@@ -2,6 +2,7 @@ imp root:std:slice:slice
 imp root:std:res:res
 imp root:std:usz
 
+
 glob<Self, IoErr> [{
     fun(*Self, slice:<u8>) -> res:<usz, IoErr> write
 }] writer

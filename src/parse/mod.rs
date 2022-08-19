@@ -564,6 +564,7 @@ impl<'src> Parser<'src> {
             TokenData::Ident("return"),
             TokenData::Ident("break"),
             TokenData::Ident("continue"),
+            TokenData::Ident("loop"),
             TokenData::Ident("variable / function name"),
             TokenData::OpenBracket(BracketType::Smooth),
         ];
@@ -571,6 +572,14 @@ impl<'src> Parser<'src> {
         let peeked = self.peek_tok(EXPECTING_FOR_STMT)?.clone();
 
         let stmt = match peeked.data {
+            TokenData::Ident("loop") => {
+                self.toks.next();
+                let (body, span) = self.parse_body()?;
+                Ok(Stmt {
+                    span: (peeked.span.from..span.to).into(),
+                    node: StmtNode::Loop(body),
+                })
+            },
             TokenData::Ident("break") => {
                 self.toks.next();
                 Ok(Stmt {
@@ -707,7 +716,15 @@ impl<'src> Parser<'src> {
                     span,
                     node: ExprNode::Match(m),
                 }
-            }
+            },
+            TokenData::Ident("loop") => {
+                self.toks.next();
+                let (body, span) = self.parse_body()?;
+                Expr {
+                    span,
+                    node: ExprNode::Loop(body),
+                }
+            },
             TokenData::Ident("true") => {
                 self.toks.next();
                 Expr {

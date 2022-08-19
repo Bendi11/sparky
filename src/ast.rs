@@ -207,6 +207,8 @@ pub enum StmtNode {
     If(If),
     /// A block with no purpose other than defining a new scope
     Block(Vec<Stmt>),
+    /// A loop that iterates over the block of statements forever
+    Loop(Vec<Stmt>),
     /// Matching an enum based on its type
     Match(Match),
     /// Calling a function by name
@@ -246,6 +248,8 @@ pub enum ExprNode {
     Literal(Literal),
     /// A block of statements, must phi a value in all paths to be a validexpression
     Block(Vec<Stmt>),
+    /// Looping over the contained block forever
+    Loop(Vec<Stmt>),
     /// A match expression, must phi a value to be valid
     Match(Match),
     /// An if expression, must phi a value to be valid
