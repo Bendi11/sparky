@@ -1,6 +1,8 @@
 imp mod:spec
 imp std:libc:puts
 imp std:libc:cstr
+imp std:res:ok
+imp std:res:err
 
 glob a = 3
 glob<T> b = "test"
@@ -17,6 +19,14 @@ glob<T = i32> io = #{
 type<T> test = {
     T first,
     i32 second
+}
+
+fun i32_write(*i32 self, std:slice:slice:<u8> buf) -> std:res:res:<std:usz, i32> {
+    return $std:res:res:<std:usz, i32> $std:res:err:<i32> 100
+}
+
+glob<Self = i32, IoErr = i32> std:io:writer = #{
+    write = i32_write
 }
 
 type none = ()
@@ -60,6 +70,12 @@ fun ext main(i32 argc, **u8 argv) -> i32 {
     let optional = $opt:<i32> 100
     let unwrapped = $i32 optional
     let unwrapped = unwrap:<i32>(optional)
+
+    let writable = 0i32
+    std:io:write:<i32, i32>(&writable, #std:slice:slice:<u8> {
+        ptr = $*u8 &writable,
+        len = $std:usz 100
+    }) 
     let test = b:<i32>
     testing:<i32>()
     testing:<u64>()

@@ -108,6 +108,7 @@ impl<'ctx> IrLowerer<'ctx> {
         stmt: &Stmt,
     ) -> Result<(), Diagnostic<FileId>> {
         match &stmt.node {
+            StmtNode::Loop(block) => { self.lower_loop(module, file, fun, stmt.span, &block)?; },
             StmtNode::Return(val) => match (
                 self.lower_expr(module, file, fun, val)?,
                 self.lowest_scope().return_var,
@@ -299,7 +300,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 self.lower_block(module, file, fun, &b)?;
                 self.scope_stack.pop();
                 self.ctx[old_bb].terminator = IrTerminator::Jmp(new_bb);
-            }
+           }
             StmtNode::Match(match_stmt) => {
                 self.lower_match(module, file, fun, match_stmt, stmt.span)?;
             }
@@ -419,6 +420,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 }
             }
             ExprNode::If(expr) => return self.lower_if(module, file, fun, expr),
+            ExprNode::Loop(stmts) => return self.lower_loop(module, file, fun, expr.span, &stmts),
             ExprNode::Match(match_expr) => {
                 return self.lower_match(module, file, fun, match_expr, expr.span)
             }
@@ -838,6 +840,56 @@ impl<'ctx> IrLowerer<'ctx> {
             default_jmp: after_bb,
         };
         self.scope_stack.pop();
+
+        Ok(IrExpr {
+            span,
+            ty: self.ctx[phi_var].ty,
+            kind: IrExprKind::Var(phi_var),
+        })
+    }
+    
+    /// Lower a loop statement or expression
+    fn lower_loop(
+        &mut self,
+        module: IntermediateModuleId,
+        file: FileId,
+        fun: FunId,
+        span: Span,
+        stmts: &[Stmt],
+    ) -> Result<IrExpr, Diagnostic<FileId>> {
+        let old_bb = self.bb();
+        let phi_var = self.ctx.vars.insert(IrVar {
+            ty: IrContext::INVALID,
+            name: Symbol::new(format!("@phi_var#{}", old_bb)),
+        });
+        let bb = self.bb();
+        self.ctx[bb].stmts.push(IrStmt {
+            span,
+            kind: IrStmtKind::VarLive(phi_var),
+        });
+
+        let loop_bb = self.ctx.bb();
+        let after_bb = self.ctx.bb();
+
+        self.scope_stack.push(ScopePlate {
+            vars: HashMap::new(),
+            return_var: Some(phi_var),
+            after_bb,
+        });
+        *self.bb_mut() = loop_bb;
+
+        for stmt in stmts {
+            self.lower_stmt(module, file, fun, stmt)?;
+        }
+
+        if matches!(self.ctx[self.bb()].terminator, IrTerminator::Invalid) {
+            let bb = self.bb();
+            self.ctx[bb].terminator = IrTerminator::Jmp(loop_bb);
+        }
+
+        
+        self.scope_stack.pop();
+        self.ctx[old_bb].terminator = IrTerminator::Jmp(loop_bb);
 
         Ok(IrExpr {
             span,

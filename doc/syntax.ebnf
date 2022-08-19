@@ -36,7 +36,7 @@
 
 <exprlist> ::= ( <expr> "," )* <expr>?
 
-<prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")" | <block>
+<prefixexpr> ::= <varaccessexpr> | <callexpr> | "(" <expr> ")" | <block> | <loopstmt>
 
 <callexpr> ::= <prefixexpr> "." "(" <exprlist> ")"
 <varaccessexpr> ::= <path>

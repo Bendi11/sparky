@@ -12,10 +12,17 @@ glob<Self, IoErr> [{
 }] reader
 
 fun<IoErr, R: reader:<R, IoErr> > read(*R reader, slice:<u8> buf) -> res:<usz, IoErr> {
-        
+
 }
 
-fun<IoErr, W: writer:<W, IoErr> > write(*W writer, slice:<u8> ) -> res:<usz, IoErr> {
+fun<IoErr, W: writer:<W, IoErr> > write(*W writer_impl, slice:<u8> ) -> res:<usz, IoErr> {
     mut written = $usz 0
-    
+    return loop {
+        if written == slice.len { phi $res $ok:<usz> written }
+        let result =  writer:<W, IoErr>.write(writer_impl, slice)
+        match result {
+            ok -> let written = written + $ok:<usz> result,
+            err -> return result
+        }
+    }
 }

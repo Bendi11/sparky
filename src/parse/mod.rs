@@ -994,7 +994,7 @@ impl<'src> Parser<'src> {
         self.expect_next_ident(&[TokenData::Ident("match")])?;
         let matched = self.parse_expr()?;
         let start_span = matched.span.from;
-
+        self.trace.push("match expression".into());
         self.expect_next(&[TokenData::OpenBracket(BracketType::Curly)])?;
         let mut cases = vec![];
         let end_span = loop {
@@ -1019,6 +1019,8 @@ impl<'src> Parser<'src> {
                 }
             }
         };
+
+        self.trace.pop();
 
         Ok((
             Match {
