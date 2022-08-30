@@ -1189,7 +1189,8 @@ impl<'src> Parser<'src> {
         match next.data {
             TokenData::Ident(name) => match name {
                 "i8" | "i16" | "i32" | "i64"  | 
-                    "u8" | "u16" | "u32" | "u64" => {
+                    "u8" | "u16" | "u32" | "u64" |
+                    "isz" | "usz" => {
                     let signed = &name[0..1] == "i";
 
                     match &name[1..] {
@@ -1208,6 +1209,10 @@ impl<'src> Parser<'src> {
                         "64" => Ok(UnresolvedType::Integer {
                             signed,
                             width: IntegerWidth::SixtyFour,
+                        }),
+                        "sz" => Ok(UnresolvedType::Integer {
+                                signed,
+                                width: IntegerWidth::PtrSize,
                         }),
                         _ => Err(ParseError {
                             highlighted_span: Some(next.span),

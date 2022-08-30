@@ -491,4 +491,5 @@ pub enum IntegerWidth {
     Sixteen = 16,
     ThirtyTwo = 32,
     SixtyFour = 64,
+    PtrSize = 0,
 }

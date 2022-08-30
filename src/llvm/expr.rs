@@ -44,7 +44,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     .ctx
                     .i64_type()
                     .const_int(v.val, v.sign)
-                    .const_cast(LLVMCodeGenerator::gen_inttype(&self.ctx, ty), ty.signed)
+                    .const_cast(LLVMCodeGenerator::gen_inttype(&self.ctx, &self.target_data, ty), ty.signed)
                     .into(),
                 IrLiteral::Float(f, ty) => self
                     .ctx

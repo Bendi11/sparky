@@ -1,4 +1,5 @@
+imp root:std:libc:mem
 
 fun alloc(root:std:usz sz) -> *u8 {
-    return root:std:libc:mem:malloc(sz)
+    return mem:malloc(sz)
 }

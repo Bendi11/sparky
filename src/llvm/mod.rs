@@ -191,12 +191,13 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     }
 
     /// Translate integer types to LLVM
-    pub fn gen_inttype(ctx: &'llvm Context, ty: &IrIntegerType) -> IntType<'llvm> {
+    pub fn gen_inttype(ctx: &'llvm Context, tdata: &TargetData, ty: &IrIntegerType) -> IntType<'llvm> {
         match ty.width {
             IntegerWidth::Eight => ctx.i8_type(),
             IntegerWidth::Sixteen => ctx.i16_type(),
             IntegerWidth::ThirtyTwo => ctx.i32_type(),
             IntegerWidth::SixtyFour => ctx.i64_type(),
+            IntegerWidth::PtrSize => ctx.ptr_sized_int_type(tdata, None),
         }
     }
 
@@ -208,7 +209,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
         ty: &IrType,
     ) -> BasicTypeEnum<'llvm> {
         match ty {
-            IrType::Integer(ity) => Self::gen_inttype(ctx, ity).into(),
+            IrType::Integer(ity) => Self::gen_inttype(ctx, target_data, ity).into(),
             IrType::Float(IrFloatType { doublewide }) => match doublewide {
                 true => ctx.f64_type().into(),
                 false => ctx.f32_type().into(),

@@ -188,6 +188,9 @@ impl IrContext {
 
     pub const INVALID: TypeId = unsafe { TypeId::from_raw(12) };
 
+    pub const ISIZE: TypeId = unsafe { TypeId::from_raw(13) };
+    pub const USIZE: TypeId = unsafe { TypeId::from_raw(14) };
+
     /// Create a new `IRContext` with primitive types defined
     pub fn new() -> Self {
         let mut types = Interner::<IrType>::new();
@@ -258,6 +261,9 @@ impl IrContext {
 
         types.insert(IrType::Invalid);
 
+        types.insert(IrType::Integer(IrIntegerType { width: IntegerWidth::PtrSize, signed: true }));
+        types.insert(IrType::Integer(IrIntegerType { width: IntegerWidth::PtrSize, signed: false }));
+
         Self {
             types,
             funs: Arena::new(),
@@ -286,11 +292,13 @@ impl IrContext {
             (true, IntegerWidth::Sixteen) => Self::I16,
             (true, IntegerWidth::ThirtyTwo) => Self::I32,
             (true, IntegerWidth::SixtyFour) => Self::I64,
+            (true, IntegerWidth::PtrSize) => Self::ISIZE,
 
             (false, IntegerWidth::Eight) => Self::U8,
             (false, IntegerWidth::Sixteen) => Self::U16,
             (false, IntegerWidth::ThirtyTwo) => Self::U32,
             (false, IntegerWidth::SixtyFour) => Self::U64,
+            (false, IntegerWidth::PtrSize) => Self::USIZE,
         }
     }
 
@@ -352,11 +360,13 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
                     (true, IntegerWidth::Sixteen) => "i16",
                     (true, IntegerWidth::ThirtyTwo) => "i32",
                     (true, IntegerWidth::SixtyFour) => "i64",
+                    (true, IntegerWidth::PtrSize) => "isz",
 
                     (false, IntegerWidth::Eight) => "u8",
                     (false, IntegerWidth::Sixteen) => "u16",
                     (false, IntegerWidth::ThirtyTwo) => "u32",
                     (false, IntegerWidth::SixtyFour) => "u64",
+                    (false, IntegerWidth::PtrSize) => "usz",
                 }
             ),
             IrType::Bool => write!(f, "bool"),
