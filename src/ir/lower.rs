@@ -222,7 +222,8 @@ impl<'ctx> IrLowerer<'ctx> {
 
                         self.generic_types.get_mut(&template).unwrap().add_spec(
                             args,
-                            aliased.clone()
+                            aliased.clone(),
+                            module,
                         );
                     }
                 }
@@ -393,7 +394,8 @@ impl<'ctx> IrLowerer<'ctx> {
 
                             self.generic_funs.get_mut(&fun).unwrap().add_spec(
                                 args,
-                                d.clone()
+                                d.clone(),
+                                module,
                             );
                         }
                     } else {
@@ -439,7 +441,8 @@ impl<'ctx> IrLowerer<'ctx> {
 
                         self.generic_globs.get_mut(&glob).unwrap().add_spec(
                             args,
-                            val.clone().unwrap()
+                            val.clone().unwrap(),
+                            module,
                         );
                         continue
                     }

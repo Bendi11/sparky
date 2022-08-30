@@ -29,6 +29,8 @@ pub enum GenericBound {
 pub struct GenericTemplate<T> {
     /// The bounds for this template to be applied
     pub(super) params: Vec<(Symbol, GenericBound)>,
+    /// What module this template was defined in
+    def_in: IntermediateModuleId,
     template: T,
 }
 
@@ -99,9 +101,9 @@ impl<'ctx> IrLowerer<'ctx> {
                             .push(bindings);
                         
                         let name = specs.name.clone();
-                        let template = template.template.clone();
+                        let template = template.clone();
                         drop(specs);
-                        let specialized = self.resolve_type(&template, module, file, span)?;
+                        let specialized = self.resolve_type(&template.template, template.def_in, file, span)?;
                         let specialized = IrType::Alias {
                             name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
                             ty: specialized
@@ -170,11 +172,11 @@ impl<'ctx> IrLowerer<'ctx> {
                             .push(bindings);
                         
                         let name = specs.name.clone();
-                        let template = template.template.clone();
+                        let template = template.clone();
                         drop(specs);
                         let old_bb = self.bb;
                         self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
-                        let specialized = self.lower_expr(module, file, self.global_setup_fun, &template)?;
+                        let specialized = self.lower_expr(template.def_in, file, self.global_setup_fun, &template.template)?;
                         let specialized_id = IrGlobal {
                             name: Symbol::new(format!("{}{}", name, self.ctx.generics(&args.args))),
                             ty: specialized.ty,
@@ -254,9 +256,9 @@ impl<'ctx> IrLowerer<'ctx> {
                             .generic_args
                             .push(bindings);
 
-                        let template = template.template.clone();
+                        let template = template.clone();
                         drop(specs);
-                        let ty = self.resolve_fn_type(&template.proto.ty, module, file, span)?;
+                        let ty = self.resolve_fn_type(&template.template.proto.ty, template.def_in, file, span)?;
                         
                         let specialized = self.ctx.funs.insert(IrFun {
                             file,
@@ -265,11 +267,11 @@ impl<'ctx> IrLowerer<'ctx> {
                             ty_id: self.ctx.types.insert(IrType::Fun(ty.clone())),
                             ty,
                             body: None,
-                            flags: template.proto.flags,
+                            flags: template.template.proto.flags,
                         });
                         
                         let old_bb = self.bb;
-                        self.lower_body(module, file, specialized, body.unwrap_or(&template.body))?;
+                        self.lower_body(template.def_in, file, specialized, body.unwrap_or(&template.template.body))?;
                         self.bb = old_bb;
                         self.generic_funs.get_mut(&fun).unwrap().specs.insert(args, specialized);
 
@@ -317,8 +319,8 @@ impl<T, V> GenericSpecializations<T, V> {
     }
     
     /// Add a template specialization for the given bounds
-    pub fn add_spec(&mut self, bounds: Vec<(Symbol, GenericBound)>, template: T) {
-        let template = GenericTemplate { params: bounds, template };
+    pub fn add_spec(&mut self, bounds: Vec<(Symbol, GenericBound)>, template: T, def_in: IntermediateModuleId) {
+        let template = GenericTemplate { params: bounds, template, def_in };
         self.templates.push(template); 
     }
 }
