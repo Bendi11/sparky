@@ -1,5 +1,3 @@
 
 type cstr = *u8
 type cvoidptr = *()
-type cfile = cvoidptr
-
