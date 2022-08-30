@@ -193,7 +193,6 @@ impl<'ctx> IrLowerer<'ctx> {
             let child_module = self
                 .modules
                 .insert(IntermediateModule::new(child_parsed.name));
-            self.populate_forward_types_impl(child_module, child_parsed)?;
             self.modules[module].defs.insert(
                 child_parsed.name.clone(),
                 IntermediateDefId::Module(child_module),
@@ -206,6 +205,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 Symbol::from("root"),
                 IntermediateDefId::Module(self.root_module),
             );
+            self.populate_forward_types_impl(child_module, child_parsed)?;
         }
 
         //Create forward references for imported types

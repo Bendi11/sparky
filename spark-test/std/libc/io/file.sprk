@@ -1,0 +1,4 @@
+imp up:cstr
+imp up:cfile
+
+fun ext fopen(up:cstr) -> up:cfile

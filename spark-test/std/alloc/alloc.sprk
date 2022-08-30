@@ -1,4 +1,4 @@
 
-fun alloc(u32 sz) -> *u8 {
-    return root:std:libc:malloc(sz)
+fun alloc(root:std:usz sz) -> *u8 {
+    return root:std:libc:mem:malloc(sz)
 }

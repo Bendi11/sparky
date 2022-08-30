@@ -1,8 +1,6 @@
-imp std:libc:puts
-imp std:libc:cstr
-
+imp std:libc
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
-    puts($cstr "Hello, world!")
+    libc:io:puts($libc:cstr "Hello, world!")
     return 0
 }
