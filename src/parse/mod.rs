@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Let, Literal, Match, GenericParams, UnresolvedGenericArgs, FunDef, UnresolvedGenericBound},
+    ast::{BigInt, Let, Literal, Match, FunDef },
     Symbol,
 };
 use smallvec::SmallVec;
@@ -233,7 +233,6 @@ impl<'src> Parser<'src> {
                 })
             }
             TokenData::Ident("fun") => {
-                let generic_params = self.parse_generic_params()?;
                 let (name, flags) =
                     match self.expect_next_ident(&[TokenData::Ident("function name")])? {
                         "ext" => (
@@ -321,7 +320,6 @@ impl<'src> Parser<'src> {
                     name: self.symbol(name),
                     ty,
                     flags,
-                    params: generic_params,
                 };
 
                 self.trace.pop();
@@ -347,7 +345,6 @@ impl<'src> Parser<'src> {
                 }
             }
             TokenData::Ident("type") => {
-                let params = self.parse_generic_params()?;
                 let name = self.expect_next_ident(&[TokenData::Ident("type name")])?;
                 self.trace
                     .push(format!("type definition '{}'", name).into());
@@ -362,13 +359,11 @@ impl<'src> Parser<'src> {
                     data: DefData::AliasDef {
                         name: self.symbol(name),
                         aliased,
-                        params,
                     },
                     file,
                 })
             },
             TokenData::Ident("glob") => {
-                let params = self.parse_generic_params()?;
                 const EXPECTING_AFTER_GLOB: &[TokenData<'static>] = &[
                     TokenData::Ident("global name"),
                     TokenData::OpenBracket(BracketType::Square),
@@ -413,7 +408,6 @@ impl<'src> Parser<'src> {
                         name,
                         comptime,
                         val,
-                        params,
                         ty,
                     },
                     file,
@@ -429,95 +423,7 @@ impl<'src> Parser<'src> {
             }),
         }
     }
-    
-    /// Parse generic type parameters of a definition
-    fn parse_generic_params(&mut self) -> ParseResult<'src, GenericParams> {
-        let peek = self.toks.peek().map(|t| &t.data);
-        if let Some(TokenData::Op(Op::Less)) = peek {
-            self.toks.next();
-        } else {
-            return Ok(GenericParams{params:vec![]})
-        }
-
-        self.trace.push("generic type parameters".into());
-
-        let mut params = vec![];
-        loop {
-            const EXPECTING_FOR_PARAM: &[TokenData<'static>] = &[
-                TokenData::Op(Op::Greater),
-                TokenData::Ident("generic type parameter"),
-                TokenData::Comma,
-            ];
-
-            let next = self.next_tok(EXPECTING_FOR_PARAM)?;
-            match next.data {
-                TokenData::Ident(name) => {
-                    let name = self.symbol(name);
-                    let peeked = self.peek_tok(EXPECTING_FOR_PARAM)?;
-                    let bound = match peeked.data {
-                        TokenData::Assign => {
-                            self.toks.next();
-                            UnresolvedGenericBound::Is(self.parse_typename()?)
-                        },
-                        TokenData::Colon => {
-                            self.toks.next();
-                            let specialized = self.expect_next_path(EXPECTING_FOR_PARAM)?;
-                            let args = self.parse_generic_args()?;
-                            UnresolvedGenericBound::Can(specialized, args)
-                        },
-                        _ => UnresolvedGenericBound::Any,
-                    };
-                    params.push((name, bound))
-                },
-                TokenData::Comma => continue,
-                TokenData::Op(Op::Greater) => break,
-                _ => return Err(self.unexpected(next.span, next, EXPECTING_FOR_PARAM)),
-            }
-        }
-
-        self.trace.pop();
-
-        Ok(GenericParams {
-            params,
-        })
-    }
-    
-    /// Parse arguments to a generic symbol
-    fn parse_generic_args(&mut self) -> ParseResult<'src, UnresolvedGenericArgs> {
-        let peek = self.toks.peek().map(|t| &t.data);
-        if let Some(TokenData::Colon) = peek {
-            self.toks.next();
-            self.expect_next(&[TokenData::Op(Op::Less)])?;
-        } else {
-            return Ok(UnresolvedGenericArgs{args:vec![]})
-        }
-        
-        self.trace.push("generic type arguments".into());
-
-        let mut args = vec![];
-        loop {
-            const EXPECTING_FOR_PARAM: &[TokenData<'static>] = &[
-                TokenData::Op(Op::Greater),
-                TokenData::Ident("generic type argument"),
-                TokenData::Comma,
-            ];
-
-            let next = self.peek_tok(EXPECTING_FOR_PARAM)?;
-            match next.data {
-                TokenData::Comma => { self.toks.next(); continue },
-                TokenData::Op(Op::Greater) => { self.toks.next(); break },
-                _ => args.push(self.parse_typename()?),
-            }
-        }
-
-        self.trace.pop();
-
-        Ok(UnresolvedGenericArgs {
-            args,
-        })
-
-    }
-
+   
     /// Parse a curly brace enclosed AST body
     fn parse_body(&mut self) -> ParseResult<'src, (Vec<Stmt>, Span)> {
         const EXPECTING_FOR_BODY: &[TokenData<'static>] =
@@ -682,14 +588,13 @@ impl<'src> Parser<'src> {
                     &[TokenData::Ident("Function name")];
 
                 let name = self.expect_next_path(EXPECTING_FOR_CALL)?;
-                let targs = self.parse_generic_args()?;
                 let args = self.parse_fun_args()?;
 
                 Ok(Stmt {
                     span: (peeked.span.from
                         ..args.last().map(|arg| arg.span.to).unwrap_or(peeked.span.to))
                         .into(),
-                    node: StmtNode::Call(name, args, targs),
+                    node: StmtNode::Call(name, args),
                 })
             }
             _ => Err(self.unexpected(peeked.span, peeked.clone(), EXPECTING_FOR_STMT)),
@@ -1115,10 +1020,9 @@ impl<'src> Parser<'src> {
             TokenData::Ident(_) => {
                 self.trace.push("variable or function name".into());
                 let name = self.expect_next_path(EXPECTING_NEXT)?;
-                let args = self.parse_generic_args()?;
                 Expr {
                     span: next.span,
-                    node: ExprNode::Access(name, args),
+                    node: ExprNode::Access(name),
                 }
             }
             TokenData::OpenBracket(BracketType::Curly) => {
@@ -1384,9 +1288,8 @@ impl<'src> Parser<'src> {
                     let name = self.symbol(name);
                     let name = self
                         .expect_next_path_with(&[TokenData::Ident("typename path part")], name)?;
-                    let args = self.parse_generic_args()?;
 
-                    let ty = UnresolvedType::UserDefined { name, args };
+                    let ty = UnresolvedType::UserDefined { name };
                     self.trace.pop();
                     Ok(ty)
                 }

@@ -1,2 +1,0 @@
-type<T> spec = T
-type<T = i32> spec = u64

@@ -8,7 +8,7 @@ use crate::{
     arena::{Arena, Index},
     ast::{
         DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType, UnresolvedGenericArgs, FunDef, Stmt, Expr, UnresolvedGenericBound,
+        UnresolvedType, FunDef, Stmt, Expr,
     },
     util::{
         files::FileId,
@@ -16,8 +16,6 @@ use crate::{
     },
     Symbol,
 };
-
-use self::generic::{GenericSpecializations, GenericBound};
 
 use super::{
     types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
@@ -38,14 +36,6 @@ pub struct IrLowerer<'ctx> {
     modules: Arena<IntermediateModule>,
     /// Stack representing the current scope
     scope_stack: Vec<ScopePlate>,
-    /// All generated generic type specializations
-    generic_types: HashMap<TypeId, GenericSpecializations<UnresolvedType, TypeId>>,
-    /// All generated generic function specializations
-    generic_funs: HashMap<FunId, GenericSpecializations<FunDef, FunId>>,
-    /// Generic global values
-    generic_globs: HashMap<GlobalId, GenericSpecializations<Expr, GlobalId>>,
-    /// Current type bindings for generic arguments
-    generic_args: Vec<HashMap<Symbol, TypeId>>,
     /// Function for setting up global values
     global_setup_fun: FunId,
     /// Function for checking an expression's validity
@@ -150,10 +140,6 @@ impl<'ctx> IrLowerer<'ctx> {
             modules,
             global_setup_fun,
             scope_stack: Vec::new(),
-            generic_types: HashMap::new(),
-            generic_funs: HashMap::new(),
-            generic_globs: HashMap::new(),
-            generic_args: vec![],
             tmp_fun,
             bb: None,
         }
@@ -162,11 +148,9 @@ impl<'ctx> IrLowerer<'ctx> {
     /// Lower a parsed module to IR
     pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         self.populate_forward_types_impl(self.root_module, root)?;
-        self.populate_forward_type_specs_impl(self.root_module, root)?;
         self.populate_global_forwards_impl(self.root_module, root)?;
         self.populate_global_defs_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
-        self.populate_fn_specs_impl(self.root_module, root)?;
         self.populate_fn_bodies_impl(self.root_module, root)?;
 
         Ok(())
@@ -184,63 +168,7 @@ impl<'ctx> IrLowerer<'ctx> {
             .as_mut()
             .expect("ICE: IR lowerer is not currently in a basic block")
     }
-
-    fn lower_bound(&mut self, module: IntermediateModuleId, file: FileId, span: Span, bound: &UnresolvedGenericBound) -> Result<GenericBound, Diagnostic<FileId>> {
-        Ok(match bound {
-            UnresolvedGenericBound::Can(specialized, args) => GenericBound::Can(
-                self
-                    .resolve_path(module, specialized)
-                    .ok_or_else(|| Diagnostic::error()
-                        .with_message(format!("Generic bound: no definition named {} found", specialized))
-                        .with_labels(vec![
-                            Label::primary(file, span)
-                        ])
-                    )?,
-                args.clone(),
-            ),
-            UnresolvedGenericBound::Is(ty) => GenericBound::Is(self.resolve_type(ty, module, file, span)?),
-            UnresolvedGenericBound::Any => GenericBound::Any,
-        })
-    }
     
-    fn populate_forward_type_specs_impl(
-        &mut self,
-        module: IntermediateModuleId,
-        parsed: &ParsedModule,
-    ) -> Result<(), Diagnostic<FileId>> {
-        for def in parsed.defs.iter() {
-            match &def.data {
-                DefData::AliasDef { name, params, aliased } => {
-                    let template = if let IntermediateDefId::Type(t) = self.modules[module].defs.get(name).unwrap() {
-                        *t
-                    } else {
-                        unreachable!()
-                    };
-                    if let Some(specs) = self.generic_types.get(&template) {
-                        let args = params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
-
-                        self.generic_types.get_mut(&template).unwrap().add_spec(
-                            args,
-                            aliased.clone(),
-                            module,
-                        );
-                    }
-                }
-                _ => (),
-            }
-        }
-
-        for child_parsed in parsed.children.iter() {
-            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
-                IntermediateDefId::Module(module) => *module,
-                _ => unreachable!(),
-            };
-            self.populate_forward_type_specs_impl(child_module, child_parsed)?;
-        }
-
-        Ok(())
-    }
-
     /// Get forward references to all declared types and modules
     fn populate_forward_types_impl(
         &mut self,
@@ -249,17 +177,13 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, params, aliased } => {
+                DefData::AliasDef { name, aliased } => {
                     if self.modules[module].defs.contains_key(name) { continue }
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
 
                     self.modules[module]
                         .defs
                         .insert(name.clone(), IntermediateDefId::Type(ty));
-                    if !params.params.is_empty() {
-                        let specs = GenericSpecializations::new(*name, params.params.iter().map(|(v, _)| *v).collect());
-                        self.generic_types.insert(ty, specs);
-                    }
                 }
                 _ => (),
             }
@@ -311,10 +235,6 @@ impl<'ctx> IrLowerer<'ctx> {
                 DefData::FunDef(FunDef { proto, body, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
                     if let IntermediateDefId::Fun(fun) = def_id {
-                        if self.generic_funs.contains_key(&fun) {
-                            continue
-                        }
-
                         self.lower_body(module, def.file, fun, body)?;
                     } else {
                         panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
@@ -342,7 +262,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::Global { name, comptime, params, val, ty } => {
+                DefData::Global { name, comptime, val, ty } => {
                     if self.modules[module].defs.contains_key(&name.last()) { continue }
                     let global = IrGlobal {
                         ty: IrContext::INVALID,
@@ -355,11 +275,6 @@ impl<'ctx> IrLowerer<'ctx> {
                         .modules[module]
                         .defs
                         .insert(name.last(), IntermediateDefId::Global(global_id));
-
-                    if !params.params.is_empty() {
-                        let specs = GenericSpecializations::new(name.last(), params.params.iter().map(|(v, _)| *v).collect());
-                        self.generic_globs.insert(global_id, specs);
-                    }
                 },
                 _ => (),
             }
@@ -377,46 +292,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
     }
 
-    /// Populate all function specializations that the user manually created
-    fn populate_fn_specs_impl(
-        &mut self,
-        module: IntermediateModuleId,
-        parsed: &ParsedModule,
-    ) -> Result<(), Diagnostic<FileId>> {
-        for def in parsed.defs.iter() {
-            match &def.data {
-                DefData::FunDef(d @ FunDef { proto, .. }) => {
-                    let def_id = self.modules[module].defs[&proto.name];
-                    if let IntermediateDefId::Fun(fun) = def_id {
-                       if let Some(specs) = self.generic_funs.get(&fun) {
-                            let args = proto.params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
-
-                            self.generic_funs.get_mut(&fun).unwrap().add_spec(
-                                args,
-                                d.clone(),
-                                module,
-                            );
-                        }
-                    } else {
-                        panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
-                    }
-                }
-                _ => (),
-            }
-        }
-
-        for child_parsed in parsed.children.iter() {
-            let child_module = match self.modules[module].defs.get(&child_parsed.name).unwrap() {
-                IntermediateDefId::Module(module) => *module,
-                _ => unreachable!(),
-            };
-            self.populate_fn_specs_impl(child_module, child_parsed)?;
-        }
-
-        Ok(())
-
-    }
-    
+   
     /// Populate the definitions of all defined global variables
     fn populate_global_defs_impl(
         &mut self,
@@ -426,26 +302,13 @@ impl<'ctx> IrLowerer<'ctx> {
         self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::Global { name, comptime, params, val, ty, .. } => {
+                DefData::Global { name, comptime, val, ty, .. } => {
                     let glob = if let IntermediateDefId::Global(glob) = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name)) {
                         glob
                     } else {
                         unreachable!()
                     };
-                    
-
-                    if let Some(specs) = self.generic_globs.get(&glob) {
-                        if val.is_none() { continue }
-                        let args = params.params.iter().map(|(name, b)| self.lower_bound(module, def.file, def.span, b).map(|b| (*name, b))).collect::<Result<_, _>>()?;
-
-                        self.generic_globs.get_mut(&glob).unwrap().add_spec(
-                            args,
-                            val.clone().unwrap(),
-                            module,
-                        );
-                        continue
-                    }
-                    
+                   
 
                     let ty = match val {
                         Some(expr) => {
@@ -501,11 +364,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, aliased, params } => {
-                    if !params.params.is_empty() {
-                        continue
-                    }
-                    
+                DefData::AliasDef { name, aliased } => {
                     let ty = *self.modules[module].defs.get(name).unwrap_or_else(|| panic!("ICE: Cannot find definition named {}", name));
                     match ty {
                         IntermediateDefId::Type(ty) => {
@@ -523,28 +382,6 @@ impl<'ctx> IrLowerer<'ctx> {
                         if self.modules[module].defs.contains_key(&proto.name) {
                             continue
                         }
-                    }
-
-                    if !proto.params.params.is_empty() {
-                        let ty = FunType {
-                            return_ty: IrContext::INVALID,
-                            params: vec![]
-                        };
-                        let fun = self.ctx.funs.insert(IrFun {
-                            name: proto.name,
-                            ty,
-                            ty_id: IrContext::INVALID,
-                            file: def.file,
-                            span: def.span,
-                            body: None,
-                            flags: proto.flags 
-                        });
-                        self.modules[module]
-                            .defs
-                            .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
-                        let specs = GenericSpecializations::new(proto.name, proto.params.params.iter().map(|(v, _)| *v).collect());
-                        self.generic_funs.insert(fun, specs);
-                        continue
                     }
 
                     let fun_ty = self.resolve_fn_type(&proto.ty, module, def.file, def.span)?;
@@ -671,12 +508,8 @@ impl<'ctx> IrLowerer<'ctx> {
                     .types
                     .insert(IrType::Struct(IrStructType { fields }).into())
             }
-            UnresolvedType::UserDefined { name, args } => match self.resolve_path(module, name) {
-                Some(IntermediateDefId::Type(ty)) => {
-                    self.specialize_type(module, file,span, ty, args)?
-                },
-                _ => match self.resolve_generic_arg(&name.last()) {
-                    Some(ty) => ty,
+            UnresolvedType::UserDefined { name } => match self.resolve_path(module, name) {
+                Some(IntermediateDefId::Type(ty)) => ty,
                     _ => {
                         return Err(Diagnostic::error()
                             .with_message(format!(
@@ -684,7 +517,6 @@ impl<'ctx> IrLowerer<'ctx> {
                                 name, self.modules[module].name
                             ))
                             .with_labels(vec![Label::new(LabelStyle::Primary, file, span)]))
-                    },
                 },
             },
             UnresolvedType::Fun(ty) => {

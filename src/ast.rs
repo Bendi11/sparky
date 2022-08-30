@@ -170,8 +170,6 @@ pub struct FunProto {
     pub flags: FunFlags,
     /// Function's signature
     pub ty: UnresolvedFunType,
-    /// Generic parameters for the function
-    pub params: GenericParams,
 }
 
 /// A let statement that either assigns a value to an expression or
@@ -212,7 +210,7 @@ pub enum StmtNode {
     /// Matching an enum based on its type
     Match(Match),
     /// Calling a function by name
-    Call(SymbolPath, Vec<Expr>, UnresolvedGenericArgs),
+    Call(SymbolPath, Vec<Expr>),
     /// Break from something with a value
     Phi(Box<Expr>),
     /// Return a value from the currently defined function
@@ -231,7 +229,7 @@ pub enum StmtNode {
 #[derive(Clone, PartialEq, Eq)]
 pub enum ExprNode {
     /// Variable / function access by name or path
-    Access(SymbolPath, UnresolvedGenericArgs),
+    Access(SymbolPath),
     /// Structure member access by field name
     Member(Box<Expr>, Symbol),
     /// Array-like index expression using '[' ']'
@@ -335,8 +333,6 @@ pub enum DefData {
         name: Symbol,
         /// The aliased type
         aliased: UnresolvedType,
-        /// The generic type parameters for this alias
-        params: GenericParams,
     },
     /// An imported module definition
     ImportDef { name: SymbolPath },
@@ -344,7 +340,6 @@ pub enum DefData {
     Global {
         name: SymbolPath,
         comptime: bool,
-        params: GenericParams,
         val: Option<Expr>,
         ty: Option<UnresolvedType>,
     }
@@ -439,27 +434,6 @@ pub enum NumberLiteralAnnotation {
     I64,
 }
 
-/// Container of generic type parameters for a function or type definition 
-#[derive(Clone, PartialEq, Eq,)]
-pub struct GenericParams {
-    /// A list of type parameters for this generic
-    pub params: Vec<(Symbol, UnresolvedGenericBound)>,
-}
-
-#[derive(Clone, PartialEq, Eq,)]
-pub enum UnresolvedGenericBound {
-    Is(UnresolvedType),
-    Can(SymbolPath, UnresolvedGenericArgs),
-    Any,
-}
-
-
-/// Container of generic type arguments given to a user-defined alias type or function
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct UnresolvedGenericArgs {
-    pub args: Vec<UnresolvedType>,
-}
-
 /// Type representing a function's type in spark
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnresolvedFunType {
@@ -506,7 +480,6 @@ pub enum UnresolvedType {
     UserDefined {
         /// The name of the user-defined type
         name: SymbolPath,
-        args: UnresolvedGenericArgs,
     },
 }
 

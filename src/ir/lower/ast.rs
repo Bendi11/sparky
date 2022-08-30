@@ -183,7 +183,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 Some(assigned) => {
                     let assigned = self.lower_expr(module, file, fun, &assigned)?;
                     let (ty, ptr) = match &let_stmt.let_expr.node {
-                        ExprNode::Access(name, _) => {
+                        ExprNode::Access(name) => {
                             let (ty, var) = match self.lookup_var(&name.last()) {
                                 Some(var) => (self.ctx[var].ty, var),
                                 None => {
@@ -258,11 +258,10 @@ impl<'ctx> IrLowerer<'ctx> {
                     });
                 }
             },
-            StmtNode::Call(ident, args, targs) => {
+            StmtNode::Call(ident, args) => {
                 let def = self.resolve_path(module, ident);
                 match def {
                     Some(IntermediateDefId::Fun(fun_id)) => {
-                        let fun_id = self.specialize_fn(module, file, stmt.span, fun_id, targs, None)?;
                         let fun_ty = self.ctx[fun_id].ty.clone();
                         let args = args
                             .iter()
@@ -326,9 +325,8 @@ impl<'ctx> IrLowerer<'ctx> {
         expr: &Expr,
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         Ok(match &expr.node {
-            ExprNode::Access(pat, args) => match self.resolve_path(module, pat) {
+            ExprNode::Access(pat) => match self.resolve_path(module, pat) {
                 Some(IntermediateDefId::Fun(fun_id)) => {
-                    let fun_id = self.specialize_fn(module, file, expr.span, fun_id, args, None)?;
                     IrExpr {
                         kind: IrExprKind::Fun(fun_id),
                         ty: self.ctx[fun_id].ty_id,
@@ -336,7 +334,6 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
                 },
                 Some(IntermediateDefId::Global(g)) => {
-                    let g = self.specialize_global(module, file, expr.span, g, args)?;
                     IrExpr {
                         span: expr.span,
                         ty: self.ctx[g].ty,
