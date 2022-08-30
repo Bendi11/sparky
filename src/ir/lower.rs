@@ -26,7 +26,6 @@ use super::{
 
 pub mod ast;
 pub mod op;
-pub mod generic;
 
 /// Structure containing all needed state to lower parsed ASTs into spark's IR, performing type
 /// checking and resolution

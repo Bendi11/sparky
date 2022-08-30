@@ -1,4 +1,0 @@
-
-type<Val> ok = Val
-type<Err> err = Err
-type<Val, Err> res = ok:<Val> | err:<Err>

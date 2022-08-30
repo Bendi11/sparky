@@ -143,14 +143,14 @@ impl<'ctx> IrLowerer<'ctx> {
             (IrType::Ptr(_) | IrType::Integer(_), IrType::Ptr(_) | IrType::Integer(_)) => (),
             (IrType::Ptr(_) | IrType::Fun(_), IrType::Ptr(_) | IrType::Fun(_)) => (),
             (IrType::Sum(s), _) if s.contains(&uty) => (),
-            (_, IrType::Sum(s)) if s.contains(&uexprty) => (),
+            (_, IrType::Sum(s)) if s.contains(&expr.ty) => (),
             (from, to) if from == to => (),
             _ => {
                 return Err(Diagnostic::error()
                     .with_message(format!(
                         "Cannot cast an expression of type {} to {}",
                         self.ctx.typename(expr.ty),
-                        self.ctx.typename(ty),
+                        self.ctx.typename(uty),
                     ))
                     .with_labels(vec![Label::primary(file, expr.span)
                         .with_message("Cast expression appears here")]))
