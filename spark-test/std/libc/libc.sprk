@@ -1,3 +1,4 @@
 
 type cstr = *u8
+type cchar = u8
 type cvoidptr = *()

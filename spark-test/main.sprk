@@ -2,5 +2,8 @@ imp std:libc
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
     libc:io:puts($libc:cstr "Hello, world!")
+    let cf = libc:io:fopen($libc:cstr "./test.txt", $libc:cstr "w")
+    libc:io:fwrite($libc:cvoidptr "Hello, IO!", 1usz, 10usz, cf)
+    libc:io:fclose(cf)
     return 0
 }

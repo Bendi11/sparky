@@ -434,6 +434,8 @@ pub enum NumberLiteralAnnotation {
     I16,
     I32,
     I64,
+    Isz,
+    Usz,
 }
 
 /// Type representing a function's type in spark

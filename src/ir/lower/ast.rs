@@ -620,6 +620,9 @@ impl<'ctx> IrLowerer<'ctx> {
 
                         NumberLiteralAnnotation::F32 => (false, IrContext::F32),
                         NumberLiteralAnnotation::F64 => (false, IrContext::F64),
+
+                        NumberLiteralAnnotation::Usz => (false, IrContext::USIZE),
+                        NumberLiteralAnnotation::Isz => (false, IrContext::ISIZE),
                     };
 
                     let lit = match num {

@@ -1,3 +1,4 @@
 imp up:cstr
 
 fun ext puts(up:cstr)
+fun ext putc(up:cchar)

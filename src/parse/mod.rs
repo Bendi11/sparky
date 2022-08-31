@@ -1535,7 +1535,16 @@ impl<'src> Parser<'src> {
                         "f64" => {
                             self.toks.next();
                             Some(NumberLiteralAnnotation::F64)
-                        }
+                        },
+
+                        "usz" => {
+                            self.toks.next();
+                            Some(NumberLiteralAnnotation::Usz)
+                        },
+                        "isz" => {
+                            self.toks.next();
+                            Some(NumberLiteralAnnotation::Isz)
+                        },
 
                         _ => None,
                     }
