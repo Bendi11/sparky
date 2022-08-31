@@ -455,6 +455,8 @@ pub enum UnresolvedType {
     },
     /// True / False type
     Bool,
+    /// Character type
+    Char,
     /// A function type
     Fun(Box<UnresolvedFunType>),
     Float {

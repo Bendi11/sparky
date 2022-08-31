@@ -44,6 +44,8 @@ pub enum IrType {
     Integer(IrIntegerType),
     /// A 32 or 64 bit floating point type
     Float(IrFloatType),
+    /// A 4-byte UTF-32 character type
+    Char,
     /// Unnamed structure type with fields
     Struct(IrStructType),
     /// Sum type that can be many different types

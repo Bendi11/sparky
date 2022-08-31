@@ -191,6 +191,8 @@ impl IrContext {
     pub const ISIZE: TypeId = unsafe { TypeId::from_raw(13) };
     pub const USIZE: TypeId = unsafe { TypeId::from_raw(14) };
 
+    pub const CHAR: TypeId = unsafe { TypeId::from_raw(15) };
+
     /// Create a new `IRContext` with primitive types defined
     pub fn new() -> Self {
         let mut types = Interner::<IrType>::new();
@@ -263,6 +265,8 @@ impl IrContext {
 
         types.insert(IrType::Integer(IrIntegerType { width: IntegerWidth::PtrSize, signed: true }));
         types.insert(IrType::Integer(IrIntegerType { width: IntegerWidth::PtrSize, signed: false }));
+
+        types.insert(IrType::Char);
 
         Self {
             types,
@@ -349,6 +353,7 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
                 }
             ),
             IrType::Bool => write!(f, "bool"),
+            IrType::Char => write!(f, "char"),
             IrType::Unit => write!(f, "()"),
             IrType::Sum(sum) => {
                 for variant in sum.iter() {

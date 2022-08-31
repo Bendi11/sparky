@@ -1223,7 +1223,8 @@ impl<'src> Parser<'src> {
                             },
                         }),
                     }
-                }
+                },
+                "char" => Ok(UnresolvedType::Char),
                 "fun" | 
                     "f32" | "f64" => match &name[1..] {
                     "32" => Ok(UnresolvedType::Float { doublewide: false }),

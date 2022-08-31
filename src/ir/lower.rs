@@ -474,6 +474,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 })
                 .into(),
             ),
+            UnresolvedType::Char => IrContext::CHAR,
             UnresolvedType::Pointer(ptr) => {
                 let ty = self.resolve_type(ptr, module, file, span)?;
                 self.ctx.types.insert(IrType::Ptr(ty))

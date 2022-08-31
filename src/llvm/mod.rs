@@ -215,6 +215,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                 false => ctx.f32_type().into(),
             },
             IrType::Bool => ctx.bool_type().into(),
+            IrType::Char => ctx.i32_type().into(),
             IrType::Unit => ctx.i8_type().into(),
             IrType::Ptr(ty) => Self::gen_type(ctx, target_data, irctx, &irctx[*ty])
                 .ptr_type(AddressSpace::Generic)
