@@ -61,6 +61,11 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     .bool_type()
                     .const_int(if *b { 1 } else { 0 }, false)
                     .into(),
+                IrLiteral::Char(c) => self
+                    .ctx
+                    .i32_type()
+                    .const_int(*c as u64, false)
+                    .into(),
                 IrLiteral::Array(vals) => {
                     let ty = expr.ty;
                     let elem = if let IrType::Array(ty, _) = &irctx[ty] {

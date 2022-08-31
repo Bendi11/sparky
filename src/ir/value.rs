@@ -21,6 +21,7 @@ pub struct IrExpr {
 pub enum IrLiteral {
     Integer(BigInt, IrIntegerType),
     Float(f64, IrFloatType),
+    Char(char),
     String(String),
     Bool(bool),
     Array(Vec<IrExpr>),

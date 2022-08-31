@@ -261,6 +261,8 @@ pub enum Literal {
     Number(NumberLiteral),
     /// String literal with all escape characters escaped
     String(String),
+    /// Character literal with UTF-32 character value
+    Char(char),
     /// Boolean literal
     Bool(bool),
     /// An array literal, all expressions must be of the same type

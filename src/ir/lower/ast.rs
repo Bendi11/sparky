@@ -481,6 +481,11 @@ impl<'ctx> IrLowerer<'ctx> {
                     ty: IrContext::BOOL,
                     kind: IrExprKind::Lit(IrLiteral::Bool(*b)),
                 },
+                Literal::Char(c) => IrExpr {
+                    span: expr.span,
+                    ty: IrContext::CHAR,
+                    kind: IrExprKind::Lit(IrLiteral::Char(*c)),
+                },
                 Literal::Unit => IrExpr {
                     span: expr.span,
                     ty: IrContext::UNIT,

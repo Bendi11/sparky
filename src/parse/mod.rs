@@ -724,7 +724,10 @@ impl<'src> Parser<'src> {
                 span: peeked.span,
                 node: ExprNode::Literal(Literal::String(self.parse_string_literal()?)),
             },
-
+            TokenData::Char(_ch) => Expr {
+                span: peeked.span,
+                node: ExprNode::Literal(Literal::Char(self.parse_char_literal()?)),
+            },
             TokenData::Number(_) => {
                 self.trace.push("number literal".into());
                 let num = self.parse_numliteral()?;
@@ -824,47 +827,88 @@ impl<'src> Parser<'src> {
         let mut unescaped = String::with_capacity(src.len());
         let mut escaped_chars = src.chars();
         loop {
-            let next = match escaped_chars.next() {
-                Some(c) => c,
+            match self.unescape_char(&mut escaped_chars, src, span)? {
+                Some(ch) => unescaped.push(ch),
                 None => break,
+            }
+        }
+
+        Ok(unescaped)
+    }
+    
+    /// Unescape a single character from the given character iterator
+    pub fn unescape_char(
+        &mut self,
+        mut iter: impl Iterator<Item = char>,
+        original: &'src str,
+        span: Span
+    ) -> ParseResult<'src, Option<char>> {
+        let next = match iter.next() {
+                Some(c) => c,
+                None => return Ok(None),
             };
 
-            match next {
+            return match next {
                 '\\' => {
-                    let after_backslash = match escaped_chars.next() {
+                    let after_backslash = match iter.next() {
                         Some(c) => c,
                         None => {
                             return Err(ParseError {
                                 highlighted_span: Some(span),
                                 backtrace: self.trace.clone(),
-                                error: ParseErrorKind::ExpectingEscapeSeq { literal: src },
+                                error: ParseErrorKind::ExpectingEscapeSeq { literal: original },
                             })
                         }
                     };
 
-                    match after_backslash {
-                        '\\' => unescaped.push('\\'),
-                        'n' => unescaped.push('\n'),
-                        't' => unescaped.push('\t'),
-                        'r' => unescaped.push('\r'),
-                        '"' => unescaped.push('\"'),
+                    Ok(Some(match after_backslash {
+                        '\\' => '\\',
+                        'n' =>  '\n',
+                        't' =>  '\t',
+                        'r' =>  '\r',
+                        '"' =>  '\"',
                         other => {
                             return Err(ParseError {
-                                highlighted_span: Some(next_tok.span),
+                                highlighted_span: Some(span),
                                 backtrace: self.trace.clone(),
                                 error: ParseErrorKind::UnknownEscapeSeq {
                                     escaped: other,
-                                    literal: src,
+                                    literal: original,
                                 },
                             })
                         }
-                    }
+                    }))
                 }
-                _ => unescaped.push(next),
+                _ => Ok(Some(next)),
             }
-        }
 
-        Ok(unescaped)
+    }
+    
+    /// Parse a character literal from the token stream, respecting escaped characters with
+    /// backslash
+    fn parse_char_literal(&mut self) -> ParseResult<'src, char> {
+        const EXPECTING_CHAR: &[TokenData<'static>] = &[
+            TokenData::Char("character literal"),
+        ];
+        let next = self.next_tok(EXPECTING_CHAR)?;
+        match next.data {
+            TokenData::Char(chars) => {
+                let iter = chars.chars();
+                match self.unescape_char(iter, chars, next.span)? {
+                    Some(ch) => Ok(ch),
+                    None => return Err(ParseError {
+                        highlighted_span: Some(next.span),
+                        backtrace: self.trace.clone(),
+                        error: ParseErrorKind::ExpectingEscapeSeq { literal: chars }
+                    })
+                }
+            },
+            _ => Err(ParseError {
+                highlighted_span: Some(next.span),
+                backtrace: self.trace.clone(),
+                error: ParseErrorKind::UnexpectedToken { found: next, expecting: ExpectingOneOf(EXPECTING_CHAR) },
+            }),
+        }
     }
 
     /// Parse the right hand side of an expression if there is one
