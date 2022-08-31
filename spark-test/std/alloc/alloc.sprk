@@ -1,5 +1,5 @@
 imp root:std:libc:mem
 
-fun alloc(root:std:usz sz) -> *u8 {
+fun alloc(usz sz) -> *u8 {
     return mem:malloc(sz)
 }
