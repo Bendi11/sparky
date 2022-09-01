@@ -152,7 +152,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             .root
             .verify()
             .unwrap_or_else(|e| {
-                eprintln!("ICE: LLVM module verification failed: {}", e)
+                eprintln!("ICE: LLVM module verification failed: {}", e.to_string())
             });
 
         let fpm = PassManager::create(&self.state.root);
@@ -172,8 +172,6 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
         }
 
         fpm.finalize();
-
-        
 
         match self.state.opts.out_type {
             OutputFileType::Object => {

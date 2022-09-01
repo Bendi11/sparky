@@ -95,27 +95,12 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     .into()
                 }
                 IrLiteral::Unit => self.ctx.i8_type().const_int(0, false).into(),
-                IrLiteral::Struct(s) => {
-                    let irty = if let IrType::Struct(s_ty) = &irctx[expr.ty] {
-                        s_ty
-                    } else {
-                        unreachable!()
-                    };
-
-                    let ty = self.llvm_types.get_secondary(expr.ty).into_struct_type();
-                    let mut fields = HashMap::new();
-                    for (name, field) in s.iter() {
-                        let idx = irty.field_idx(name).unwrap();
-                        fields.insert(idx, self.gen_expr(irctx, field));
-                    }
-
-                    let mut field_vec = vec![];
-                    for i in 0..s.len() {
-                        field_vec.push(*fields.get(&i).unwrap());
-                    }
-
-                    ty.const_named_struct(&field_vec).into()
-                }
+                IrLiteral::Struct(_) => {
+                    let s = self.gen_lval(irctx, expr); 
+                    self
+                        .build
+                        .build_load(s, "struct_lit_load")
+                },
                 IrLiteral::String(s) => self
                     .build
                     .build_global_string_ptr(s.as_str(), "strlit")
@@ -208,7 +193,37 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                         .ptr_type(AddressSpace::Generic),
                     "sum_unwrap_ptr",
                 )
-            }
+            },
+            IrExprKind::Lit(IrLiteral::Struct(s)) => {
+                let irty = if let IrType::Struct(s_ty) = &irctx[expr.ty] {
+                    s_ty
+                } else {
+                    unreachable!()
+                };
+
+                let ty = self.llvm_types.get_secondary(expr.ty).into_struct_type();
+                let mut fields = HashMap::new();
+                for (name, field) in s.iter() {
+                    let idx = irty.field_idx(name).unwrap();
+                    fields.insert(idx, self.gen_expr(irctx, field));
+                }
+
+                let mut field_vec = vec![];
+                for i in 0..s.len() {
+                    field_vec.push(*fields.get(&i).unwrap());
+                }
+
+                let alloca = self.build.build_alloca(ty, "struct_lit_alloca");
+                
+                for (idx, field) in field_vec.into_iter().enumerate() {
+                    let gep = self.build
+                        .build_struct_gep(alloca, idx as u32, "struct_lit")
+                        .unwrap();
+                    self.build.build_store(gep, field);
+                }
+
+                alloca
+            },
             _ => {
                 let alloca = self
                     .build

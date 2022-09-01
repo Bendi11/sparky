@@ -9,6 +9,7 @@ fun new() -> cstr_t {
     return #cstr_t { ptr = null }
 }
 
+
 fun from(*u8 other) -> cstr_t {
     return #cstr_t { ptr = other }
 }
