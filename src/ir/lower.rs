@@ -511,13 +511,7 @@ impl<'ctx> IrLowerer<'ctx> {
         span: Span,
     ) -> Result<TypeId, Diagnostic<FileId>> {
         Ok(match ty {
-            UnresolvedType::Integer { width, signed } => self.ctx.types.insert(
-                IrType::Integer(IrIntegerType {
-                    width: *width,
-                    signed: *signed,
-                })
-                .into(),
-            ),
+            UnresolvedType::Integer { width, signed } => IrContext::itype(*signed, *width),
             UnresolvedType::Float { doublewide } => self.ctx.types.insert(
                 IrType::Float(IrFloatType {
                     doublewide: *doublewide,

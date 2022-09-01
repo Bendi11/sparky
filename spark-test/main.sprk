@@ -1,9 +1,10 @@
 imp std:libc
+imp libc:cstr
 imp libc:cstr:cstr_t
 
 fun ext main(i32 argc, **u8 argv) -> i32 {
-    libc:io:puts($cstr_t "Hello, world!")
-    let cf = libc:io:fopen($cstr_t "./test.txt", $cstr_t "w")
+    libc:io:puts(cstr:from("Hello, world!"))
+    let cf = libc:io:fopen(cstr:from("./test.txt"), cstr:from("w"))
     libc:io:fwrite($libc:cvoidptr "Hello, IO!", 1usz, 10usz, cf)
     libc:io:fclose(cf)
     return 0
