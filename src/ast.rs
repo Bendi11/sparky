@@ -232,6 +232,15 @@ pub enum ExprNode {
     Access(SymbolPath),
     /// Structure member access by field name
     Member(Box<Expr>, Symbol),
+    /// Structure member access by field name with dereference
+    DerefMember {
+        /// Expression producing a pointer to a value of structure type
+        structure: Box<Expr>,
+        /// Fiel name of the structure
+        field: Symbol,
+        /// Length of the arrow, because long arrows are funny
+        arrow_len: usize,
+    },
     /// Array-like index expression using '[' ']'
     Index(Box<Expr>, Box<Expr>),
     /// Expression calling a function expression with arguments

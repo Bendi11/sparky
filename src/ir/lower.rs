@@ -60,16 +60,16 @@ pub struct ScopePlate {
 pub type IntermediateModuleId = Index<IntermediateModule>;
 
 /// Enum that points to a [TypeId] or [FunId], used by the [IntermediateModule]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IntermediateDefId {
     /// ID of a defined type
-    Type(TypeId),
+    Type(TypeId, FileId, Span),
     /// Function definition or declaration
-    Fun(FunId),
+    Fun(FunId, FileId, Span),
     /// Child module
     Module(IntermediateModuleId),
     /// Global value
-    Global(GlobalId),
+    Global(GlobalId, FileId, Span),
 }
 
 /// Data only used by the [IrLowerer] in order to save what symbols are defined in each
@@ -149,8 +149,8 @@ impl<'ctx> IrLowerer<'ctx> {
     pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         self.populate_forward_types_impl(self.root_module, root)?;
         self.populate_global_forwards_impl(self.root_module, root)?;
-        self.populate_global_defs_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
+        self.populate_global_defs_impl(self.root_module, root)?;
         self.populate_fn_bodies_impl(self.root_module, root)?;
 
         Ok(())
@@ -291,7 +291,6 @@ impl<'ctx> IrLowerer<'ctx> {
         Ok(())
 
     }
-
    
     /// Populate the definitions of all defined global variables
     fn populate_global_defs_impl(
@@ -374,7 +373,7 @@ impl<'ctx> IrLowerer<'ctx> {
                                 ty: resolved,
                             };
                         }
-                        _ => unreachable!(),
+                        _ => unreachable!("{:?}", ty),
                     }
                 }
                 DefData::FunDec(proto) | DefData::FunDef(FunDef { proto, .. }) => {
@@ -551,6 +550,43 @@ impl<'ctx> IrLowerer<'ctx> {
         Ok(FunType { return_ty, params })
     }
     
+    /// Ensure that the given definition with name is not defined twice in the module
+    fn ensure_no_double(
+        &mut self,
+        module: IntermediateModuleId,
+        file: FileId,
+        span: Span,
+        def: IntermediateDefId
+    ) -> Result<(), Diagnostic<FileId>> {
+        for (name, other) in self.modules[module].defs.iter() {
+            if *other != def && *name == self.def_name(def) {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                        "{} collides with previously-defined {}",
+                        IntermediateDefFormatter { lower: self, id: def },
+                        IntermediateDefFormatter { lower: self, id: def },
+                    ))
+                    .with_labels(vec![
+                        Label::primary(file, span)
+                            .with_message(format!("{} is defined here", IntermediateDefFormatter { lower: self, id: def })),
+                        Label::secondary(, range)
+                    ])
+                ) 
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn def_name(&self, def: IntermediateDefId) -> Symbol {
+        match def {
+            IntermediateDefId::Type(ty) => Symbol::from(&self.ctx.typename(ty).to_string()),
+            IntermediateDefId::Fun(fun) => self.ctx[fun].name,
+            IntermediateDefId::Module(m) => self.modules[m].name,
+            IntermediateDefId::Global(g) => self.ctx[g].name,
+        }
+    }
+
     /// Resolve the path in the context of the given intermediate module
     #[inline]
     fn resolve_path(
@@ -585,6 +621,22 @@ impl IntermediateModule {
         Self {
             defs: HashMap::new(),
             name,
+        }
+    }
+}
+
+pub struct IntermediateDefFormatter<'lower, 'ctx> {
+    lower: &'lower IrLowerer<'ctx>,
+    id: IntermediateDefId,
+}
+
+impl<'lower, 'ctx> std::fmt::Display for IntermediateDefFormatter<'lower, 'ctx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.id {
+            IntermediateDefId::Type(ty) => write!(f, "type {}", self.lower.ctx.typename(ty)),
+            IntermediateDefId::Fun(fun) => write!(f, "function {}", self.lower.ctx[fun].name),
+            IntermediateDefId::Module(m) => write!(f, "module {}", self.lower.modules[m].name),
+            IntermediateDefId::Global(g) => write!(f, "global {}", self.lower.ctx[g].name),
         }
     }
 }

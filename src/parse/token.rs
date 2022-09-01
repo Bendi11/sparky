@@ -41,8 +41,8 @@ pub enum TokenData<'src> {
     Comma,
     /// The . character
     Period,
-    /// ->
-    Arrow,
+    /// -> with length specified
+    Arrow(usize),
     /// A unary or binary operator token
     Op(Op),
     // :
@@ -82,7 +82,7 @@ impl fmt::Display for TokenData<'_> {
             ),
             Self::Comma => write!(f, "','"),
             Self::Period => write!(f, "'.'"),
-            Self::Arrow => write!(f, "->"),
+            Self::Arrow(len) => write!(f, "{}>", std::iter::repeat('-').take(*len).collect::<String>()),
             Self::Op(op) => write!(f, "'{}'", op),
             Self::Colon => write!(f, "':'"),
             Self::Dollar => write!(f, "'$'"),

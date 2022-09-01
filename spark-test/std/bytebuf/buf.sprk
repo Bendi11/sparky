@@ -1,0 +1,33 @@
+imp up:alloc
+
+type bytebuf_t = {
+    *u8 ptr,
+    usz len,
+    usz cap,
+}
+
+fun empty() -> bytebuf_t {
+    return #bytebuf_t {
+        ptr = alloc:null,
+        len = 0,
+        cap = 0,
+    }
+}
+
+fun with_cap(usz cap) -> bytebuf_t {
+    return #bytebuf_t {
+        ptr = alloc:allocator.alloc(cap),
+        len = 0,
+        cap = 0,
+    }
+}
+
+fun extend_fit(*bytebuf_t self, usz cap) {
+    if self->cap < cap {
+        
+    }
+}
+
+fun push(*bytebuf_t self, u8 elem) {
+    
+}

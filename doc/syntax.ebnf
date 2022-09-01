@@ -42,6 +42,7 @@
 <varaccessexpr> ::= <path>
                   | <prefixexpr> "[" <expr> "]"
                   | <prefixexpr> "." <ident>
+                  | <prefixexpr> "-"+ ">" <ident>
 
 <typename> ::= "bool" | "char" | "()"
              | ( "i" | "u" ) ( "8" | "16" | "32" | "64" )

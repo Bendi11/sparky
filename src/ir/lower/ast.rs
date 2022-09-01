@@ -12,7 +12,7 @@ use crate::{
         VarId,
     },
     util::{files::FileId, loc::Span},
-    Symbol,
+    Symbol, parse::token::Op,
 };
 
 use super::{IntermediateDefId, IntermediateModuleId, IrLowerer, ScopePlate};
@@ -315,6 +315,47 @@ impl<'ctx> IrLowerer<'ctx> {
         }
         Ok(())
     }
+    
+    pub(super) fn lower_member(
+        &mut self,
+        file: FileId,
+        object: IrExpr,
+        name: &Symbol,
+    ) -> Result<IrExpr, Diagnostic<FileId>> {
+        let object_ty = self.ctx.unwrap_alias(object.ty);
+        match &self.ctx[object_ty] {
+            IrType::Struct(s_ty) => {
+                for (idx, field) in s_ty.fields.iter().enumerate() {
+                    if field.name == *name {
+                        return Ok(IrExpr {
+                            span: object.span,
+                            kind: IrExprKind::Member(Box::new(object), idx),
+                            ty: field.ty,
+                        });
+                    }
+                }
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                        "Field {} not found for structure type {}",
+                        name,
+                        self.ctx.typename(object.ty)
+                    ))
+                    .with_labels(vec![Label::primary(file, object.span)
+                        .with_message("Structure field access occurs here")]));
+            }
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message(format!(
+                    "Attempting to access field {} of expression of non-structure type {}",
+                    name,
+                    self.ctx.typename(object.ty)
+                ))
+                    .with_labels(vec![Label::primary(file, object.span)
+                        .with_message("Field access occurs here")]))
+            }
+        }
+
+    }
 
     /// Lower a single AST expression to intermediate representation
     pub(super) fn lower_expr(
@@ -354,40 +395,32 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
                 },
             },
-            ExprNode::Member(object, name) => {
-                let object = self.lower_expr(module, file, fun, object)?;
-                let object_ty = self.ctx.unwrap_alias(object.ty);
-                match &self.ctx[object_ty] {
-                    IrType::Struct(s_ty) => {
-                        for (idx, field) in s_ty.fields.iter().enumerate() {
-                            if field.name == *name {
-                                return Ok(IrExpr {
-                                    kind: IrExprKind::Member(Box::new(object), idx),
-                                    ty: field.ty,
-                                    span: expr.span,
-                                });
-                            }
+            ExprNode::DerefMember { structure, field, arrow_len } => {
+                let mut structure = self.lower_expr(module, file, fun, structure)?;
+                for _ in 0..*arrow_len {
+                    if let IrType::Ptr(p) = &self.ctx[structure.ty] {
+                        structure = IrExpr {
+                            span: structure.span,
+                            ty: *p,
+                            kind: IrExprKind::Unary(Op::Star, Box::new(structure)),
                         }
+                    } else {
                         return Err(Diagnostic::error()
                             .with_message(format!(
-                                "Field {} not found for structure type {}",
-                                name,
-                                self.ctx.typename(object.ty)
+                                "Cannot auto-deref a value of type {}",
+                                self.ctx.typename(structure.ty),    
                             ))
-                            .with_labels(vec![Label::primary(file, expr.span)
-                                .with_message("Structure field access occurs here")]));
-                    }
-                    _ => {
-                        return Err(Diagnostic::error()
-                            .with_message(format!(
-                            "Attempting to access field {} of expression of non-structure type {}",
-                            name,
-                            self.ctx.typename(object.ty)
-                        ))
-                            .with_labels(vec![Label::primary(file, expr.span)
-                                .with_message("Field access occurs here")]))
+                            .with_labels(vec![
+                                Label::primary(file, structure.span),
+                            ])
+                        )
                     }
                 }
+                self.lower_member(file, structure, field)?
+            },
+            ExprNode::Member(object, name) => {
+                let object = self.lower_expr(module, file, fun, object)?;
+                self.lower_member(file, object, name)?
             }
             ExprNode::Call(fun_ast, args) => {
                 let fun_ir = self.lower_expr(module, file, fun, fun_ast)?;

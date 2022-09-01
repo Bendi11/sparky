@@ -248,7 +248,7 @@ impl<'src> Parser<'src> {
 
                 const ARGS_EXPECTING: &[TokenData<'static>] = &[
                     TokenData::Ident("argument typename"),
-                    TokenData::Arrow,
+                    TokenData::Arrow(1),
                     TokenData::OpenBracket(BracketType::Curly),
                 ];
 
@@ -284,7 +284,7 @@ impl<'src> Parser<'src> {
                             const EXPECTING_AFTER_ARG: &[TokenData<'static>] = &[
                                 TokenData::OpenBracket(BracketType::Curly),
                                 TokenData::Comma,
-                                TokenData::Arrow,
+                                TokenData::Arrow(1),
                             ];
 
                             let after_arg = self.peek_tok(EXPECTING_AFTER_ARG)?;
@@ -296,12 +296,12 @@ impl<'src> Parser<'src> {
                 }
 
                 const EXPECTING_AFTER_ARGS: &[TokenData<'static>] =
-                    &[TokenData::OpenBracket(BracketType::Curly), TokenData::Arrow];
+                    &[TokenData::OpenBracket(BracketType::Curly), TokenData::Arrow(1)];
 
                 let after_args = self
                     .peek_tok(EXPECTING_AFTER_ARGS)
                     .map(|tok| tok.data.clone());
-                let return_ty = if let Ok(TokenData::Arrow) = after_args {
+                let return_ty = if let Ok(TokenData::Arrow(_)) = after_args {
                     self.next_tok(EXPECTING_AFTER_ARGS)?;
                     self.trace.push("function return typename".into());
                     let return_ty = self.parse_typename()?;
@@ -962,7 +962,7 @@ impl<'src> Parser<'src> {
                 }
                 _ => {
                     let ty = self.parse_typename()?;
-                    self.expect_next(&[TokenData::Arrow])?;
+                    self.expect_next(&[TokenData::Arrow(1)])?;
                     let stmt = self.parse_stmt()?;
                     cases.push((ty, stmt));
                 }
@@ -1137,6 +1137,41 @@ impl<'src> Parser<'src> {
                     node: ExprNode::Call(Box::new(accessing), args),
                 })
             }
+            TokenData::Arrow(len) => {
+                const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] = &[
+                    TokenData::Ident("structure field name"),
+                ];
+
+                self.toks.next(); //Eat the period character
+                self.trace.push("member access".into());
+                let next = self.next_tok(EXPECTING_AFTER_PERIOD)?;
+                match next.data {
+                    TokenData::Ident(item) => {
+                        self.trace.pop();
+
+                        let symbol = self.symbol(item);
+                        self.parse_access(Expr {
+                            span: (accessing.span.from, peeked.span.to).into(),
+                            node: ExprNode::DerefMember {
+                                structure: Box::new(accessing),
+                                field: symbol,
+                                arrow_len: len,
+                            }
+                        })
+                    }
+                    _ => {
+                        return Err(ParseError {
+                            highlighted_span: Some(next.span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::UnexpectedToken {
+                                found: next,
+                                expecting: ExpectingOneOf(EXPECTING_AFTER_PERIOD),
+                            },
+                        })
+                    }
+                }
+            }
+
             TokenData::Period => {
                 const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] = &[
                     TokenData::Ident("structure field name"),
@@ -1310,7 +1345,7 @@ impl<'src> Parser<'src> {
                             }
                         };
 
-                        self.expect_next(&[TokenData::Arrow])?;
+                        self.expect_next(&[TokenData::Arrow(1)])?;
 
                         let return_ty = self.parse_typename()?;
 

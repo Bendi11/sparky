@@ -1,5 +1,13 @@
 imp root:std:libc:mem
 
-fun alloc(usz sz) -> *u8 {
-    return mem:malloc(sz)
+type global_allocator_t = {
+    fun(usz) -> *u8 alloc,
+    fun(*u8) -> () free
 }
+
+glob allocator = #{
+    alloc = mem:malloc,
+    free = mem:free
+}
+
+glob null = $*u8 0
