@@ -1,10 +1,10 @@
 imp root:std:alloc:null
 
 
-type cstr = {
+type cstr_t = {
     *u8 ptr
 }
 
-fun new() -> cstr {
-    return #cstr { ptr = null }
+fun new() -> cstr_t {
+    return #cstr_t { ptr = null }
 }

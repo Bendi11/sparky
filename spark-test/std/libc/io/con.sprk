@@ -1,4 +1,4 @@
-imp up:cstr
+imp up:cstr:cstr_t
 
-fun ext puts(up:cstr)
+fun ext puts(cstr_t)
 fun ext putc(up:cchar)
