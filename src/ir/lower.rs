@@ -180,10 +180,10 @@ impl<'ctx> IrLowerer<'ctx> {
                 DefData::AliasDef { name, aliased } => {
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
 
-                    let id = self.modules[module]
+                    let id = IntermediateDefId::Type(ty, def.file, def.span);
+                    self.modules[module]
                         .defs
-                        .insert(name.clone(), IntermediateDefId::Type(ty, def.file, def.span))
-                        .unwrap();
+                        .insert(name.clone(), id);
                     self.ensure_no_double(module, def.file, def.span, id)?;
                 }
                 _ => (),
@@ -270,12 +270,12 @@ impl<'ctx> IrLowerer<'ctx> {
                     };
 
                     let global_id = self.ctx.globals.insert(global);
-
-                    let id = self
+                    
+                    let id = IntermediateDefId::Global(global_id, def.file, def.span);
+                    self
                         .modules[module]
                         .defs
-                        .insert(name.last(), IntermediateDefId::Global(global_id, def.file, def.span))
-                        .unwrap();
+                        .insert(name.last(), id);
 
                     self.ensure_no_double(module, def.file, def.span, id)?;
                 },
@@ -409,10 +409,10 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
 
                     let fun = self.ctx.funs.insert(fun);
-                    let id = self.modules[module]
+                    let id = IntermediateDefId::Fun(fun, def.file, def.span);
+                    self.modules[module]
                         .defs
-                        .insert(proto.name.clone(), IntermediateDefId::Fun(fun, def.file, def.span))
-                        .unwrap();
+                        .insert(proto.name.clone(), id);
                     self.ensure_no_double(module, def.file, def.span, id)?;
                 }
                 _ => (),
