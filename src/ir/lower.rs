@@ -149,6 +149,7 @@ impl<'ctx> IrLowerer<'ctx> {
     pub fn lower(&mut self, root: &ParsedModule) -> Result<(), Diagnostic<FileId>> {
         self.populate_forward_modules_impl(self.root_module, root)?;
         self.populate_forward_types_impl(self.root_module, root)?;
+        self.populate_imported_forward(self.root_module, root)?;
         self.populate_global_forwards_impl(self.root_module, root)?;
         self.populate_defs_impl(self.root_module, root)?;
         self.populate_global_defs_impl(self.root_module, root)?;
@@ -236,19 +237,37 @@ impl<'ctx> IrLowerer<'ctx> {
         for child_parsed in parsed.children.iter() {
             if let IntermediateDefId::Module(child_module) = self.modules[module].defs[&child_parsed.name] {
                 self.populate_forward_types_impl(child_module, child_parsed)?;
-            }
+            } else { panic!() }
         }
 
+
+        Ok(())
+    }
+    
+    /// Generiate forward references for all imported symbols
+    fn populate_imported_forward(
+        &mut self,
+        module: IntermediateModuleId,
+        parsed: &ParsedModule,
+    ) -> Result<(), Diagnostic<FileId>> {
         //Create forward references for imported types
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::ImportDef { name } => match self.resolve_path(module, name) {
                     Some(id) => {
+                        self.ensure_no_double(module, def.file, def.span, id, name.last())?;
                         self.modules[module].defs.insert(name.last(), id);
-                    }
+                    },
+                    None => println!("{}", name),
                     _ => (),
                 },
                 _ => (),
+            }
+        }
+
+        for child in parsed.children.iter() {
+            if let IntermediateDefId::Module(module_id) = self.modules[module].defs[&child.name] {
+                self.populate_imported_forward(module_id, child)?;
             }
         }
 
@@ -608,7 +627,6 @@ impl<'ctx> IrLowerer<'ctx> {
             )
         }
         for (name, other) in self.modules[module].defs.iter() {
-            println!("for {} in {}: {}", def, self.modules[module].name, IntermediateDefFormatter { lower: self, id: *other });
             if *other != id && *name == def {
                 return Err(Diagnostic::error()
                     .with_message(format!(
