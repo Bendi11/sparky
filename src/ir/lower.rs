@@ -178,12 +178,13 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::AliasDef { name, aliased } => {
-                    if self.modules[module].defs.contains_key(name) { continue }
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
 
-                    self.modules[module]
+                    let id = self.modules[module]
                         .defs
-                        .insert(name.clone(), IntermediateDefId::Type(ty));
+                        .insert(name.clone(), IntermediateDefId::Type(ty, def.file, def.span))
+                        .unwrap();
+                    self.ensure_no_double(module, def.file, def.span, id)?;
                 }
                 _ => (),
             }
@@ -234,7 +235,7 @@ impl<'ctx> IrLowerer<'ctx> {
             match &def.data {
                 DefData::FunDef(FunDef { proto, body, .. }) => {
                     let def_id = self.modules[module].defs[&proto.name];
-                    if let IntermediateDefId::Fun(fun) = def_id {
+                    if let IntermediateDefId::Fun(fun, ..) = def_id {
                         self.lower_body(module, def.file, fun, body)?;
                     } else {
                         panic!("Internal compiler error: definition id for symbol {} should be a function, but isn't", proto.name);
@@ -263,7 +264,6 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::Global { name, comptime, val, ty } => {
-                    if self.modules[module].defs.contains_key(&name.last()) { continue }
                     let global = IrGlobal {
                         ty: IrContext::INVALID,
                         name: name.last(),
@@ -271,10 +271,13 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     let global_id = self.ctx.globals.insert(global);
 
-                    self
+                    let id = self
                         .modules[module]
                         .defs
-                        .insert(name.last(), IntermediateDefId::Global(global_id));
+                        .insert(name.last(), IntermediateDefId::Global(global_id, def.file, def.span))
+                        .unwrap();
+
+                    self.ensure_no_double(module, def.file, def.span, id)?;
                 },
                 _ => (),
             }
@@ -302,7 +305,7 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::Global { name, comptime, val, ty, .. } => {
-                    let glob = if let IntermediateDefId::Global(glob) = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name)) {
+                    let glob = if let IntermediateDefId::Global(glob, ..) = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name)) {
                         glob
                     } else {
                         unreachable!()
@@ -366,7 +369,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 DefData::AliasDef { name, aliased } => {
                     let ty = *self.modules[module].defs.get(name).unwrap_or_else(|| panic!("ICE: Cannot find definition named {}", name));
                     match ty {
-                        IntermediateDefId::Type(ty) => {
+                        IntermediateDefId::Type(ty, ..) => {
                             let resolved = self.resolve_type(aliased, module, def.file, def.span)?;
                             *self.ctx.types.get_mut(ty) = IrType::Alias {
                                 name: name.clone(),
@@ -377,12 +380,6 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
                 }
                 DefData::FunDec(proto) | DefData::FunDef(FunDef { proto, .. }) => {
-                    if let DefData::FunDef(ref fundef) = &def.data {
-                        if self.modules[module].defs.contains_key(&proto.name) {
-                            continue
-                        }
-                    }
-
                     let fun_ty = self.resolve_fn_type(&proto.ty, module, def.file, def.span)?;
                     let fun = IrFun {
                         file: def.file,
@@ -412,9 +409,11 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
 
                     let fun = self.ctx.funs.insert(fun);
-                    self.modules[module]
+                    let id = self.modules[module]
                         .defs
-                        .insert(proto.name.clone(), IntermediateDefId::Fun(fun));
+                        .insert(proto.name.clone(), IntermediateDefId::Fun(fun, def.file, def.span))
+                        .unwrap();
+                    self.ensure_no_double(module, def.file, def.span, id)?;
                 }
                 _ => (),
             }
@@ -433,6 +432,7 @@ impl<'ctx> IrLowerer<'ctx> {
             match &def.data {
                 DefData::ImportDef { name } => match self.resolve_path(module, name) {
                     Some(id) => {
+                        self.ensure_no_double(module, def.file, def.span, id)?;
                         self.modules[module].defs.insert(name.last(), id);
                     }
                     None => {
@@ -509,7 +509,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     .insert(IrType::Struct(IrStructType { fields }).into())
             }
             UnresolvedType::UserDefined { name } => match self.resolve_path(module, name) {
-                Some(IntermediateDefId::Type(ty)) => ty,
+                Some(IntermediateDefId::Type(ty, ..)) => ty,
                     _ => {
                         return Err(Diagnostic::error()
                             .with_message(format!(
@@ -569,7 +569,15 @@ impl<'ctx> IrLowerer<'ctx> {
                     .with_labels(vec![
                         Label::primary(file, span)
                             .with_message(format!("{} is defined here", IntermediateDefFormatter { lower: self, id: def })),
-                        Label::secondary(, range)
+                        match *other {
+                            IntermediateDefId::Type(_, file, span)
+                            | IntermediateDefId::Fun(_, file, span)
+                            | IntermediateDefId::Global(_, file, span) => Label::secondary(file, span),
+                            IntermediateDefId::Module(_) => Label::secondary(file, span),
+                        }.with_message(format!(
+                            "Conflicts with {}",
+                            IntermediateDefFormatter { lower: self, id: *other }
+                        ))
                     ])
                 ) 
             }
@@ -580,10 +588,10 @@ impl<'ctx> IrLowerer<'ctx> {
 
     pub fn def_name(&self, def: IntermediateDefId) -> Symbol {
         match def {
-            IntermediateDefId::Type(ty) => Symbol::from(&self.ctx.typename(ty).to_string()),
-            IntermediateDefId::Fun(fun) => self.ctx[fun].name,
+            IntermediateDefId::Type(ty, ..) => Symbol::from(&self.ctx.typename(ty).to_string()),
+            IntermediateDefId::Fun(fun, ..) => self.ctx[fun].name,
             IntermediateDefId::Module(m) => self.modules[m].name,
-            IntermediateDefId::Global(g) => self.ctx[g].name,
+            IntermediateDefId::Global(g, ..) => self.ctx[g].name,
         }
     }
 
@@ -633,10 +641,10 @@ pub struct IntermediateDefFormatter<'lower, 'ctx> {
 impl<'lower, 'ctx> std::fmt::Display for IntermediateDefFormatter<'lower, 'ctx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.id {
-            IntermediateDefId::Type(ty) => write!(f, "type {}", self.lower.ctx.typename(ty)),
-            IntermediateDefId::Fun(fun) => write!(f, "function {}", self.lower.ctx[fun].name),
+            IntermediateDefId::Type(ty, ..) => write!(f, "type {}", self.lower.ctx.typename(ty)),
+            IntermediateDefId::Fun(fun, ..) => write!(f, "function {}", self.lower.ctx[fun].name),
             IntermediateDefId::Module(m) => write!(f, "module {}", self.lower.modules[m].name),
-            IntermediateDefId::Global(g) => write!(f, "global {}", self.lower.ctx[g].name),
+            IntermediateDefId::Global(g, ..) => write!(f, "global {}", self.lower.ctx[g].name),
         }
     }
 }

@@ -261,7 +261,7 @@ impl<'ctx> IrLowerer<'ctx> {
             StmtNode::Call(ident, args) => {
                 let def = self.resolve_path(module, ident);
                 match def {
-                    Some(IntermediateDefId::Fun(fun_id)) => {
+                    Some(IntermediateDefId::Fun(fun_id, ..)) => {
                         let fun_ty = self.ctx[fun_id].ty.clone();
                         let args = args
                             .iter()
@@ -367,14 +367,14 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         Ok(match &expr.node {
             ExprNode::Access(pat) => match self.resolve_path(module, pat) {
-                Some(IntermediateDefId::Fun(fun_id)) => {
+                Some(IntermediateDefId::Fun(fun_id, ..)) => {
                     IrExpr {
                         kind: IrExprKind::Fun(fun_id),
                         ty: self.ctx[fun_id].ty_id,
                         span: expr.span,
                     }
                 },
-                Some(IntermediateDefId::Global(g)) => {
+                Some(IntermediateDefId::Global(g, ..)) => {
                     IrExpr {
                         span: expr.span,
                         ty: self.ctx[g].ty,
