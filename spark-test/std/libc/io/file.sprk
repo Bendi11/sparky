@@ -1,7 +1,9 @@
 imp up:cstr:cstr_t
 
 type cfile = *()
+
 fun ext fopen(cstr_t, cstr_t) -> cfile
 fun ext fclose(cfile)
 fun ext feof(cfile)
 fun ext fwrite(up:cvoidptr, usz, usz, cfile)
+fun ext fread(up:cvoidptr, usz, usz, cfile)

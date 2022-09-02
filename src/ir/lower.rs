@@ -8,7 +8,7 @@ use crate::{
     arena::{Arena, Index},
     ast::{
         DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType, FunDef, Stmt, Expr,
+        UnresolvedType, FunDef
     },
     util::{
         files::FileId,
@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::{
-    types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
+    types::{FunType, IrFloatType, IrStructField, IrStructType, IrType},
     BBId, FunId, IrContext, IrFun, TypeId, VarId, GlobalId, IrGlobal, IrBB, IrTerminator, value::{IrExpr, IrExprKind, IrLiteral}, IrBody, IrStmt, IrStmtKind,
 };
 
@@ -38,8 +38,6 @@ pub struct IrLowerer<'ctx> {
     scope_stack: Vec<ScopePlate>,
     /// Function for setting up global values
     global_setup_fun: FunId,
-    /// Function for checking an expression's validity
-    tmp_fun: FunId,
     /// Current basic block to generate code in
     bb: Option<BBId>,
 }
@@ -140,7 +138,6 @@ impl<'ctx> IrLowerer<'ctx> {
             modules,
             global_setup_fun,
             scope_stack: Vec::new(),
-            tmp_fun,
             bb: None,
         }
     }
@@ -220,7 +217,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::AliasDef { name, aliased } => {
+                DefData::AliasDef { name, .. } => {
                     let ty = self.ctx.types.insert_nointern(IrType::Invalid);
 
                     let id = IntermediateDefId::Type(ty, def.file, def.span);

@@ -2,12 +2,14 @@ imp root:std:libc:mem
 
 type global_allocator_t = {
     fun(usz) -> *u8 alloc,
-    fun(*u8) -> () free
+    fun(*u8) -> () free,
+    fun(*u8, usz) -> *u8 realloc,
 }
 
 glob allocator = #{
     alloc = mem:malloc,
-    free = mem:free
+    free = mem:free,
+    realloc = mem:realloc,
 }
 
 glob null = $*u8 0
