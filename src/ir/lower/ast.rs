@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use crate::{
     ast::{
         ElseExpr, Expr, ExprNode, If, IntegerWidth, Literal, Match, NumberLiteral,
-        NumberLiteralAnnotation, Stmt, StmtNode, DefData,
+        NumberLiteralAnnotation, Stmt, StmtNode,
     },
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},

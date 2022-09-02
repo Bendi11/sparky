@@ -7,8 +7,8 @@ use inkwell::{
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetData},
     types::{BasicType, BasicTypeEnum, FunctionType, IntType},
-    values::{FunctionValue, PointerValue, BasicValue, GlobalValue},
-    AddressSpace, OptimizationLevel, data_layout::{DataLayout, self},
+    values::{FunctionValue, PointerValue, GlobalValue},
+    AddressSpace, OptimizationLevel,
 };
 
 use crate::{

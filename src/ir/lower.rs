@@ -308,7 +308,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<(), Diagnostic<FileId>> {
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::Global { name, comptime, val, ty } => {
+                DefData::Global { name, .. } => {
                     let global = IrGlobal {
                         ty: IrContext::INVALID,
                         name: name.last(),

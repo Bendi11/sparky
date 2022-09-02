@@ -13,7 +13,7 @@ use crate::{
         value::{IrExpr, IrExprKind, IrLiteral},
         IrContext, TypeId,
     },
-    parse::token::Op, ast::IntegerWidth,
+    parse::token::Op,
 };
 
 use super::{LLVMCodeGenerator, LLVMCodeGeneratorState};
