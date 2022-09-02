@@ -5,9 +5,11 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     passes::PassManager,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetData},
+    targets::{
+        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
+    },
     types::{BasicType, BasicTypeEnum, FunctionType, IntType},
-    values::{FunctionValue, PointerValue, GlobalValue},
+    values::{FunctionValue, GlobalValue, PointerValue},
     AddressSpace, OptimizationLevel,
 };
 
@@ -77,10 +79,14 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             .unwrap();
         let target_data = target_machine.get_target_data();
 
-        let llvm_types = irctx
-            .types
-            .secondary(|(_, ty)| if matches!(ty, IrType::Invalid) { ctx.i8_type().into() } else { Self::gen_type(ctx, &target_data, irctx, ty) });
-        
+        let llvm_types = irctx.types.secondary(|(_, ty)| {
+            if matches!(ty, IrType::Invalid) {
+                ctx.i8_type().into()
+            } else {
+                Self::gen_type(ctx, &target_data, irctx, ty)
+            }
+        });
+
         let llvm_funs = irctx.funs.secondary(|(_, fun)| {
             root.add_function(
                 if fun.flags.contains(FunFlags::EXTERN) {
@@ -94,19 +100,16 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                 Some(Linkage::External),
             )
         });
-        
-        let llvm_globs = irctx
-            .globals
-            .secondary(|(_, glob)| {
-                if glob.ty == IrContext::INVALID {
-                    return root.get_first_function().unwrap().as_global_value()
-                }
-                let ty = *llvm_types.get_secondary(glob.ty);
-                let glob = root
-                    .add_global(ty, Some(AddressSpace::Global), &glob.name);
-                glob.set_initializer(&ty.const_zero());
-                glob
-            });
+
+        let llvm_globs = irctx.globals.secondary(|(_, glob)| {
+            if glob.ty == IrContext::INVALID {
+                return root.get_first_function().unwrap().as_global_value();
+            }
+            let ty = *llvm_types.get_secondary(glob.ty);
+            let glob = root.add_global(ty, Some(AddressSpace::Global), &glob.name);
+            glob.set_initializer(&ty.const_zero());
+            glob
+        });
 
         Self {
             state: LLVMCodeGeneratorState {
@@ -137,9 +140,17 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                 self.state.build.position_at_end(bb);
                 for (idx, (ty, param)) in fun.ty.params.iter().enumerate() {
                     if let Some(name) = param {
-                        let alloca = self.state.build.build_alloca(*self.state.llvm_types.get_secondary(*ty), name.as_str());
-                        self.state.build.build_store(alloca, llvm_fun.get_nth_param(idx as u32).unwrap());
-                        *self.state.llvm_vars.get_secondary_mut(body.args[idx].unwrap()) = Some(alloca);
+                        let alloca = self
+                            .state
+                            .build
+                            .build_alloca(*self.state.llvm_types.get_secondary(*ty), name.as_str());
+                        self.state
+                            .build
+                            .build_store(alloca, llvm_fun.get_nth_param(idx as u32).unwrap());
+                        *self
+                            .state
+                            .llvm_vars
+                            .get_secondary_mut(body.args[idx].unwrap()) = Some(alloca);
                     }
                 }
                 self.state
@@ -147,13 +158,9 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             }
         }
 
-        self
-            .state
-            .root
-            .verify()
-            .unwrap_or_else(|e| {
-                eprintln!("ICE: LLVM module verification failed: {}", e.to_string())
-            });
+        self.state.root.verify().unwrap_or_else(|e| {
+            eprintln!("ICE: LLVM module verification failed: {}", e.to_string())
+        });
 
         let fpm = PassManager::create(&self.state.root);
         if self.state.opts.opt_lvl > OutputOptimizationLevel::Debug {
@@ -174,12 +181,16 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
         fpm.finalize();
 
         match self.state.opts.out_type {
-            OutputFileType::Object => {
-                self.state.target_machine.write_to_file(&self.state.root, FileType::Object, &self.state.opts.out_file)
-            }
-            OutputFileType::Assembly => {
-                self.state.target_machine.write_to_file(&self.state.root, FileType::Assembly, &self.state.opts.out_file)
-            }
+            OutputFileType::Object => self.state.target_machine.write_to_file(
+                &self.state.root,
+                FileType::Object,
+                &self.state.opts.out_file,
+            ),
+            OutputFileType::Assembly => self.state.target_machine.write_to_file(
+                &self.state.root,
+                FileType::Assembly,
+                &self.state.opts.out_file,
+            ),
             OutputFileType::LLVMIR => self.state.root.print_to_file(&self.state.opts.out_file),
             OutputFileType::IR => unreachable!(),
         }
@@ -189,7 +200,11 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     }
 
     /// Translate integer types to LLVM
-    pub fn gen_inttype(ctx: &'llvm Context, tdata: &TargetData, ty: &IrIntegerType) -> IntType<'llvm> {
+    pub fn gen_inttype(
+        ctx: &'llvm Context,
+        tdata: &TargetData,
+        ty: &IrIntegerType,
+    ) -> IntType<'llvm> {
         match ty.width {
             IntegerWidth::Eight => ctx.i8_type(),
             IntegerWidth::Sixteen => ctx.i16_type(),
@@ -240,10 +255,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
 
                 let largest_size = variants
                     .iter()
-                    .map(|ty| {
-                        target_data
-                            .get_store_size(ty)
-                    })
+                    .map(|ty| target_data.get_store_size(ty))
                     .max()
                     .unwrap();
 

@@ -2,7 +2,7 @@ use crate::{ast::BigInt, parse::token::Op, util::loc::Span, Symbol};
 
 use super::{
     types::{IrFloatType, IrIntegerType},
-    FunId, TypeId, VarId, GlobalId,
+    FunId, GlobalId, TypeId, VarId,
 };
 
 /// Structure containing an [IrExprKind] plus location data for error messages

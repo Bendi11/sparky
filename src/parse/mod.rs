@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt};
 
 use crate::{
-    ast::{BigInt, Let, Literal, Match, FunDef },
+    ast::{BigInt, FunDef, Let, Literal, Match},
     Symbol,
 };
 use smallvec::SmallVec;
@@ -242,7 +242,6 @@ impl<'src> Parser<'src> {
                         other => (other, FunFlags::empty()),
                     };
 
-
                 self.trace
                     .push(format!("function declaration '{}'", name).into());
 
@@ -267,15 +266,16 @@ impl<'src> Parser<'src> {
                             self.trace.push("function argument typename".into());
                             let arg_type = self.parse_typename()?;
                             self.trace.pop();
-                            
+
                             let arg_name = match self.toks.peek().map(|t| &t.data) {
                                 Some(TokenData::Ident(_)) => {
                                     self.trace.push("function argument name".into());
-                                    let arg_name = self
-                                        .expect_next_ident(&[TokenData::Ident("function argument name")])?;
+                                    let arg_name = self.expect_next_ident(&[TokenData::Ident(
+                                        "function argument name",
+                                    )])?;
                                     self.trace.pop();
                                     Some(self.symbol(arg_name))
-                                },
+                                }
                                 _ => None,
                             };
 
@@ -295,8 +295,10 @@ impl<'src> Parser<'src> {
                     }
                 }
 
-                const EXPECTING_AFTER_ARGS: &[TokenData<'static>] =
-                    &[TokenData::OpenBracket(BracketType::Curly), TokenData::Arrow(1)];
+                const EXPECTING_AFTER_ARGS: &[TokenData<'static>] = &[
+                    TokenData::OpenBracket(BracketType::Curly),
+                    TokenData::Arrow(1),
+                ];
 
                 let after_args = self
                     .peek_tok(EXPECTING_AFTER_ARGS)
@@ -334,7 +336,10 @@ impl<'src> Parser<'src> {
                     Ok(Def {
                         file,
                         span: body.1,
-                        data: DefData::FunDef(FunDef { proto, body: body.0 } ),
+                        data: DefData::FunDef(FunDef {
+                            proto,
+                            body: body.0,
+                        }),
                     })
                 } else {
                     Ok(Def {
@@ -349,7 +354,6 @@ impl<'src> Parser<'src> {
                 self.trace
                     .push(format!("type definition '{}'", name).into());
 
-
                 self.expect_next(&[TokenData::Assign])?;
                 let aliased = self.parse_typename()?;
 
@@ -362,16 +366,15 @@ impl<'src> Parser<'src> {
                     },
                     file,
                 })
-            },
+            }
             TokenData::Ident("glob") => {
                 const EXPECTING_AFTER_GLOB: &[TokenData<'static>] = &[
                     TokenData::Ident("global name"),
                     TokenData::OpenBracket(BracketType::Square),
                 ];
 
-
                 let next = self.peek_tok(EXPECTING_AFTER_GLOB)?.clone();
-                    
+
                 let ty = match next.data {
                     TokenData::OpenBracket(BracketType::Square) => {
                         self.toks.next();
@@ -382,17 +385,27 @@ impl<'src> Parser<'src> {
                     _ => None,
                 };
 
-                let comptime = if self.toks.peek().map(|t| matches!(t.data, TokenData::Ident("ct"))).unwrap_or(false) {
+                let comptime = if self
+                    .toks
+                    .peek()
+                    .map(|t| matches!(t.data, TokenData::Ident("ct")))
+                    .unwrap_or(false)
+                {
                     self.toks.next();
                     true
                 } else {
                     false
                 };
-                
+
                 let name = self.expect_next_path(&[TokenData::Ident("Global value name")])?;
                 self.trace.push("global value definition".into());
 
-                let (val, to) = if self.toks.peek().map(|t| matches!(t.data, TokenData::Assign)).unwrap_or(false) {
+                let (val, to) = if self
+                    .toks
+                    .peek()
+                    .map(|t| matches!(t.data, TokenData::Assign))
+                    .unwrap_or(false)
+                {
                     self.toks.next();
                     let expr = self.parse_expr()?;
                     let to = expr.span.to;
@@ -400,7 +413,7 @@ impl<'src> Parser<'src> {
                 } else {
                     (None, next.span.to)
                 };
-                
+
                 self.trace.pop();
                 Ok(Def {
                     span: (next.span.from..to).into(),
@@ -423,7 +436,7 @@ impl<'src> Parser<'src> {
             }),
         }
     }
-   
+
     /// Parse a curly brace enclosed AST body
     fn parse_body(&mut self) -> ParseResult<'src, (Vec<Stmt>, Span)> {
         const EXPECTING_FOR_BODY: &[TokenData<'static>] =
@@ -485,7 +498,7 @@ impl<'src> Parser<'src> {
                     span: (peeked.span.from..span.to).into(),
                     node: StmtNode::Loop(body),
                 })
-            },
+            }
             TokenData::Ident("break") => {
                 self.toks.next();
                 Ok(Stmt {
@@ -621,7 +634,7 @@ impl<'src> Parser<'src> {
                     span,
                     node: ExprNode::Match(m),
                 }
-            },
+            }
             TokenData::Ident("loop") => {
                 self.toks.next();
                 let (body, span) = self.parse_body()?;
@@ -629,7 +642,7 @@ impl<'src> Parser<'src> {
                     span,
                     node: ExprNode::Loop(body),
                 }
-            },
+            }
             TokenData::Ident("true") => {
                 self.toks.next();
                 Expr {
@@ -835,78 +848,80 @@ impl<'src> Parser<'src> {
 
         Ok(unescaped)
     }
-    
+
     /// Unescape a single character from the given character iterator
     pub fn unescape_char(
         &mut self,
         mut iter: impl Iterator<Item = char>,
         original: &'src str,
-        span: Span
+        span: Span,
     ) -> ParseResult<'src, Option<char>> {
         let next = match iter.next() {
-                Some(c) => c,
-                None => return Ok(None),
-            };
+            Some(c) => c,
+            None => return Ok(None),
+        };
 
-            return match next {
-                '\\' => {
-                    let after_backslash = match iter.next() {
-                        Some(c) => c,
-                        None => {
-                            return Err(ParseError {
-                                highlighted_span: Some(span),
-                                backtrace: self.trace.clone(),
-                                error: ParseErrorKind::ExpectingEscapeSeq { literal: original },
-                            })
-                        }
-                    };
+        return match next {
+            '\\' => {
+                let after_backslash = match iter.next() {
+                    Some(c) => c,
+                    None => {
+                        return Err(ParseError {
+                            highlighted_span: Some(span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::ExpectingEscapeSeq { literal: original },
+                        })
+                    }
+                };
 
-                    Ok(Some(match after_backslash {
-                        '\\' => '\\',
-                        'n' =>  '\n',
-                        't' =>  '\t',
-                        'r' =>  '\r',
-                        '"' =>  '\"',
-                        other => {
-                            return Err(ParseError {
-                                highlighted_span: Some(span),
-                                backtrace: self.trace.clone(),
-                                error: ParseErrorKind::UnknownEscapeSeq {
-                                    escaped: other,
-                                    literal: original,
-                                },
-                            })
-                        }
-                    }))
-                }
-                _ => Ok(Some(next)),
+                Ok(Some(match after_backslash {
+                    '\\' => '\\',
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '"' => '\"',
+                    other => {
+                        return Err(ParseError {
+                            highlighted_span: Some(span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::UnknownEscapeSeq {
+                                escaped: other,
+                                literal: original,
+                            },
+                        })
+                    }
+                }))
             }
-
+            _ => Ok(Some(next)),
+        };
     }
-    
+
     /// Parse a character literal from the token stream, respecting escaped characters with
     /// backslash
     fn parse_char_literal(&mut self) -> ParseResult<'src, char> {
-        const EXPECTING_CHAR: &[TokenData<'static>] = &[
-            TokenData::Char("character literal"),
-        ];
+        const EXPECTING_CHAR: &[TokenData<'static>] = &[TokenData::Char("character literal")];
         let next = self.next_tok(EXPECTING_CHAR)?;
         match next.data {
             TokenData::Char(chars) => {
                 let iter = chars.chars();
                 match self.unescape_char(iter, chars, next.span)? {
                     Some(ch) => Ok(ch),
-                    None => return Err(ParseError {
-                        highlighted_span: Some(next.span),
-                        backtrace: self.trace.clone(),
-                        error: ParseErrorKind::ExpectingEscapeSeq { literal: chars }
-                    })
+                    None => {
+                        return Err(ParseError {
+                            highlighted_span: Some(next.span),
+                            backtrace: self.trace.clone(),
+                            error: ParseErrorKind::ExpectingEscapeSeq { literal: chars },
+                        })
+                    }
                 }
-            },
+            }
             _ => Err(ParseError {
                 highlighted_span: Some(next.span),
                 backtrace: self.trace.clone(),
-                error: ParseErrorKind::UnexpectedToken { found: next, expecting: ExpectingOneOf(EXPECTING_CHAR) },
+                error: ParseErrorKind::UnexpectedToken {
+                    found: next,
+                    expecting: ExpectingOneOf(EXPECTING_CHAR),
+                },
             }),
         }
     }
@@ -925,7 +940,7 @@ impl<'src> Parser<'src> {
                             rhs = self.parse_expr_rhs(rhs, operator.precedence() + 1)?;
                         }
                     }
-    
+
                     lhs = Expr {
                         span: (lhs.span.from, rhs.span.to).into(),
                         node: ExprNode::Bin(Box::new(lhs), operator, Box::new(rhs)),
@@ -1138,9 +1153,8 @@ impl<'src> Parser<'src> {
                 })
             }
             TokenData::Arrow(len) => {
-                const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] = &[
-                    TokenData::Ident("structure field name"),
-                ];
+                const EXPECTING_AFTER_PERIOD: &[TokenData<'static>] =
+                    &[TokenData::Ident("structure field name")];
 
                 self.toks.next(); //Eat the period character
                 self.trace.push("member access".into());
@@ -1156,7 +1170,7 @@ impl<'src> Parser<'src> {
                                 structure: Box::new(accessing),
                                 field: symbol,
                                 arrow_len: len,
-                            }
+                            },
                         })
                     }
                     _ => {
@@ -1267,9 +1281,7 @@ impl<'src> Parser<'src> {
 
         match next.data {
             TokenData::Ident(name) => match name {
-                "i8" | "i16" | "i32" | "i64"  | 
-                    "u8" | "u16" | "u32" | "u64" |
-                    "isz" | "usz" => {
+                "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "isz" | "usz" => {
                     let signed = &name[0..1] == "i";
 
                     match &name[1..] {
@@ -1290,8 +1302,8 @@ impl<'src> Parser<'src> {
                             width: IntegerWidth::SixtyFour,
                         }),
                         "sz" => Ok(UnresolvedType::Integer {
-                                signed,
-                                width: IntegerWidth::PtrSize,
+                            signed,
+                            width: IntegerWidth::PtrSize,
                         }),
                         _ => Err(ParseError {
                             highlighted_span: Some(next.span),
@@ -1302,10 +1314,9 @@ impl<'src> Parser<'src> {
                             },
                         }),
                     }
-                },
+                }
                 "char" => Ok(UnresolvedType::Char),
-                "fun" | 
-                    "f32" | "f64" => match &name[1..] {
+                "fun" | "f32" | "f64" => match &name[1..] {
                     "32" => Ok(UnresolvedType::Float { doublewide: false }),
                     "64" => Ok(UnresolvedType::Float { doublewide: true }),
                     "un" => {
@@ -1570,16 +1581,16 @@ impl<'src> Parser<'src> {
                         "f64" => {
                             self.toks.next();
                             Some(NumberLiteralAnnotation::F64)
-                        },
+                        }
 
                         "usz" => {
                             self.toks.next();
                             Some(NumberLiteralAnnotation::Usz)
-                        },
+                        }
                         "isz" => {
                             self.toks.next();
                             Some(NumberLiteralAnnotation::Isz)
-                        },
+                        }
 
                         _ => None,
                     }

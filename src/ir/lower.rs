@@ -7,19 +7,18 @@ use hashbrown::HashMap;
 use crate::{
     arena::{Arena, Index},
     ast::{
-        DefData, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
-        UnresolvedType, FunDef
+        DefData, FunDef, FunFlags, ParsedModule, PathIter, SymbolPath, UnresolvedFunType,
+        UnresolvedType,
     },
-    util::{
-        files::FileId,
-        loc::Span,
-    },
+    util::{files::FileId, loc::Span},
     Symbol,
 };
 
 use super::{
     types::{FunType, IrFloatType, IrStructField, IrStructType, IrType},
-    BBId, FunId, IrContext, IrFun, TypeId, VarId, GlobalId, IrGlobal, IrBB, IrTerminator, value::{IrExpr, IrExprKind, IrLiteral}, IrBody, IrStmt, IrStmtKind,
+    value::{IrExpr, IrExprKind, IrLiteral},
+    BBId, FunId, GlobalId, IrBB, IrBody, IrContext, IrFun, IrGlobal, IrStmt, IrStmtKind,
+    IrTerminator, TypeId, VarId,
 };
 
 pub mod ast;
@@ -41,7 +40,6 @@ pub struct IrLowerer<'ctx> {
     /// Current basic block to generate code in
     bb: Option<BBId>,
 }
-
 
 /// Represents a type of scope that we are currently in, used to represent the nested
 /// scope structure of programs with ifs, loops, etc.
@@ -84,12 +82,12 @@ impl<'ctx> IrLowerer<'ctx> {
     pub fn new(ctx: &'ctx mut IrContext, name: Symbol) -> Self {
         let mut modules = Arena::new();
         let root_module = modules.insert(IntermediateModule::new(name));
-        
+
         let setup_ty = FunType {
             return_ty: IrContext::UNIT,
-            params: vec![]
+            params: vec![],
         };
-        
+
         let entry = IrBB {
             stmts: vec![],
             terminator: IrTerminator::Return(IrExpr {
@@ -107,7 +105,7 @@ impl<'ctx> IrLowerer<'ctx> {
             body: None,
             flags: FunFlags::empty(),
         };
-        
+
         let tmp = IrFun {
             name: Symbol::from("__tmp"),
             file: unsafe { FileId::from_raw(0) },
@@ -122,14 +120,14 @@ impl<'ctx> IrLowerer<'ctx> {
         ctx.funs[global_setup_fun].body = Some(IrBody {
             parent: global_setup_fun,
             entry: ctx.bbs.insert(entry.clone()),
-            args: vec![]
-        });  
+            args: vec![],
+        });
 
         let tmp_fun = ctx.funs.insert(tmp);
         ctx.funs[tmp_fun].body = Some(IrBody {
             parent: tmp_fun,
             entry: ctx.bbs.insert(entry),
-            args: vec![]
+            args: vec![],
         });
 
         Self {
@@ -167,7 +165,7 @@ impl<'ctx> IrLowerer<'ctx> {
             .as_mut()
             .expect("ICE: IR lowerer is not currently in a basic block")
     }
-   
+
     fn populate_forward_modules_impl(
         &mut self,
         module: IntermediateModuleId,
@@ -181,10 +179,9 @@ impl<'ctx> IrLowerer<'ctx> {
                 child_parsed.name.clone(),
                 IntermediateDefId::Module(child_module),
             );
-            self.modules[child_module].defs.insert(
-                Symbol::from("up"),
-                IntermediateDefId::Module(module)
-            );
+            self.modules[child_module]
+                .defs
+                .insert(Symbol::from("up"), IntermediateDefId::Module(module));
             self.modules[child_module].defs.insert(
                 Symbol::from("root"),
                 IntermediateDefId::Module(self.root_module),
@@ -205,7 +202,6 @@ impl<'ctx> IrLowerer<'ctx> {
             }
         }
 
-
         Ok(())
     }
 
@@ -222,25 +218,25 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     let id = IntermediateDefId::Type(ty, def.file, def.span);
                     self.ensure_no_double(module, def.file, def.span, id, *name)?;
-                    self.modules[module]
-                        .defs
-                        .insert(name.clone(), id);
-
+                    self.modules[module].defs.insert(name.clone(), id);
                 }
                 _ => (),
             }
         }
 
         for child_parsed in parsed.children.iter() {
-            if let IntermediateDefId::Module(child_module) = self.modules[module].defs[&child_parsed.name] {
+            if let IntermediateDefId::Module(child_module) =
+                self.modules[module].defs[&child_parsed.name]
+            {
                 self.populate_forward_types_impl(child_module, child_parsed)?;
-            } else { panic!() }
+            } else {
+                panic!()
+            }
         }
-
 
         Ok(())
     }
-    
+
     /// Generiate forward references for all imported symbols
     fn populate_imported_forward(
         &mut self,
@@ -254,7 +250,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     Some(id) => {
                         self.ensure_no_double(module, def.file, def.span, id, name.last())?;
                         self.modules[module].defs.insert(name.last(), id);
-                    },
+                    }
                     _ => (),
                 },
                 _ => (),
@@ -300,7 +296,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
         Ok(())
     }
-   
+
     fn populate_global_forwards_impl(
         &mut self,
         module: IntermediateModuleId,
@@ -315,17 +311,14 @@ impl<'ctx> IrLowerer<'ctx> {
                     };
 
                     let global_id = self.ctx.globals.insert(global);
-                    
+
                     let id = IntermediateDefId::Global(global_id, def.file, def.span);
-                    self
-                        .modules[module]
-                        .defs
-                        .insert(name.last(), id);
-                    
+                    self.modules[module].defs.insert(name.last(), id);
+
                     if name.len() == 1 {
                         self.ensure_no_double(module, def.file, def.span, id, name.last().clone())?;
                     }
-                },
+                }
                 _ => (),
             }
         }
@@ -339,9 +332,8 @@ impl<'ctx> IrLowerer<'ctx> {
         }
 
         Ok(())
-
     }
-   
+
     /// Populate the definitions of all defined global variables
     fn populate_global_defs_impl(
         &mut self,
@@ -351,18 +343,29 @@ impl<'ctx> IrLowerer<'ctx> {
         self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::Global { name, comptime: _, val, ty, .. } => {
-                    let glob = if let IntermediateDefId::Global(glob, ..) = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name)) {
+                DefData::Global {
+                    name,
+                    comptime: _,
+                    val,
+                    ty,
+                    ..
+                } => {
+                    let glob = if let IntermediateDefId::Global(glob, ..) = *self.modules[module]
+                        .defs
+                        .get(&name.last())
+                        .unwrap_or_else(|| panic!("ICE: cannot find global named {}", name))
+                    {
                         glob
                     } else {
                         unreachable!()
                     };
-                   
 
                     let ty = match val {
                         Some(expr) => {
-                            self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
-                            let expr = self.lower_expr(module, def.file, self.global_setup_fun, expr)?;
+                            self.bb =
+                                Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
+                            let expr =
+                                self.lower_expr(module, def.file, self.global_setup_fun, expr)?;
                             self.ctx[self.bb.unwrap()].stmts.push(IrStmt {
                                 span: Span::from(0..0),
                                 kind: IrStmtKind::Write {
@@ -372,20 +375,21 @@ impl<'ctx> IrLowerer<'ctx> {
                                         kind: IrExprKind::Global(glob),
                                     },
                                     val: expr.clone(),
-                                }
+                                },
                             });
 
-
-                            expr.ty                        },
+                            expr.ty
+                        }
                         None => match ty {
                             Some(ty) => self.resolve_type(ty, module, def.file, def.span)?,
-                            None => return Err(Diagnostic::error()
-                                .with_message(format!("Global with no declared type or assigned value"))
-                                .with_labels(vec![
-                                    Label::primary(def.file, def.span)
-                                ])
-                            )
-                        }
+                            None => {
+                                return Err(Diagnostic::error()
+                                    .with_message(format!(
+                                        "Global with no declared type or assigned value"
+                                    ))
+                                    .with_labels(vec![Label::primary(def.file, def.span)]))
+                            }
+                        },
                     };
 
                     self.ctx.globals[glob].ty = ty;
@@ -414,16 +418,26 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::AliasDef { name, aliased } => {
-                    let ty = *self.modules[module].defs.get(name).unwrap_or_else(|| panic!("ICE: Cannot find definition named {}", name));
+                    let ty = *self.modules[module]
+                        .defs
+                        .get(name)
+                        .unwrap_or_else(|| panic!("ICE: Cannot find definition named {}", name));
                     match ty {
                         IntermediateDefId::Type(ty, ..) => {
-                            let resolved = self.resolve_type(aliased, module, def.file, def.span)?;
+                            let resolved =
+                                self.resolve_type(aliased, module, def.file, def.span)?;
                             *self.ctx.types.get_mut(ty) = IrType::Alias {
                                 name: name.clone(),
                                 ty: resolved,
                             };
                         }
-                        _ => unreachable!("{}", IntermediateDefFormatter { lower: self, id: ty }),
+                        _ => unreachable!(
+                            "{}",
+                            IntermediateDefFormatter {
+                                lower: self,
+                                id: ty
+                            }
+                        ),
                     }
                 }
                 DefData::FunDec(proto) | DefData::FunDef(FunDef { proto, .. }) => {
@@ -457,9 +471,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     let fun = self.ctx.funs.insert(fun);
                     let id = IntermediateDefId::Fun(fun, def.file, def.span);
-                    self.modules[module]
-                        .defs
-                        .insert(proto.name.clone(), id);
+                    self.modules[module].defs.insert(proto.name.clone(), id);
                     self.ensure_no_double(module, def.file, def.span, id, proto.name)?;
                 }
                 _ => (),
@@ -551,14 +563,14 @@ impl<'ctx> IrLowerer<'ctx> {
             }
             UnresolvedType::UserDefined { name } => match self.resolve_path(module, name) {
                 Some(IntermediateDefId::Type(ty, ..)) => ty,
-                    _ => {
-                        return Err(Diagnostic::error()
-                            .with_message(format!(
-                                "Type {} not found in module {}",
-                                name, self.modules[module].name
-                            ))
-                            .with_labels(vec![Label::new(LabelStyle::Primary, file, span)]))
-                },
+                _ => {
+                    return Err(Diagnostic::error()
+                        .with_message(format!(
+                            "Type {} not found in module {}",
+                            name, self.modules[module].name
+                        ))
+                        .with_labels(vec![Label::new(LabelStyle::Primary, file, span)]))
+                }
             },
             UnresolvedType::Fun(ty) => {
                 let fn_ty = self.resolve_fn_type(ty, module, file, span)?;
@@ -590,7 +602,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
         Ok(FunType { return_ty, params })
     }
-    
+
     /// Ensure that the given definition with name is not defined twice in the module
     fn ensure_no_double(
         &mut self,
@@ -604,17 +616,11 @@ impl<'ctx> IrLowerer<'ctx> {
             return Err(Diagnostic::error()
                 .with_message(format!(
                     "Definition with name {} conflicts with module name {}",
-                    def,
-                    self.modules[module].name,
+                    def, self.modules[module].name,
                 ))
                 .with_labels(vec![
-                    Label::primary(file, span)
-                        .with_message(format!(
-                            "{} defined here",
-                            def,
-                        ))
-                ])
-            )
+                    Label::primary(file, span).with_message(format!("{} defined here", def,))
+                ]));
         }
         for (name, other) in self.modules[module].defs.iter() {
             if *other != id && *name == def {
@@ -622,22 +628,29 @@ impl<'ctx> IrLowerer<'ctx> {
                     .with_message(format!(
                         "{} collides with previously-defined {}",
                         def,
-                        IntermediateDefFormatter { lower: self, id: *other },
+                        IntermediateDefFormatter {
+                            lower: self,
+                            id: *other
+                        },
                     ))
                     .with_labels(vec![
-                        Label::primary(file, span)
-                            .with_message(format!("{} is defined here", def)),
+                        Label::primary(file, span).with_message(format!("{} is defined here", def)),
                         match *other {
                             IntermediateDefId::Type(_, file, span)
                             | IntermediateDefId::Fun(_, file, span)
-                            | IntermediateDefId::Global(_, file, span) => Label::secondary(file, span),
+                            | IntermediateDefId::Global(_, file, span) => {
+                                Label::secondary(file, span)
+                            }
                             IntermediateDefId::Module(_) => Label::secondary(file, span),
-                        }.with_message(format!(
+                        }
+                        .with_message(format!(
                             "Conflicts with {}",
-                            IntermediateDefFormatter { lower: self, id: *other }
-                        ))
-                    ])
-                ) 
+                            IntermediateDefFormatter {
+                                lower: self,
+                                id: *other
+                            }
+                        )),
+                    ]));
             }
         }
 

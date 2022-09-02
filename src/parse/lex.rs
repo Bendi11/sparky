@@ -99,17 +99,20 @@ impl<'src> Lexer<'src> {
                     ('-', Some('>')) => {
                         self.next_char();
                         Token::new(startpos..startpos + 1, TokenData::Arrow(1))
-                    },
+                    }
                     ('-', Some('-')) => {
                         self.next_char();
                         let mut len = 2;
                         while match self.next_char() {
-                            Some((_, '-')) => { len += 1; true },
+                            Some((_, '-')) => {
+                                len += 1;
+                                true
+                            }
                             Some((_, '>')) => false,
                             _ => return None,
                         } {}
                         Token::new(startpos..startpos + len, TokenData::Arrow(len))
-                    },
+                    }
 
                     ('=', Some('=')) => {
                         self.next_char();

@@ -4,7 +4,8 @@ use crate::{
     ast::Expr,
     ir::{
         types::IrType,
-        value::{IrExpr, IrExprKind}, FunId, IrContext, TypeId,
+        value::{IrExpr, IrExprKind},
+        FunId, IrContext, TypeId,
     },
     parse::token::Op,
     util::{files::FileId, loc::Span},

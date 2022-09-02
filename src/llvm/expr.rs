@@ -38,13 +38,16 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
             IrExprKind::Var(..) | IrExprKind::Global(..) => {
                 let alloca = self.gen_lval(irctx, expr);
                 self.build.build_load(alloca, "var_load")
-            },
+            }
             IrExprKind::Lit(lit) => match lit {
                 IrLiteral::Integer(v, ty) => self
                     .ctx
                     .i64_type()
                     .const_int(v.val, v.sign)
-                    .const_cast(LLVMCodeGenerator::gen_inttype(&self.ctx, &self.target_data, ty), ty.signed)
+                    .const_cast(
+                        LLVMCodeGenerator::gen_inttype(&self.ctx, &self.target_data, ty),
+                        ty.signed,
+                    )
                     .into(),
                 IrLiteral::Float(f, ty) => self
                     .ctx
@@ -61,11 +64,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     .bool_type()
                     .const_int(if *b { 1 } else { 0 }, false)
                     .into(),
-                IrLiteral::Char(c) => self
-                    .ctx
-                    .i32_type()
-                    .const_int(*c as u64, false)
-                    .into(),
+                IrLiteral::Char(c) => self.ctx.i32_type().const_int(*c as u64, false).into(),
                 IrLiteral::Array(vals) => {
                     let ty = expr.ty;
                     let elem = if let IrType::Array(ty, _) = &irctx[ty] {
@@ -96,11 +95,9 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 }
                 IrLiteral::Unit => self.ctx.i8_type().const_int(0, false).into(),
                 IrLiteral::Struct(_) => {
-                    let s = self.gen_lval(irctx, expr); 
-                    self
-                        .build
-                        .build_load(s, "struct_lit_load")
-                },
+                    let s = self.gen_lval(irctx, expr);
+                    self.build.build_load(s, "struct_lit_load")
+                }
                 IrLiteral::String(s) => self
                     .build
                     .build_global_string_ptr(s.as_str(), "strlit")
@@ -148,10 +145,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 .llvm_vars
                 .get_secondary(*v)
                 .unwrap_or_else(|| panic!("Unknown variable {}", irctx[*v].name)),
-            IrExprKind::Global(g) => self
-                .llvm_globs
-                .get_secondary(*g)
-                .as_pointer_value(),
+            IrExprKind::Global(g) => self.llvm_globs.get_secondary(*g).as_pointer_value(),
             IrExprKind::Fun(f) => self
                 .llvm_funs
                 .get_secondary(*f)
@@ -193,7 +187,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                         .ptr_type(AddressSpace::Generic),
                     "sum_unwrap_ptr",
                 )
-            },
+            }
             IrExprKind::Lit(IrLiteral::Struct(s)) => {
                 let irty = if let IrType::Struct(s_ty) = &irctx[expr.ty] {
                     s_ty
@@ -214,16 +208,17 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 }
 
                 let alloca = self.build.build_alloca(ty, "struct_lit_alloca");
-                
+
                 for (idx, field) in field_vec.into_iter().enumerate() {
-                    let gep = self.build
+                    let gep = self
+                        .build
                         .build_struct_gep(alloca, idx as u32, "struct_lit")
                         .unwrap();
                     self.build.build_store(gep, field);
                 }
 
                 alloca
-            },
+            }
             _ => {
                 let alloca = self
                     .build
@@ -235,7 +230,13 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
         }
     }
 
-    pub fn gen_bin(&mut self, irctx: &IrContext, lhs: &IrExpr, op: Op, rhs: &IrExpr) -> BasicValueEnum<'llvm> {
+    pub fn gen_bin(
+        &mut self,
+        irctx: &IrContext,
+        lhs: &IrExpr,
+        op: Op,
+        rhs: &IrExpr,
+    ) -> BasicValueEnum<'llvm> {
         let llvm_lhs = self.gen_expr(irctx, lhs);
         let llvm_rhs = self.gen_expr(irctx, rhs);
         self.gen_bin_impl(irctx, lhs.ty, op, rhs.ty, llvm_lhs, llvm_rhs)
@@ -256,14 +257,12 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 let llvm_lhs = llvm_lhs.into_int_value();
                 let llvm_rhs = match lhs_ty == rhs_ty {
                     true => llvm_rhs.into_int_value(),
-                    false => self
-                        .build
-                        .build_int_cast_sign_flag(
-                            llvm_rhs.into_int_value(),
-                            self.llvm_types.get_secondary(lhs_ty).into_int_type(),
-                            *signed,
-                            "icast"
-                        )
+                    false => self.build.build_int_cast_sign_flag(
+                        llvm_rhs.into_int_value(),
+                        self.llvm_types.get_secondary(lhs_ty).into_int_type(),
+                        *signed,
+                        "icast",
+                    ),
                 };
                 match (op, *signed) {
                     (Op::Star, _) => self.build.build_int_mul(llvm_lhs, llvm_rhs, "imul").into(),
@@ -349,30 +348,46 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                         .into(),
                     _ => unreachable!(),
                 }
-            },
+            }
             (IrType::Ptr(_), op, IrType::Integer(_)) => {
                 let expr = self.gen_bin_impl(
                     irctx,
                     IrContext::U64,
                     op,
                     rhs_ty,
-                    self.build.build_ptr_to_int(llvm_lhs.into_pointer_value(), self.ctx.i64_type(), "picast").into(),
-                    llvm_rhs
+                    self.build
+                        .build_ptr_to_int(
+                            llvm_lhs.into_pointer_value(),
+                            self.ctx.i64_type(),
+                            "picast",
+                        )
+                        .into(),
+                    llvm_rhs,
                 );
-                self
-                    .build
-                    .build_int_to_ptr(expr.into_int_value(), self.llvm_types.get_secondary(lhs_ty).into_pointer_type(), "ipcast")
+                self.build
+                    .build_int_to_ptr(
+                        expr.into_int_value(),
+                        self.llvm_types.get_secondary(lhs_ty).into_pointer_type(),
+                        "ipcast",
+                    )
                     .into()
-            },
+            }
             (IrType::Integer(_), op, IrType::Ptr(_)) => self.gen_bin_impl(
                 irctx,
                 lhs_ty,
                 op,
                 IrContext::U64,
                 llvm_lhs,
-                self.build.build_ptr_to_int(llvm_rhs.into_pointer_value(), self.ctx.i64_type(), "picast").into(),
+                self.build
+                    .build_ptr_to_int(llvm_rhs.into_pointer_value(), self.ctx.i64_type(), "picast")
+                    .into(),
             ),
-            _ => todo!("{} {} {}", irctx.typename(lhs_ty), op, irctx.typename(rhs_ty)),
+            _ => todo!(
+                "{} {} {}",
+                irctx.typename(lhs_ty),
+                op,
+                irctx.typename(rhs_ty)
+            ),
         }
     }
 

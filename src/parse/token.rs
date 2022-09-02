@@ -82,7 +82,11 @@ impl fmt::Display for TokenData<'_> {
             ),
             Self::Comma => write!(f, "','"),
             Self::Period => write!(f, "'.'"),
-            Self::Arrow(len) => write!(f, "{}>", std::iter::repeat('-').take(*len).collect::<String>()),
+            Self::Arrow(len) => write!(
+                f,
+                "{}>",
+                std::iter::repeat('-').take(*len).collect::<String>()
+            ),
             Self::Op(op) => write!(f, "'{}'", op),
             Self::Colon => write!(f, "':'"),
             Self::Dollar => write!(f, "'$'"),
@@ -93,7 +97,7 @@ impl fmt::Display for TokenData<'_> {
 }
 
 /// A binary or unary operator
-#[derive(Clone, Debug, Copy, PartialEq, Eq,)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum Op {
     Star,
     Div,

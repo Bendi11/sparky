@@ -8,11 +8,12 @@ use crate::{
     },
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
-        value::{IrExpr, IrExprKind, IrLiteral}, FunId, IrBB, IrBody, IrContext, IrStmt, IrStmtKind, IrTerminator, IrVar,
-        VarId,
+        value::{IrExpr, IrExprKind, IrLiteral},
+        FunId, IrBB, IrBody, IrContext, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId,
     },
+    parse::token::Op,
     util::{files::FileId, loc::Span},
-    Symbol, parse::token::Op,
+    Symbol,
 };
 
 use super::{IntermediateDefId, IntermediateModuleId, IrLowerer, ScopePlate};
@@ -69,12 +70,16 @@ impl<'ctx> IrLowerer<'ctx> {
             }
         }
 
-        self.ctx[fun].body = Some(IrBody { entry, parent: fun, args: param_vars });
+        self.ctx[fun].body = Some(IrBody {
+            entry,
+            parent: fun,
+            args: param_vars,
+        });
 
         for stmt in stmts {
             self.lower_stmt(module, file, fun, stmt)?;
         }
-        
+
         let end = self.bb();
         match (self.ctx.unwrap_alias(self.ctx[fun].ty.return_ty), &self.ctx[end].terminator) {
             (ty, IrTerminator::Invalid) if ty == IrContext::UNIT => self.ctx[end].terminator = IrTerminator::Return(IrExpr {
@@ -109,7 +114,9 @@ impl<'ctx> IrLowerer<'ctx> {
         stmt: &Stmt,
     ) -> Result<(), Diagnostic<FileId>> {
         match &stmt.node {
-            StmtNode::Loop(block) => { self.lower_loop(module, file, fun, stmt.span, &block)?; },
+            StmtNode::Loop(block) => {
+                self.lower_loop(module, file, fun, stmt.span, &block)?;
+            }
             StmtNode::Return(val) => match (
                 self.lower_expr(module, file, fun, val)?,
                 self.lowest_scope().return_var,
@@ -300,7 +307,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 self.lower_block(module, file, fun, &b)?;
                 self.scope_stack.pop();
                 self.ctx[old_bb].terminator = IrTerminator::Jmp(new_bb);
-           }
+            }
             StmtNode::Match(match_stmt) => {
                 self.lower_match(module, file, fun, match_stmt, stmt.span)?;
             }
@@ -316,7 +323,7 @@ impl<'ctx> IrLowerer<'ctx> {
         }
         Ok(())
     }
-    
+
     pub(super) fn lower_member(
         &mut self,
         file: FileId,
@@ -347,15 +354,15 @@ impl<'ctx> IrLowerer<'ctx> {
             _ => {
                 return Err(Diagnostic::error()
                     .with_message(format!(
-                    "Attempting to access field {} of expression of non-structure type {}",
-                    name,
-                    self.ctx.typename(object.ty)
-                ))
-                    .with_labels(vec![Label::primary(file, object.span)
-                        .with_message("Field access occurs here")]))
+                        "Attempting to access field {} of expression of non-structure type {}",
+                        name,
+                        self.ctx.typename(object.ty)
+                    ))
+                    .with_labels(vec![
+                        Label::primary(file, object.span).with_message("Field access occurs here")
+                    ]))
             }
         }
-
     }
 
     /// Lower a single AST expression to intermediate representation
@@ -368,19 +375,15 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         Ok(match &expr.node {
             ExprNode::Access(pat) => match self.resolve_path(module, pat) {
-                Some(IntermediateDefId::Fun(fun_id, ..)) => {
-                    IrExpr {
-                        kind: IrExprKind::Fun(fun_id),
-                        ty: self.ctx[fun_id].ty_id,
-                        span: expr.span,
-                    }
+                Some(IntermediateDefId::Fun(fun_id, ..)) => IrExpr {
+                    kind: IrExprKind::Fun(fun_id),
+                    ty: self.ctx[fun_id].ty_id,
+                    span: expr.span,
                 },
-                Some(IntermediateDefId::Global(g, ..)) => {
-                    IrExpr {
-                        span: expr.span,
-                        ty: self.ctx[g].ty,
-                        kind: IrExprKind::Global(g)
-                    }
+                Some(IntermediateDefId::Global(g, ..)) => IrExpr {
+                    span: expr.span,
+                    ty: self.ctx[g].ty,
+                    kind: IrExprKind::Global(g),
                 },
                 _ => match self.lookup_var(&pat.last()) {
                     Some(var) if pat.len() == 1 => IrExpr {
@@ -396,7 +399,11 @@ impl<'ctx> IrLowerer<'ctx> {
                     }
                 },
             },
-            ExprNode::DerefMember { structure, field, arrow_len } => {
+            ExprNode::DerefMember {
+                structure,
+                field,
+                arrow_len,
+            } => {
                 let mut structure = self.lower_expr(module, file, fun, structure)?;
                 for _ in 0..*arrow_len {
                     if let IrType::Ptr(p) = &self.ctx[structure.ty] {
@@ -409,16 +416,13 @@ impl<'ctx> IrLowerer<'ctx> {
                         return Err(Diagnostic::error()
                             .with_message(format!(
                                 "Cannot auto-deref a value of type {}",
-                                self.ctx.typename(structure.ty),    
+                                self.ctx.typename(structure.ty),
                             ))
-                            .with_labels(vec![
-                                Label::primary(file, structure.span),
-                            ])
-                        )
+                            .with_labels(vec![Label::primary(file, structure.span)]));
                     }
                 }
                 self.lower_member(file, structure, field)?
-            },
+            }
             ExprNode::Member(object, name) => {
                 let object = self.lower_expr(module, file, fun, object)?;
                 self.lower_member(file, object, name)?
@@ -886,7 +890,7 @@ impl<'ctx> IrLowerer<'ctx> {
             kind: IrExprKind::Var(phi_var),
         })
     }
-    
+
     /// Lower a loop statement or expression
     fn lower_loop(
         &mut self,
@@ -926,7 +930,6 @@ impl<'ctx> IrLowerer<'ctx> {
             self.ctx[bb].terminator = IrTerminator::Jmp(loop_bb);
         }
 
-        
         self.scope_stack.pop();
         self.ctx[old_bb].terminator = IrTerminator::Jmp(loop_bb);
 

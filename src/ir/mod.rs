@@ -263,8 +263,14 @@ impl IrContext {
 
         types.insert(IrType::Invalid);
 
-        types.insert(IrType::Integer(IrIntegerType { width: IntegerWidth::PtrSize, signed: true }));
-        types.insert(IrType::Integer(IrIntegerType { width: IntegerWidth::PtrSize, signed: false }));
+        types.insert(IrType::Integer(IrIntegerType {
+            width: IntegerWidth::PtrSize,
+            signed: true,
+        }));
+        types.insert(IrType::Integer(IrIntegerType {
+            width: IntegerWidth::PtrSize,
+            signed: false,
+        }));
 
         types.insert(IrType::Char);
 
@@ -282,7 +288,7 @@ impl IrContext {
     pub fn typename(&self, ty: TypeId) -> TypenameFormatter<'_> {
         TypenameFormatter { ctx: self, ty }
     }
-    
+
     /// Get the [TypeId] of an integer type with the given width and signededness
     pub const fn itype(signed: bool, width: IntegerWidth) -> TypeId {
         match (signed, width) {
@@ -316,7 +322,6 @@ impl IrContext {
         })
     }
 }
-
 
 /// Structure for more efficiently formatting typename strings via a std::fmt::Display
 /// implementation avoiding multiple string allocations

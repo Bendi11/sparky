@@ -22,8 +22,8 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
         match &irctx[bb].terminator {
             IrTerminator::Return(v) => {
                 //if v.ty != IrContext::UNIT {
-                    let return_val = self.gen_expr(irctx, &v);
-                    self.build.build_return(Some(&return_val));
+                let return_val = self.gen_expr(irctx, &v);
+                self.build.build_return(Some(&return_val));
                 /*} else {
                     self.build.build_return(None);
                 }*/
@@ -86,7 +86,13 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                             .iter()
                             .enumerate()
                             .find_map(|(idx, variant)| if ty == variant { Some(idx) } else { None })
-                            .unwrap_or_else(|| panic!("type {} is not in {}", irctx.typename(*ty), irctx.typename(variant_ty)));
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "type {} is not in {}",
+                                    irctx.typename(*ty),
+                                    irctx.typename(variant_ty)
+                                )
+                            });
                         let arm = self.ctx.append_basic_block(fun, "matcharm");
                         self.llvm_bbs.insert(*bb, arm);
                         self.gen_bb(irctx, *bb, fun);
@@ -104,7 +110,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     eprintln!("{:?}", inst);
                 }
                 panic!("Invalid BB terminator: {}", bb)
-            },
+            }
         }
     }
 

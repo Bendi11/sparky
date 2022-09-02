@@ -162,7 +162,7 @@ impl fmt::Display for SymbolPath {
 }
 
 /// Data structure storing a function prototype
-#[derive(Clone,)]
+#[derive(Clone)]
 pub struct FunProto {
     /// User-defined name of the function
     pub name: Symbol,
@@ -353,13 +353,13 @@ pub enum DefData {
         comptime: bool,
         val: Option<Expr>,
         ty: Option<UnresolvedType>,
-    }
+    },
 }
 impl DefData {
     /// Get the name of this definition
     pub fn name(&self) -> Symbol {
         match self {
-            Self::FunDef(FunDef{ proto, ..} ) | Self::FunDec(proto) => proto.name,
+            Self::FunDef(FunDef { proto, .. }) | Self::FunDec(proto) => proto.name,
             Self::AliasDef { name, .. } => *name,
             Self::ImportDef { name } => name.last(),
             Self::Global { name, .. } => name.last(),
