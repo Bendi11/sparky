@@ -9,6 +9,9 @@ type bytebuf_t = {
 
 
 fun extend_fit(*bytebuf_t self, usz cap) {
+    if self->cap < cap {
+        let a = 3
+    }
 }
 
 fun push(*bytebuf_t self, u8 elem) {

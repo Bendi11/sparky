@@ -74,9 +74,10 @@ impl<'ctx> IrLowerer<'ctx> {
         for stmt in stmts {
             self.lower_stmt(module, file, fun, stmt)?;
         }
-
-        match (self.ctx.unwrap_alias(self.ctx[fun].ty.return_ty), &self.ctx[entry].terminator) {
-            (ty, IrTerminator::Invalid) if ty == IrContext::UNIT => self.ctx[entry].terminator = IrTerminator::Return(IrExpr {
+        
+        let end = self.bb();
+        match (self.ctx.unwrap_alias(self.ctx[fun].ty.return_ty), &self.ctx[end].terminator) {
+            (ty, IrTerminator::Invalid) if ty == IrContext::UNIT => self.ctx[end].terminator = IrTerminator::Return(IrExpr {
                 span: self.ctx[fun].span,
                 ty: IrContext::UNIT,
                 kind: IrExprKind::Lit(IrLiteral::Unit),

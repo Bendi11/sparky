@@ -99,7 +99,12 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 self.build.build_switch(discrim, after_bb, &discriminants);
                 self.build.position_at_end(after_bb);
             }
-            IrTerminator::Invalid => panic!("Invalid BB terminator: {}", bb),
+            IrTerminator::Invalid => {
+                for inst in irctx[bb].stmts.iter() {
+                    eprintln!("{:?}", inst);
+                }
+                panic!("Invalid BB terminator: {}", bb)
+            },
         }
     }
 
