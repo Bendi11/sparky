@@ -8,7 +8,13 @@ type bytebuf_t = {
     usz cap,
 }
 
-
+fun new() -> bytebuf_t {
+    return #bytebuf_t {
+        ptr = alloc:null,
+        len = 0usz,
+        cap = 0usz,
+    }
+}
 
 fun extend_fit(*bytebuf_t self, usz cap) {
     if self->cap < cap {

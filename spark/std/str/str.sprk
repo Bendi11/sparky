@@ -1,0 +1,19 @@
+imp up:bytebuf:bytebuf_t
+imp up:bytebuf
+imp up:libc:cstr:cstr_t
+
+//A heap-allocated string that can grow its capacity to fit any amount of characters
+type str_t = {
+    bytebuf_t buf,
+}
+
+fun new() -> str_t {
+    return #str_t {
+        buf = bytebuf:new()
+    }
+}
+
+//Get a C-style NULL-terminated string for this str_t
+fun cstr(*str_t self) -> cstr_t {
+    return #cstr_t { ptr = self->buf.ptr }
+}
