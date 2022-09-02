@@ -258,7 +258,6 @@ impl<'ctx> IrLowerer<'ctx> {
                         self.ensure_no_double(module, def.file, def.span, id, name.last())?;
                         self.modules[module].defs.insert(name.last(), id);
                     },
-                    None => println!("{}", name),
                     _ => (),
                 },
                 _ => (),
@@ -355,7 +354,7 @@ impl<'ctx> IrLowerer<'ctx> {
         self.bb = Some(self.ctx[self.global_setup_fun].body.as_ref().unwrap().entry);
         for def in parsed.defs.iter() {
             match &def.data {
-                DefData::Global { name, comptime, val, ty, .. } => {
+                DefData::Global { name, comptime: _, val, ty, .. } => {
                     let glob = if let IntermediateDefId::Global(glob, ..) = *self.modules[module].defs.get(&name.last()).unwrap_or_else(|| panic!("ICE: cannot find global named {}", name)) {
                         glob
                     } else {
