@@ -1,6 +1,6 @@
-use crate::{ast::IntegerWidth, Symbol};
+use crate::{ast::IntegerWidth, Symbol, arena::Index, util::loc::Span};
 
-use super::TypeId;
+use super::{TypeId, IrFunRef, generic::GenericArgs};
 
 /// The signature of a function with argument and return types
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -35,6 +35,13 @@ pub struct IrStructField {
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct IrStructType {
     pub fields: Vec<IrStructField>,
+}
+
+/// A reference to an IrType with generic arguments
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct IrTypeRef {
+    pub ty: Index<IrType>,
+    pub args: GenericArgs,
 }
 
 /// Data for an [IRType] that contains the actual type data
