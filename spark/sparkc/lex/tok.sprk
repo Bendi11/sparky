@@ -16,8 +16,9 @@ type strlit_t = strslice_t
 type numlit_t = f64
 
 //Enumeration over all possible tokens lexed by the lexer
-type tok_t = 
-    bracket_t 
+type tok_t = bracket_t 
     | curly_brace_t
     | paren_t
     | strlit_t
+    | numlit_t
+    | op:op_t

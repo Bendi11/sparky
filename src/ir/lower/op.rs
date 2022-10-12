@@ -143,6 +143,7 @@ impl<'ctx> IrLowerer<'ctx> {
             (IrType::Float(_) | IrType::Integer(_), IrType::Integer(_) | IrType::Float(_)) => (),
             (IrType::Ptr(_) | IrType::Integer(_), IrType::Ptr(_) | IrType::Integer(_)) => (),
             (IrType::Ptr(_) | IrType::Fun(_), IrType::Ptr(_) | IrType::Fun(_)) => (),
+            (IrType::Integer(_) | IrType::Char, IrType::Integer(_) | IrType::Char) => (),
             (IrType::Sum(s), _) if s.contains(&uty) => (),
             (_, IrType::Sum(s)) if s.contains(&expr.ty) => (),
             (from, to) if from == to => (),

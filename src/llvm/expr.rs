@@ -471,7 +471,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
 
                 self.build.build_load(ptr_to_t, "sum_unwrap")
             }
-            (_, IrType::Sum(s)) if s.contains(&irctx.unwrap_alias(expr.ty)) => {
+            (_, IrType::Sum(s)) if s.contains(&expr.ty) => {
                 let idx = s
                     .iter()
                     .enumerate()
@@ -508,6 +508,26 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 self.build.build_store(ptr_to_val, val);
 
                 self.build.build_load(structure, "sumlit")
+            },
+            (IrType::Integer(_), IrType::Char) => {
+                let to_char = LLVMCodeGenerator::gen_type(self.ctx, &self.target_data, irctx, &IrType::Char)
+                        .into_int_type();
+                
+                let expr = self.gen_expr(irctx, expr).into_int_value();
+                self
+                    .build
+                    .build_int_cast_sign_flag(expr, to_char, false, "itoc")
+                    .into()
+            },
+            (IrType::Char, IrType::Integer(to_ity)) => {
+                let signed = to_ity.signed;
+                let to_ity = LLVMCodeGenerator::gen_inttype(self.ctx, &self.target_data, to_ity);
+
+                let expr = self.gen_expr(irctx, expr).into_int_value();
+                self
+                    .build
+                    .build_int_cast_sign_flag(expr, to_ity, signed, "ctoi")
+                    .into()
             }
             _ => unreachable!("{} != {}", irctx.typename(expr.ty), irctx.typename(ty)),
         }

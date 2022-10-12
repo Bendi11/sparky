@@ -169,7 +169,7 @@ impl<'src> Lexer<'src> {
                 }
 
                 if let (end, '\'') = self.next_char()? {
-                    Token::new(startpos..end, TokenData::Char(&self.src[firstpos..end - 1]))
+                    Token::new(startpos..end, TokenData::Char(&self.src[firstpos - 1..end - 1]))
                 } else {
                     return None;
                 }

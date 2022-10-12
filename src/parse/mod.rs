@@ -899,7 +899,10 @@ impl<'src> Parser<'src> {
     /// Parse a character literal from the token stream, respecting escaped characters with
     /// backslash
     fn parse_char_literal(&mut self) -> ParseResult<'src, char> {
-        const EXPECTING_CHAR: &[TokenData<'static>] = &[TokenData::Char("character literal")];
+        const EXPECTING_CHAR: &[TokenData<'static>] = &[
+            TokenData::Char("character literal")
+        ];
+        
         let next = self.next_tok(EXPECTING_CHAR)?;
         match next.data {
             TokenData::Char(chars) => {
