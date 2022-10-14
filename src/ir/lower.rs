@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    types::{FunType, IrFloatType, IrStructField, IrStructType, IrType},
+    types::{FunType, IrFloatType, IrStructField, IrStructType, IrTypeTemplate},
     value::{IrExpr, IrExprKind, IrLiteral},
     BBId, FunId, GlobalId, IrBB, IrBody, IrContext, IrFun, IrGlobal, IrStmt, IrStmtKind,
     IrTerminator, TypeId, VarId,
@@ -96,12 +96,13 @@ impl<'ctx> IrLowerer<'ctx> {
                 ty: IrContext::UNIT,
             }),
         };
+
         let setup = IrFun {
             name: Symbol::from("__global_setup"),
             file: unsafe { FileId::from_raw(0) },
             span: Span::from(0..0),
             ty: setup_ty.clone(),
-            ty_id: ctx.types.insert(IrType::Fun(setup_ty.clone())),
+            ty_id: ctx.types.insert(IrTypeTemplate::Fun(setup_ty.clone())),
             body: None,
             flags: FunFlags::empty(),
         };
@@ -111,7 +112,7 @@ impl<'ctx> IrLowerer<'ctx> {
             file: unsafe { FileId::from_raw(0) },
             span: Span::from(0..0),
             ty: setup_ty.clone(),
-            ty_id: ctx.types.insert(IrType::Fun(setup_ty)),
+            ty_id: ctx.types.insert(IrTypeTemplate::Fun(setup_ty)),
             body: None,
             flags: FunFlags::empty(),
         };
@@ -214,7 +215,7 @@ impl<'ctx> IrLowerer<'ctx> {
         for def in parsed.defs.iter() {
             match &def.data {
                 DefData::AliasDef { name, .. } => {
-                    let ty = self.ctx.types.insert_nointern(IrType::Invalid);
+                    let ty = self.ctx.types.insert_nointern(IrTypeTemplate::Invalid);
 
                     let id = IntermediateDefId::Type(ty, def.file, def.span);
                     self.ensure_no_double(module, def.file, def.span, id, *name)?;
@@ -426,7 +427,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         IntermediateDefId::Type(ty, ..) => {
                             let resolved =
                                 self.resolve_type(aliased, module, def.file, def.span)?;
-                            *self.ctx.types.get_mut(ty) = IrType::Alias {
+                            *self.ctx.types.get_mut(ty) = IrTypeTemplate::Alias {
                                 name: name.clone(),
                                 ty: resolved,
                             };
@@ -446,7 +447,7 @@ impl<'ctx> IrLowerer<'ctx> {
                         file: def.file,
                         span: def.span,
                         name: proto.name.clone(),
-                        ty_id: self.ctx.types.insert(IrType::Fun(fun_ty.clone())),
+                        ty_id: self.ctx.types.insert(IrTypeTemplate::Fun(fun_ty.clone())),
                         ty: fun_ty,
                         body: None,
                         flags: proto.flags,
@@ -521,7 +522,7 @@ impl<'ctx> IrLowerer<'ctx> {
         Ok(match ty {
             UnresolvedType::Integer { width, signed } => IrContext::itype(*signed, *width),
             UnresolvedType::Float { doublewide } => self.ctx.types.insert(
-                IrType::Float(IrFloatType {
+                IrTypeTemplate::Float(IrFloatType {
                     doublewide: *doublewide,
                 })
                 .into(),
@@ -529,11 +530,11 @@ impl<'ctx> IrLowerer<'ctx> {
             UnresolvedType::Char => IrContext::CHAR,
             UnresolvedType::Pointer(ptr) => {
                 let ty = self.resolve_type(ptr, module, file, span)?;
-                self.ctx.types.insert(IrType::Ptr(ty))
+                self.ctx.types.insert(IrTypeTemplate::Ptr(ty))
             }
             UnresolvedType::Array { elements, len } => {
                 let element = self.resolve_type(elements, module, file, span)?;
-                self.ctx.types.insert(IrType::Array(element, *len))
+                self.ctx.types.insert(IrTypeTemplate::Array(element, *len))
             }
             UnresolvedType::Unit => IrContext::UNIT,
             UnresolvedType::Bool => IrContext::BOOL,
@@ -542,7 +543,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     .iter()
                     .map(|variant| self.resolve_type(variant, module, file, span))
                     .collect::<Result<Vec<_>, _>>()?;
-                self.ctx.types.insert(IrType::Sum(variants).into())
+                self.ctx.types.insert(IrTypeTemplate::Sum(variants).into())
             }
             UnresolvedType::Struct { fields } => {
                 let fields = fields
@@ -559,7 +560,7 @@ impl<'ctx> IrLowerer<'ctx> {
                     .collect::<Result<Vec<_>, _>>()?;
                 self.ctx
                     .types
-                    .insert(IrType::Struct(IrStructType { fields }).into())
+                    .insert(IrTypeTemplate::Struct(IrStructType { fields }).into())
             }
             UnresolvedType::UserDefined { name } => match self.resolve_path(module, name) {
                 Some(IntermediateDefId::Type(ty, ..)) => ty,
@@ -574,7 +575,7 @@ impl<'ctx> IrLowerer<'ctx> {
             },
             UnresolvedType::Fun(ty) => {
                 let fn_ty = self.resolve_fn_type(ty, module, file, span)?;
-                self.ctx.types.insert(IrType::Fun(fn_ty))
+                self.ctx.types.insert(IrTypeTemplate::Fun(fn_ty))
             }
         })
     }

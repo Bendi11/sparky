@@ -42,3 +42,13 @@ pub struct Generics<Def, Template> {
     pub def: Def,
     pub specializations: Vec<GenericSpec<Template>>, 
 }
+
+impl<Def, Template> Generics<Def, Template> {
+    /// Create a new generic template collection with only one generic template
+    pub fn single(def: Def, template: GenericSpec<Template>) -> Self {
+        Self {
+            def,
+            specializations: vec![template],
+        }
+    }
+}

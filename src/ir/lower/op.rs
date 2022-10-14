@@ -3,7 +3,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use crate::{
     ast::Expr,
     ir::{
-        types::IrType,
+        types::IrTypeTemplate,
         value::{IrExpr, IrExprKind},
         FunId, IrContext, TypeId,
     },
@@ -29,12 +29,12 @@ impl<'ctx> IrLowerer<'ctx> {
 
         let ty = match (&self.ctx[lhs.ty], op, &self.ctx[rhs.ty]) {
             (
-                IrType::Bool,
+                IrTypeTemplate::Bool,
                 Op::LogicalAnd | Op::LogicalOr | Op::LogicalNot | Op::Eq,
-                IrType::Bool,
+                IrTypeTemplate::Bool,
             ) => IrContext::BOOL,
             (
-                IrType::Integer(_),
+                IrTypeTemplate::Integer(_),
                 Op::Eq
                 | Op::Greater
                 | Op::GreaterEq
@@ -46,10 +46,10 @@ impl<'ctx> IrLowerer<'ctx> {
                 | Op::Sub
                 | Op::ShLeft
                 | Op::ShRight,
-                IrType::Integer(_),
+                IrTypeTemplate::Integer(_),
             ) => lhs.ty,
             (
-                IrType::Float(_),
+                IrTypeTemplate::Float(_),
                 Op::Eq
                 | Op::Greater
                 | Op::GreaterEq
@@ -59,10 +59,10 @@ impl<'ctx> IrLowerer<'ctx> {
                 | Op::Div
                 | Op::Add
                 | Op::Sub,
-                IrType::Float(_),
+                IrTypeTemplate::Float(_),
             ) => lhs.ty,
-            (IrType::Ptr(_), Op::ShRight | Op::ShLeft, IrType::Integer(_)) => lhs.ty,
-            (IrType::Ptr(_), Op::Add | Op::Sub, IrType::Ptr(_) | IrType::Integer(_)) => lhs.ty,
+            (IrTypeTemplate::Ptr(_), Op::ShRight | Op::ShLeft, IrTypeTemplate::Integer(_)) => lhs.ty,
+            (IrTypeTemplate::Ptr(_), Op::Add | Op::Sub, IrTypeTemplate::Ptr(_) | IrTypeTemplate::Integer(_)) => lhs.ty,
             _ => {
                 return Err(Diagnostic::error()
                     .with_message(format!(
@@ -104,10 +104,10 @@ impl<'ctx> IrLowerer<'ctx> {
         let expr = self.lower_expr(module, file, fun, expr)?;
 
         let ty = match (op, self.ctx[expr.ty].clone()) {
-            (Op::Star, IrType::Ptr(to)) => to,
-            (Op::AND, _) => self.ctx.types.insert(IrType::Ptr(expr.ty)),
-            (Op::Sub, IrType::Integer(_) | IrType::Float(_)) => expr.ty,
-            (Op::NOT, IrType::Integer(_) | IrType::Ptr(_)) => expr.ty,
+            (Op::Star, IrTypeTemplate::Ptr(to)) => to,
+            (Op::AND, _) => self.ctx.types.insert(IrTypeTemplate::Ptr(expr.ty)),
+            (Op::Sub, IrTypeTemplate::Integer(_) | IrTypeTemplate::Float(_)) => expr.ty,
+            (Op::NOT, IrTypeTemplate::Integer(_) | IrTypeTemplate::Ptr(_)) => expr.ty,
             _ => {
                 return Err(Diagnostic::error()
                     .with_message(format!(
@@ -140,12 +140,12 @@ impl<'ctx> IrLowerer<'ctx> {
         let uty = self.ctx.unwrap_alias(ty);
         let uexprty = self.ctx.unwrap_alias(expr.ty);
         match (&self.ctx[uexprty], &self.ctx[uty]) {
-            (IrType::Float(_) | IrType::Integer(_), IrType::Integer(_) | IrType::Float(_)) => (),
-            (IrType::Ptr(_) | IrType::Integer(_), IrType::Ptr(_) | IrType::Integer(_)) => (),
-            (IrType::Ptr(_) | IrType::Fun(_), IrType::Ptr(_) | IrType::Fun(_)) => (),
-            (IrType::Integer(_) | IrType::Char, IrType::Integer(_) | IrType::Char) => (),
-            (IrType::Sum(s), _) if s.contains(&uty) => (),
-            (_, IrType::Sum(s)) if s.contains(&expr.ty) => (),
+            (IrTypeTemplate::Float(_) | IrTypeTemplate::Integer(_), IrTypeTemplate::Integer(_) | IrTypeTemplate::Float(_)) => (),
+            (IrTypeTemplate::Ptr(_) | IrTypeTemplate::Integer(_), IrTypeTemplate::Ptr(_) | IrTypeTemplate::Integer(_)) => (),
+            (IrTypeTemplate::Ptr(_) | IrTypeTemplate::Fun(_), IrTypeTemplate::Ptr(_) | IrTypeTemplate::Fun(_)) => (),
+            (IrTypeTemplate::Integer(_) | IrTypeTemplate::Char, IrTypeTemplate::Integer(_) | IrTypeTemplate::Char) => (),
+            (IrTypeTemplate::Sum(s), _) if s.contains(&uty) => (),
+            (_, IrTypeTemplate::Sum(s)) if s.contains(&expr.ty) => (),
             (from, to) if from == to => (),
             _ => {
                 return Err(Diagnostic::error()

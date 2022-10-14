@@ -9,7 +9,7 @@ use inkwell::{
 
 use crate::{
     ir::{
-        types::{IrIntegerType, IrType},
+        types::{IrIntegerType, IrTypeTemplate},
         value::{IrExpr, IrExprKind, IrLiteral},
         IrContext, TypeId,
     },
@@ -67,7 +67,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 IrLiteral::Char(c) => self.ctx.i32_type().const_int(*c as u64, false).into(),
                 IrLiteral::Array(vals) => {
                     let ty = expr.ty;
-                    let elem = if let IrType::Array(ty, _) = &irctx[ty] {
+                    let elem = if let IrTypeTemplate::Array(ty, _) = &irctx[ty] {
                         *ty
                     } else {
                         unreachable!()
@@ -172,7 +172,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 }
             }
             IrExprKind::Cast(expr, _)
-                if matches!(&irctx[irctx.unwrap_alias(expr.ty)], IrType::Sum(_)) =>
+                if matches!(&irctx[irctx.unwrap_alias(expr.ty)], IrTypeTemplate::Sum(_)) =>
             {
                 let lval = self.gen_lval(irctx, expr);
                 let ptr = self
@@ -189,7 +189,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 )
             }
             IrExprKind::Lit(IrLiteral::Struct(s)) => {
-                let irty = if let IrType::Struct(s_ty) = &irctx[expr.ty] {
+                let irty = if let IrTypeTemplate::Struct(s_ty) = &irctx[expr.ty] {
                     s_ty
                 } else {
                     unreachable!()
@@ -253,7 +253,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
         llvm_rhs: BasicValueEnum<'llvm>,
     ) -> BasicValueEnum<'llvm> {
         match (&irctx[lhs_ty], op, &irctx[rhs_ty]) {
-            (IrType::Integer(IrIntegerType { signed, .. }), _, IrType::Integer(_)) => {
+            (IrTypeTemplate::Integer(IrIntegerType { signed, .. }), _, IrTypeTemplate::Integer(_)) => {
                 let llvm_lhs = llvm_lhs.into_int_value();
                 let llvm_rhs = match lhs_ty == rhs_ty {
                     true => llvm_rhs.into_int_value(),
@@ -306,7 +306,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     _ => unreachable!(),
                 }
             }
-            (IrType::Float(_), op, IrType::Float(_)) => {
+            (IrTypeTemplate::Float(_), op, IrTypeTemplate::Float(_)) => {
                 let llvm_lhs = llvm_lhs.into_float_value();
                 let llvm_rhs = llvm_rhs.into_float_value();
                 match op {
@@ -349,7 +349,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     _ => unreachable!(),
                 }
             }
-            (IrType::Ptr(_), op, IrType::Integer(_)) => {
+            (IrTypeTemplate::Ptr(_), op, IrTypeTemplate::Integer(_)) => {
                 let expr = self.gen_bin_impl(
                     irctx,
                     IrContext::U64,
@@ -372,7 +372,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     )
                     .into()
             }
-            (IrType::Integer(_), op, IrType::Ptr(_)) => self.gen_bin_impl(
+            (IrTypeTemplate::Integer(_), op, IrTypeTemplate::Ptr(_)) => self.gen_bin_impl(
                 irctx,
                 lhs_ty,
                 op,
@@ -408,7 +408,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
             &irctx[irctx.unwrap_alias(expr.ty)],
             &irctx[irctx.unwrap_alias(ty)],
         ) {
-            (IrType::Integer(_), IrType::Integer(IrIntegerType { signed, .. })) => {
+            (IrTypeTemplate::Integer(_), IrTypeTemplate::Integer(IrIntegerType { signed, .. })) => {
                 let val = self.gen_expr(irctx, expr);
                 self.build
                     .build_int_cast_sign_flag(
@@ -419,7 +419,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     )
                     .into()
             }
-            (IrType::Integer(IrIntegerType { signed: true, .. }), IrType::Float(_)) => {
+            (IrTypeTemplate::Integer(IrIntegerType { signed: true, .. }), IrTypeTemplate::Float(_)) => {
                 let val = self.gen_expr(irctx, expr);
                 self.build
                     .build_signed_int_to_float(
@@ -429,7 +429,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     )
                     .into()
             }
-            (IrType::Integer(IrIntegerType { signed: false, .. }), IrType::Float(_)) => {
+            (IrTypeTemplate::Integer(IrIntegerType { signed: false, .. }), IrTypeTemplate::Float(_)) => {
                 let val = self.gen_expr(irctx, expr);
                 self.build
                     .build_unsigned_int_to_float(
@@ -439,23 +439,23 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     )
                     .into()
             }
-            (IrType::Integer(_), IrType::Ptr(_)) => {
+            (IrTypeTemplate::Integer(_), IrTypeTemplate::Ptr(_)) => {
                 let val = self.gen_expr(irctx, expr);
                 self.build
                     .build_int_to_ptr(val.into_int_value(), lty.into_pointer_type(), "ipcast")
                     .into()
             }
-            (IrType::Ptr(_), IrType::Integer(_)) => {
+            (IrTypeTemplate::Ptr(_), IrTypeTemplate::Integer(_)) => {
                 let val = self.gen_expr(irctx, expr);
                 self.build
                     .build_ptr_to_int(val.into_pointer_value(), lty.into_int_type(), "picast")
                     .into()
             }
-            (IrType::Ptr(_) | IrType::Fun(_), IrType::Ptr(_) | IrType::Fun(_)) => {
+            (IrTypeTemplate::Ptr(_) | IrTypeTemplate::Fun(_), IrTypeTemplate::Ptr(_) | IrTypeTemplate::Fun(_)) => {
                 let val = self.gen_expr(irctx, expr);
                 self.build.build_bitcast(val, lty, "ppcast")
             }
-            (IrType::Sum(_), _) => {
+            (IrTypeTemplate::Sum(_), _) => {
                 let lval = self.gen_lval(irctx, expr);
                 let ptr = self
                     .build
@@ -471,7 +471,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
 
                 self.build.build_load(ptr_to_t, "sum_unwrap")
             }
-            (_, IrType::Sum(s)) if s.contains(&expr.ty) => {
+            (_, IrTypeTemplate::Sum(s)) if s.contains(&expr.ty) => {
                 let idx = s
                     .iter()
                     .enumerate()
@@ -509,8 +509,8 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
 
                 self.build.build_load(structure, "sumlit")
             },
-            (IrType::Integer(_), IrType::Char) => {
-                let to_char = LLVMCodeGenerator::gen_type(self.ctx, &self.target_data, irctx, &IrType::Char)
+            (IrTypeTemplate::Integer(_), IrTypeTemplate::Char) => {
+                let to_char = LLVMCodeGenerator::gen_type(self.ctx, &self.target_data, irctx, &IrTypeTemplate::Char)
                         .into_int_type();
                 
                 let expr = self.gen_expr(irctx, expr).into_int_value();
@@ -519,7 +519,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                     .build_int_cast_sign_flag(expr, to_char, false, "itoc")
                     .into()
             },
-            (IrType::Char, IrType::Integer(to_ity)) => {
+            (IrTypeTemplate::Char, IrTypeTemplate::Integer(to_ity)) => {
                 let signed = to_ity.signed;
                 let to_ity = LLVMCodeGenerator::gen_inttype(self.ctx, &self.target_data, to_ity);
 

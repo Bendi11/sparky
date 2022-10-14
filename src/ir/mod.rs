@@ -18,15 +18,15 @@ use crate::{
 };
 
 use self::{
-    types::{FunType, IrFloatType, IrIntegerType, IrType},
-    value::IrExpr, generic::GenericArgs,
+    types::{FunType, IrFloatType, IrIntegerType, IrTypeTemplate, IrTypeDef, IrType},
+    value::IrExpr, generic::{GenericArgs, Generics},
 };
 
 /// An IR context containing arenas with all type definitons, function declarations / definitions,
 /// and modules
 pub struct IrContext {
     /// A container with all defined types
-    pub types: Interner<IrType>,
+    pub types: Interner<Generics<IrTypeDef, IrTypeTemplate>>,
     /// All declared / defined functions
     pub funs: Arena<IrFun>,
     /// All basic blocks in the program containing statements
@@ -38,7 +38,7 @@ pub struct IrContext {
 }
 
 /// ID referencing an [IrType] in an [IrContext]
-pub type TypeId = Index<IrType>;
+pub type TypeId = Index<Generics<IrTypeDef, IrFunTemplate>>;
 
 /// ID referencing an [IrBB] in an [IrBody]
 pub type BBId = Index<IrBB>;
@@ -200,31 +200,32 @@ impl IrContext {
 
     /// Create a new `IRContext` with primitive types defined
     pub fn new() -> Self {
-        let mut types = Interner::<IrType>::new();
+        let mut types = Interner::<IrTypeTemplate>::new();
 
-        types.insert(
-            IrType::Integer(IrIntegerType {
+        types.insert(IrType::single(
+            IrTypeDef::new(""),
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::Eight,
-            })
+            }))
             .into(),
         );
         types.insert(
-            IrType::Integer(IrIntegerType {
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::Sixteen,
             })
             .into(),
         );
         types.insert(
-            IrType::Integer(IrIntegerType {
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::ThirtyTwo,
             })
             .into(),
         );
         types.insert(
-            IrType::Integer(IrIntegerType {
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: true,
                 width: IntegerWidth::SixtyFour,
             })
@@ -232,52 +233,52 @@ impl IrContext {
         );
 
         types.insert(
-            IrType::Integer(IrIntegerType {
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::Eight,
             })
             .into(),
         );
         types.insert(
-            IrType::Integer(IrIntegerType {
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::Sixteen,
             })
             .into(),
         );
         types.insert(
-            IrType::Integer(IrIntegerType {
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::ThirtyTwo,
             })
             .into(),
         );
         types.insert(
-            IrType::Integer(IrIntegerType {
+            IrTypeTemplate::Integer(IrIntegerType {
                 signed: false,
                 width: IntegerWidth::SixtyFour,
             })
             .into(),
         );
 
-        types.insert(IrType::Bool);
-        types.insert(IrType::Unit);
+        types.insert(IrTypeTemplate::Bool);
+        types.insert(IrTypeTemplate::Unit);
 
-        types.insert(IrType::Float(IrFloatType { doublewide: false }).into());
-        types.insert(IrType::Float(IrFloatType { doublewide: true }).into());
+        types.insert(IrTypeTemplate::Float(IrFloatType { doublewide: false }).into());
+        types.insert(IrTypeTemplate::Float(IrFloatType { doublewide: true }).into());
 
-        types.insert(IrType::Invalid);
+        types.insert(IrTypeTemplate::Invalid);
 
-        types.insert(IrType::Integer(IrIntegerType {
+        types.insert(IrTypeTemplate::Integer(IrIntegerType {
             width: IntegerWidth::PtrSize,
             signed: true,
         }));
-        types.insert(IrType::Integer(IrIntegerType {
+        types.insert(IrTypeTemplate::Integer(IrIntegerType {
             width: IntegerWidth::PtrSize,
             signed: false,
         }));
 
-        types.insert(IrType::Char);
+        types.insert(IrTypeTemplate::Char);
 
         Self {
             types,
@@ -314,7 +315,7 @@ impl IrContext {
     /// Unwrap any type aliases to get a type that is guranteed to not be an alias
     pub fn unwrap_alias(&self, ty: TypeId) -> TypeId {
         match &self[ty] {
-            IrType::Alias { ty, .. } => self.unwrap_alias(*ty),
+            IrTypeTemplate::Alias { ty, .. } => self.unwrap_alias(*ty),
             _ => ty,
         }
     }
@@ -345,7 +346,7 @@ impl<'ctx> TypenameFormatter<'ctx> {
 impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.ctx[self.ty] {
-            IrType::Integer(IrIntegerType { signed, width }) => write!(
+            IrTypeTemplate::Integer(IrIntegerType { signed, width }) => write!(
                 f,
                 "{}",
                 match (signed, width) {
@@ -362,16 +363,16 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
                     (false, IntegerWidth::PtrSize) => "usz",
                 }
             ),
-            IrType::Bool => write!(f, "bool"),
-            IrType::Char => write!(f, "char"),
-            IrType::Unit => write!(f, "()"),
-            IrType::Sum(sum) => {
+            IrTypeTemplate::Bool => write!(f, "bool"),
+            IrTypeTemplate::Char => write!(f, "char"),
+            IrTypeTemplate::Unit => write!(f, "()"),
+            IrTypeTemplate::Sum(sum) => {
                 for variant in sum.iter() {
                     write!(f, "{} | ", self.create(*variant))?;
                 }
                 Ok(())
             }
-            IrType::Float(IrFloatType { doublewide }) => write!(
+            IrTypeTemplate::Float(IrFloatType { doublewide }) => write!(
                 f,
                 "{}",
                 match doublewide {
@@ -379,17 +380,17 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
                     false => "f32",
                 }
             ),
-            IrType::Alias { name, .. } => write!(f, "{}", name),
-            IrType::Array(element, len) => write!(f, "[{}]{}", len, self.create(*element)),
-            IrType::Struct(structure) => {
+            IrTypeTemplate::Alias { name, .. } => write!(f, "{}", name),
+            IrTypeTemplate::Array(element, len) => write!(f, "[{}]{}", len, self.create(*element)),
+            IrTypeTemplate::Struct(structure) => {
                 write!(f, "{{")?;
                 for field in structure.fields.iter() {
                     write!(f, "{} {},", self.create(field.ty), field.name)?;
                 }
                 write!(f, "}}")
             }
-            IrType::Ptr(ty) => write!(f, "*{}", self.create(*ty)),
-            IrType::Fun(fun) => {
+            IrTypeTemplate::Ptr(ty) => write!(f, "*{}", self.create(*ty)),
+            IrTypeTemplate::Fun(fun) => {
                 write!(f, "fun (")?;
                 for (arg_ty, arg_name) in fun.params.iter() {
                     write!(
@@ -402,13 +403,13 @@ impl<'ctx> std::fmt::Display for TypenameFormatter<'ctx> {
 
                 write!(f, ") -> {}", self.create(fun.return_ty))
             }
-            IrType::Invalid => write!(f, "INVALID"),
+            IrTypeTemplate::Invalid => write!(f, "INVALID"),
         }
     }
 }
 
 impl std::ops::Index<TypeId> for IrContext {
-    type Output = IrType;
+    type Output = IrTypeTemplate;
     fn index(&self, index: TypeId) -> &Self::Output {
         &self.types[index]
     }

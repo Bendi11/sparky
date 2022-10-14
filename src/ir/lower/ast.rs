@@ -7,7 +7,7 @@ use crate::{
         NumberLiteralAnnotation, Stmt, StmtNode,
     },
     ir::{
-        types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
+        types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrTypeTemplate},
         value::{IrExpr, IrExprKind, IrLiteral},
         FunId, IrBB, IrBody, IrContext, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId,
     },
@@ -33,7 +33,7 @@ impl<'ctx> IrLowerer<'ctx> {
         });
         self.bb = Some(entry);
         let return_var = match self.ctx[self.ctx[fun].ty.return_ty] {
-            IrType::Unit => None,
+            IrTypeTemplate::Unit => None,
             _ => {
                 let return_var = self.ctx.vars.insert(IrVar {
                     ty: self.ctx[fun].ty.return_ty,
@@ -152,7 +152,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
                 let return_val = self.lower_expr(module, file, fun, val)?;
 
-                if self.ctx[self.ctx[return_var].ty] == IrType::Invalid {
+                if self.ctx[self.ctx[return_var].ty] == IrTypeTemplate::Invalid {
                     self.ctx[return_var].ty = return_val.ty
                 }
 
@@ -332,7 +332,7 @@ impl<'ctx> IrLowerer<'ctx> {
     ) -> Result<IrExpr, Diagnostic<FileId>> {
         let object_ty = self.ctx.unwrap_alias(object.ty);
         match &self.ctx[object_ty] {
-            IrType::Struct(s_ty) => {
+            IrTypeTemplate::Struct(s_ty) => {
                 for (idx, field) in s_ty.fields.iter().enumerate() {
                     if field.name == *name {
                         return Ok(IrExpr {
@@ -406,7 +406,7 @@ impl<'ctx> IrLowerer<'ctx> {
             } => {
                 let mut structure = self.lower_expr(module, file, fun, structure)?;
                 for _ in 0..*arrow_len {
-                    if let IrType::Ptr(p) = &self.ctx[structure.ty] {
+                    if let IrTypeTemplate::Ptr(p) = &self.ctx[structure.ty] {
                         structure = IrExpr {
                             span: structure.span,
                             ty: *p,
@@ -430,7 +430,7 @@ impl<'ctx> IrLowerer<'ctx> {
             ExprNode::Call(fun_ast, args) => {
                 let fun_ir = self.lower_expr(module, file, fun, fun_ast)?;
                 match self.ctx[self.ctx.unwrap_alias(fun_ir.ty)].clone() {
-                    IrType::Fun(fun_ty) => {
+                    IrTypeTemplate::Fun(fun_ty) => {
                         let args = args
                             .iter()
                             .map(|arg| self.lower_expr(module, file, fun, arg))
@@ -471,7 +471,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 let obj = self.lower_expr(module, file, fun, obj)?;
                 let obj_ty = self.ctx.unwrap_alias(obj.ty);
                 let elem_ty = match self.ctx[obj_ty] {
-                    IrType::Array(elem, _) => elem,
+                    IrTypeTemplate::Array(elem, _) => elem,
                     _ => {
                         return Err(Diagnostic::error()
                             .with_message(format!(
@@ -486,7 +486,7 @@ impl<'ctx> IrLowerer<'ctx> {
                 let idx = self.lower_expr(module, file, fun, idx)?;
 
                 let idx_ty = self.ctx.unwrap_alias(idx.ty);
-                if !matches!(&self.ctx[idx_ty], IrType::Integer(_)) {
+                if !matches!(&self.ctx[idx_ty], IrTypeTemplate::Integer(_)) {
                     return Err(Diagnostic::error()
                         .with_message(format!(
                             "Cannot index an expression of array type {} with a value of non-integer type {}",
@@ -511,7 +511,7 @@ impl<'ctx> IrLowerer<'ctx> {
             ExprNode::Literal(lit) => match lit {
                 Literal::String(s) => IrExpr {
                     span: expr.span,
-                    ty: self.ctx.types.insert(IrType::Ptr(IrContext::U8)),
+                    ty: self.ctx.types.insert(IrTypeTemplate::Ptr(IrContext::U8)),
                     kind: IrExprKind::Lit(IrLiteral::String(s.clone())),
                 },
                 Literal::Bool(b) => IrExpr {
@@ -568,7 +568,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     IrExpr {
                         span: expr.span,
-                        ty: self.ctx.types.insert(IrType::Array(ty, exprs.len() as u64)),
+                        ty: self.ctx.types.insert(IrTypeTemplate::Array(ty, exprs.len() as u64)),
                         kind: IrExprKind::Lit(IrLiteral::Array(exprs)),
                     }
                 }
@@ -581,7 +581,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     let struct_ty = if let Some(unwrapped) = unwrapped {
                         match self.ctx[unwrapped] {
-                            IrType::Struct(ref fields) => Some(fields.clone()),
+                            IrTypeTemplate::Struct(ref fields) => Some(fields.clone()),
                             _ => {
                                 return Err(Diagnostic::error()
                                     .with_message(format!(
@@ -617,7 +617,7 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     let lit_expr = IrExpr {
                         span: expr.span,
-                        ty: self.ctx.types.insert(IrType::Struct(IrStructType {
+                        ty: self.ctx.types.insert(IrTypeTemplate::Struct(IrStructType {
                             fields: fields
                                 .iter()
                                 .map(|(name, expr)| IrStructField {
@@ -840,7 +840,7 @@ impl<'ctx> IrLowerer<'ctx> {
             .iter()
             .map(|(ty, stmt)| {
                 let ty = self.resolve_type(ty, module, file, span)?;
-                if let IrType::Sum(variants) = &self.ctx[self.ctx.unwrap_alias(matched.ty)] {
+                if let IrTypeTemplate::Sum(variants) = &self.ctx[self.ctx.unwrap_alias(matched.ty)] {
                     if !variants.contains(&ty) {
                         return Err(Diagnostic::error()
                             .with_message(format!(

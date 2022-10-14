@@ -1,6 +1,6 @@
 use inkwell::values::FunctionValue;
 
-use crate::ir::{types::IrType, BBId, IrContext, IrStmt, IrStmtKind, IrTerminator};
+use crate::ir::{types::IrTypeTemplate, BBId, IrContext, IrStmt, IrStmtKind, IrTerminator};
 
 use super::LLVMCodeGeneratorState;
 
@@ -60,7 +60,7 @@ impl<'llvm> LLVMCodeGeneratorState<'llvm> {
                 default_jmp,
             } => {
                 let variant_ty = variant.ty;
-                let sum_ty = if let IrType::Sum(sum) = &irctx[irctx.unwrap_alias(variant.ty)] {
+                let sum_ty = if let IrTypeTemplate::Sum(sum) = &irctx[irctx.unwrap_alias(variant.ty)] {
                     sum
                 } else {
                     unreachable!("{}", irctx.typename(variant.ty))
