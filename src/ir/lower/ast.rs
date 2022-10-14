@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use crate::{
     ast::{
         ElseExpr, Expr, ExprNode, If, IntegerWidth, Literal, Match, NumberLiteral,
-        NumberLiteralAnnotation, Stmt, StmtNode,
+        NumberLiteralAnnotation, Stmt, StmtNode, BigInt,
     },
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
@@ -21,7 +21,7 @@ use super::{IntermediateDefId, IntermediateModuleId, IrLowerer, ScopePlate};
 impl<'ctx> IrLowerer<'ctx> {
     pub(super) fn drop(
         &mut self,
-        expr: IrExpr,
+        expr: &IrExpr,
         ty: TypeId,
     ) -> Result<(), Diagnostic<FileId>> {
         match &self.ctx[ty] {
@@ -32,17 +32,36 @@ impl<'ctx> IrLowerer<'ctx> {
                     let field = IrExpr {
                         span: expr.span,
                         ty: field.ty,
-                        kind: IrExprKind::Member(Box::new(expr), idx),
+                        kind: IrExprKind::Member(Box::new(*expr), idx),
                     };
 
-                    self.drop(field, field.ty)?;
+                    self.drop(&field, field.ty)?;
                 } 
             },
             IrType::Sum(s_ty) => {
-                  
+                
             },
             IrType::Array(ty, len) => {
+                for i in 0..*len {
+                    let idx = IrExpr {
+                        span: expr.span,
+                        ty: IrContext::USIZE,
+                        kind: IrExprKind::Lit(IrLiteral::Integer(
+                            BigInt { val: i, sign: true },
+                            IrIntegerType {
+                            width: IntegerWidth::PtrSize,
+                            signed: false,
+                        }))
+                    };
 
+                    let elem = IrExpr {
+                        span: expr.span,
+                        ty: *ty,
+                        kind: IrExprKind::Index(Box::new(*expr), Box::new(idx)),
+                    };
+                    
+                    self.drop(&elem, *ty);
+                }
             },
             IrType::Alias { name, ty } => {
                 let bb = self.bb();
@@ -55,7 +74,7 @@ impl<'ctx> IrLowerer<'ctx> {
                             args: vec![IrExpr {
                                 span: expr.span,
                                 ty: ptr,
-                                kind: IrExprKind::Unary(Op::AND, Box::new(expr)),
+                                kind: IrExprKind::Unary(Op::AND, Box::new(*expr)),
                             }]
                         }
                     });
