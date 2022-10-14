@@ -9,7 +9,7 @@ use crate::{
     ir::{
         types::{FunType, IrFloatType, IrIntegerType, IrStructField, IrStructType, IrType},
         value::{IrExpr, IrExprKind, IrLiteral},
-        FunId, IrBB, IrBody, IrContext, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId,
+        FunId, IrBB, IrBody, IrContext, IrStmt, IrStmtKind, IrTerminator, IrVar, VarId, TypeId,
     },
     parse::token::Op,
     util::{files::FileId, loc::Span},
@@ -19,6 +19,70 @@ use crate::{
 use super::{IntermediateDefId, IntermediateModuleId, IrLowerer, ScopePlate};
 
 impl<'ctx> IrLowerer<'ctx> {
+    pub(super) fn drop(
+        &mut self,
+        expr: IrExpr,
+        ty: TypeId,
+    ) -> Result<(), Diagnostic<FileId>> {
+        match &self.ctx[ty] {
+            IrType::Integer(_) | IrType::Float(_) | IrType::Char | 
+            IrType::Bool | IrType::Unit | IrType::Ptr(_) | IrType::Fun(_) => (),
+            IrType::Struct(s_ty) => {
+                for (idx, field) in s_ty.fields.iter().enumerate() {
+                    let field = IrExpr {
+                        span: expr.span,
+                        ty: field.ty,
+                        kind: IrExprKind::Member(Box::new(expr), idx),
+                    };
+
+                    self.drop(field, field.ty)?;
+                } 
+            },
+            IrType::Sum(s_ty) => {
+                  
+            },
+            IrType::Array(ty, len) => {
+
+            },
+            IrType::Alias { name, ty } => {
+                let bb = self.bb();
+                if let Some(dtor) = self.dtors.get(&expr.ty) {
+                    let ptr = self.ctx.types.insert(IrType::Ptr(expr.ty));
+                    self.ctx[bb].stmts.push(IrStmt {
+                        span: expr.span,
+                        kind: IrStmtKind::Call {
+                            fun: *dtor,
+                            args: vec![IrExpr {
+                                span: expr.span,
+                                ty: ptr,
+                                kind: IrExprKind::Unary(Op::AND, Box::new(expr)),
+                            }]
+                        }
+                    });
+                } else {
+                    self.drop(expr, *ty);
+                }
+            },
+            IrType::Invalid => (),
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn drop_all(
+        &mut self,
+        module: IntermediateModuleId,
+    ) {
+        for (_, defined) in self.scope_stack.iter().map(|plate| plate.vars.iter()).flatten() {
+            let var = &self.ctx[*defined];
+            self.drop(IrExpr {
+                span: Span::new(0, 0),
+                ty: var.ty,
+                kind: IrExprKind::Var(*defined),
+            }, var.ty);
+        }
+    }
+
     /// Lower a function's body to IR statements and basic blocks
     pub(super) fn lower_body(
         &mut self,
@@ -82,11 +146,13 @@ impl<'ctx> IrLowerer<'ctx> {
 
         let end = self.bb();
         match (self.ctx.unwrap_alias(self.ctx[fun].ty.return_ty), &self.ctx[end].terminator) {
-            (ty, IrTerminator::Invalid) if ty == IrContext::UNIT => self.ctx[end].terminator = IrTerminator::Return(IrExpr {
-                span: self.ctx[fun].span,
-                ty: IrContext::UNIT,
-                kind: IrExprKind::Lit(IrLiteral::Unit),
-            }),
+            (ty, IrTerminator::Invalid) if ty == IrContext::UNIT => {
+                self.ctx[end].terminator = IrTerminator::Return(IrExpr {
+                    span: self.ctx[fun].span,
+                    ty: IrContext::UNIT,
+                    kind: IrExprKind::Lit(IrLiteral::Unit),
+                })
+            },
             (ty, IrTerminator::Invalid) => return Err(Diagnostic::error()
                 .with_message(format!(
                     "Function {} must return a value of type {} but no return statement terminates the function",

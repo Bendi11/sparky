@@ -37,6 +37,8 @@ pub struct IrLowerer<'ctx> {
     scope_stack: Vec<ScopePlate>,
     /// Function for setting up global values
     global_setup_fun: FunId,
+    /// Destructor functions
+    dtors: HashMap<TypeId, FunId>,
     /// Current basic block to generate code in
     bb: Option<BBId>,
 }
