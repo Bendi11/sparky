@@ -17,7 +17,7 @@ use crate::{
     arena::Arena,
     ast::{FunFlags, IntegerWidth},
     ir::{
-        types::{FunType, IrFloatType, IrIntegerType, IrTypeTemplate},
+        types::{FunType, IrFloatType, IrIntegerType, IrType},
         BBId, IrContext,
     },
     CompileOpts, OutputFileType, OutputOptimizationLevel,
@@ -31,7 +31,6 @@ pub struct LLVMCodeGenerator<'ctx, 'llvm> {
     state: LLVMCodeGeneratorState<'llvm>,
     irctx: &'ctx mut IrContext,
 }
-
 
 pub struct LLVMCodeGeneratorState<'llvm> {
     ctx: &'llvm Context,
@@ -81,7 +80,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
         let target_data = target_machine.get_target_data();
 
         let llvm_types = irctx.types.secondary(|(_, ty)| {
-            if matches!(ty, IrTypeTemplate::Invalid) {
+            if matches!(ty, IrType::Invalid) {
                 ctx.i8_type().into()
             } else {
                 Self::gen_type(ctx, &target_data, irctx, ty)
@@ -220,24 +219,24 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
         ctx: &'llvm Context,
         target_data: &TargetData,
         irctx: &'ctx IrContext,
-        ty: &IrTypeTemplate,
+        ty: &IrType,
     ) -> BasicTypeEnum<'llvm> {
         match ty {
-            IrTypeTemplate::Integer(ity) => Self::gen_inttype(ctx, target_data, ity).into(),
-            IrTypeTemplate::Float(IrFloatType { doublewide }) => match doublewide {
+            IrType::Integer(ity) => Self::gen_inttype(ctx, target_data, ity).into(),
+            IrType::Float(IrFloatType { doublewide }) => match doublewide {
                 true => ctx.f64_type().into(),
                 false => ctx.f32_type().into(),
             },
-            IrTypeTemplate::Bool => ctx.bool_type().into(),
-            IrTypeTemplate::Char => ctx.i32_type().into(),
-            IrTypeTemplate::Unit => ctx.i8_type().into(),
-            IrTypeTemplate::Ptr(ty) => Self::gen_type(ctx, target_data, irctx, &irctx[*ty])
+            IrType::Bool => ctx.bool_type().into(),
+            IrType::Char => ctx.i32_type().into(),
+            IrType::Unit => ctx.i8_type().into(),
+            IrType::Ptr(ty) => Self::gen_type(ctx, target_data, irctx, &irctx[*ty])
                 .ptr_type(AddressSpace::Generic)
                 .into(),
-            IrTypeTemplate::Fun(f) => Self::gen_funtype(ctx, target_data, irctx, f)
+            IrType::Fun(f) => Self::gen_funtype(ctx, target_data, irctx, f)
                 .ptr_type(AddressSpace::Generic)
                 .into(),
-            IrTypeTemplate::Struct(s_ty) => {
+            IrType::Struct(s_ty) => {
                 let fields = s_ty
                     .fields
                     .iter()
@@ -245,7 +244,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                     .collect::<Vec<_>>();
                 ctx.struct_type(&fields, false).into()
             }
-            IrTypeTemplate::Sum(variants) => {
+            IrType::Sum(variants) => {
                 if variants.is_empty() {
                     panic!("Type: {:#?} has no variants", ty);
                 }
@@ -269,11 +268,11 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
                 )
                 .into()
             }
-            IrTypeTemplate::Array(ty, sz) => Self::gen_type(ctx, target_data, irctx, &irctx[*ty])
+            IrType::Array(ty, sz) => Self::gen_type(ctx, target_data, irctx, &irctx[*ty])
                 .array_type(*sz as u32)
                 .into(),
-            IrTypeTemplate::Alias { ty, .. } => Self::gen_type(ctx, target_data, irctx, &irctx[*ty]),
-            IrTypeTemplate::Invalid => ctx.i8_type().into(),
+            IrType::Alias { ty, .. } => Self::gen_type(ctx, target_data, irctx, &irctx[*ty]),
+            IrType::Invalid => ctx.i8_type().into(),
         }
     }
 

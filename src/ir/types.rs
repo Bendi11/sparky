@@ -1,6 +1,6 @@
-use crate::{ast::IntegerWidth, Symbol, arena::Index, util::loc::Span};
+use crate::{ast::IntegerWidth, Symbol};
 
-use super::{TypeId, IrFunRef, generic::{GenericArgs, Generics}};
+use super::TypeId;
 
 /// The signature of a function with argument and return types
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -37,23 +37,9 @@ pub struct IrStructType {
     pub fields: Vec<IrStructField>,
 }
 
-/// A reference to an IrType with generic arguments
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub struct IrTypeRef {
-    pub ty: Index<IrTypeTemplate>,
-    pub args: GenericArgs,
-}
-
-pub type IrType = Generics<IrTypeDef, IrTypeTemplate>;
-
-#[derive(Clone, Debug)]
-pub struct IrTypeDef {
-    pub name: Symbol,
-}
-
-/// Data for an [IrType] that contains the actual type data
+/// Data for an [IRType] that contains the actual type data
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub enum IrTypeTemplate {
+pub enum IrType {
     /// An integer type with width and signedness
     Integer(IrIntegerType),
     /// A 32 or 64 bit floating point type
@@ -83,13 +69,6 @@ pub enum IrTypeTemplate {
     Fun(FunType),
     /// Never used except by the IR lowerer
     Invalid,
-}
-
-impl IrTypeDef {
-    /// Create a new `IrTypeDef` with the name of 
-    pub const fn new(name: Symbol) -> Self {
-        Self { name }
-    }
 }
 
 impl IrStructType {
