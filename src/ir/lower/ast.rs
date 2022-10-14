@@ -23,25 +23,27 @@ impl<'ctx> IrLowerer<'ctx> {
         &mut self,
         expr: &IrExpr,
         ty: TypeId,
-    ) -> Result<(), Diagnostic<FileId>> {
+    ) {
         match &self.ctx[ty] {
             IrType::Integer(_) | IrType::Float(_) | IrType::Char | 
             IrType::Bool | IrType::Unit | IrType::Ptr(_) | IrType::Fun(_) => (),
             IrType::Struct(s_ty) => {
-                for (idx, field) in s_ty.fields.iter().enumerate() {
+                let fields = s_ty.fields.clone();
+                for (idx, field) in fields.into_iter().enumerate() {
                     let field = IrExpr {
                         span: expr.span,
                         ty: field.ty,
-                        kind: IrExprKind::Member(Box::new(*expr), idx),
+                        kind: IrExprKind::Member(Box::new(expr.clone()), idx),
                     };
 
-                    self.drop(&field, field.ty)?;
+                    self.drop(&field, field.ty);
                 } 
             },
             IrType::Sum(s_ty) => {
                 
             },
             IrType::Array(ty, len) => {
+                let ty = *ty;
                 for i in 0..*len {
                     let idx = IrExpr {
                         span: expr.span,
@@ -56,11 +58,11 @@ impl<'ctx> IrLowerer<'ctx> {
 
                     let elem = IrExpr {
                         span: expr.span,
-                        ty: *ty,
-                        kind: IrExprKind::Index(Box::new(*expr), Box::new(idx)),
+                        ty,
+                        kind: IrExprKind::Index(Box::new(expr.clone()), Box::new(idx)),
                     };
                     
-                    self.drop(&elem, *ty);
+                    self.drop(&elem, ty);
                 }
             },
             IrType::Alias { name, ty } => {
@@ -74,7 +76,7 @@ impl<'ctx> IrLowerer<'ctx> {
                             args: vec![IrExpr {
                                 span: expr.span,
                                 ty: ptr,
-                                kind: IrExprKind::Unary(Op::AND, Box::new(*expr)),
+                                kind: IrExprKind::Unary(Op::AND, Box::new(expr.clone())),
                             }]
                         }
                     });
@@ -84,21 +86,28 @@ impl<'ctx> IrLowerer<'ctx> {
             },
             IrType::Invalid => (),
         }
-
-        Ok(())
     }
 
     pub(super) fn drop_all(
         &mut self,
-        module: IntermediateModuleId,
     ) {
-        for (_, defined) in self.scope_stack.iter().map(|plate| plate.vars.iter()).flatten() {
-            let var = &self.ctx[*defined];
-            self.drop(IrExpr {
+        let vars = self
+            .scope_stack
+            .iter()
+            .map(|plate| plate
+                .vars
+                .values()
+                .copied()
+            )
+            .flatten()
+            .collect::<Vec<_>>();
+        for defined in vars {
+            let ty = self.ctx[defined].ty;
+            self.drop(&IrExpr {
                 span: Span::new(0, 0),
-                ty: var.ty,
-                kind: IrExprKind::Var(*defined),
-            }, var.ty);
+                ty,
+                kind: IrExprKind::Var(defined),
+            }, ty);
         }
     }
 

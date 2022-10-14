@@ -139,6 +139,7 @@ impl<'ctx> IrLowerer<'ctx> {
             global_setup_fun,
             scope_stack: Vec::new(),
             bb: None,
+            dtors: HashMap::default(),
         }
     }
 
