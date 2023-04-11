@@ -1,6 +1,0 @@
-
-//A borrowed slice of a string, used heavily when lexing / parsing
-type strslice_t = {
-    *u8 ptr,
-    usz len,
-}
