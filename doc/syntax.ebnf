@@ -1,0 +1,17 @@
+
+
+<boolean> ::= 'true' | 'false'
+<string> ::= '"' <escaped> '"'
+<escaped> ::= ( .* | <escapeseq>* )*
+<escapeseq> ::= '\n' | '\t' | '\"'
+<number> ::= <digit>+
+          |= <floatnumber>
+          |= '0b' ( '0' | '1' )+
+          |= '0x' ( <digit> | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' )+
+          |= '0o' ( '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7')+
+<floatnumber> ::= ( <digit>+ '.' <digit>* ) | ( <digit>* '.' <digit>+ ) 
+
+<ident> ::= '_' | <alpha> ( <digit> | <ident> )*
+
+<alpha> ::= 'a' .. 'z' | 'a' .. 'Z'
+<digit> ::= '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'

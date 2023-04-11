@@ -4,5 +4,6 @@ members = [
     "compiler/sparky_parse",
     "compiler/sparky_ast",
     "compiler/sparky_diagnostic",
-    "compiler/sparky_span"
+    "compiler/sparky_span",
+    "compiler/sparky_arena"
 ]

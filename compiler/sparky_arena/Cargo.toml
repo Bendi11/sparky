@@ -1,7 +1,6 @@
 [package]
-name = "sparkyc"
+name = "sparky_arena"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = "4.2"
