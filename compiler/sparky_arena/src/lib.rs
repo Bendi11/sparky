@@ -28,7 +28,6 @@ macro_rules! new_arena_key {
     ) => {
         $(#[$outer])*
         #[repr(transparent)]
-        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
         pub struct $name($ty);
 
         impl ::sparky_arena::ArenaKey for $name {

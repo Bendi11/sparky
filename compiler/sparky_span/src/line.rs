@@ -11,7 +11,7 @@ pub struct LineOffsets {
 impl LineOffsets {
     /// Read line indices from an iterator over characters and indices like the
     /// [std::str::CharIndices] iterator
-    pub fn read<I: Iterator<Item = (usize, char)>>(mut iter: I) -> Self {
+    pub fn read<I: Iterator<Item = (usize, char)>>(iter: I) -> Self {
         #[repr(transparent)]
         struct LineSpanIter<I>(I);
 
@@ -31,8 +31,8 @@ impl LineOffsets {
     }
 
     /// Get the total number of lines
-    pub const fn lines(&self) -> usize {
-        self.lines.len()
+    pub const fn lines(&self) -> u32 {
+        self.lines.len() as u32
     }
 
     /// Get the span a given line occupies, with a leading newline and no trailing newline
@@ -56,7 +56,7 @@ impl LineOffsets {
             .find_map(move |(line, off)|
                 off.contains(idx).then_some((line as u32).saturating_sub(1) + 1)
             )
-            .unwrap_or(self.lines.len() as u32)
+            .unwrap_or(self.lines())
     }
 }
 

@@ -3,6 +3,8 @@ use std::ops::Index;
 mod files;
 mod line;
 
+pub use files::Files;
+
 /// A span from a source file
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
