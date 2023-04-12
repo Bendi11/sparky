@@ -1,13 +1,19 @@
 use sparky_arena::Arena;
 
-sparky_arena::new_arena_key!{FileId}
-
-#[derive(Clone, Debug)]
-pub struct Files {
-    arena: Arena<File>,
+sparky_arena::new_arena_key!{
+    /// Test
+    pub struct FileId;
 }
 
+/// A collection of parsed data with 
 #[derive(Clone, Debug)]
-pub enum File {
-    Memory(String),
+pub struct Files {
+    arena: Arena<OpenFile>,
+}
+
+
+
+#[derive(Clone, Debug)]
+enum OpenFile {
+    
 }

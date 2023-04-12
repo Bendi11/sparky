@@ -13,8 +13,20 @@ pub trait ArenaKey {
 
 #[macro_export]
 macro_rules! new_arena_key {
-    ($name:ident) => { ::sparky_arena::new_arena_key!{$name(u32)} };
-    ($name:ident($ty:ty)) => {
+    (
+        $(#[$outer:meta])*
+        pub struct $name:ident;
+    ) => {
+        ::sparky_arena::new_arena_key!{
+            $(#[$outer])*
+            pub struct $name(u32);
+        }
+    };
+    (
+        $(#[$outer:meta])*
+        pub struct $name:ident($ty:ty);
+    ) => {
+        $(#[$outer])*
         #[repr(transparent)]
         #[derive(Clone, Copy, PartialEq, Eq, Hash)]
         pub struct $name($ty);
