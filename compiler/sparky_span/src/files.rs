@@ -49,3 +49,17 @@ impl MemoryFile {
         })
     }
 }
+
+impl Files {
+    /// Create a new empty [Files] collection
+    pub const fn new() -> Self {
+        Self {
+            arena: Arena::new()
+        }
+    }
+    
+    /// Open a file and ready all 
+    pub fn open_in_memory(&mut self, path: impl AsRef<Path>) -> FileId {
+        unimplemented!()
+    }
+}
