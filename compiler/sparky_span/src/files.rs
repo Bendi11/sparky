@@ -4,7 +4,7 @@ use sparky_arena::Arena;
 
 use crate::line::LineOffsets;
 
-sparky_arena::new_arena_key!{
+sparky_arena::new_arena_key! {
     /// Key used to access file data from a [Files] structure
     pub struct FileId;
 }
@@ -18,7 +18,7 @@ pub struct Files {
 
 /// An enumeration over all types of files that may be parsed by the compiler
 #[derive(Clone, Debug)]
-pub enum OpenFile {
+enum OpenFile {
     Handle(OpenFileHandle),
     Memory(MemoryFile),
 }
@@ -26,9 +26,7 @@ pub enum OpenFile {
 /// A read-only file that can seek to arbitrary bytes, instead of storing the full file in memory
 /// as in the [MemoryFile]
 #[derive(Clone, Debug)]
-struct OpenFileHandle {
-    
-}
+struct OpenFileHandle {}
 
 /// A read-only string stored in memory instead of on the file system
 #[derive(Clone, Debug)]
@@ -43,10 +41,7 @@ impl MemoryFile {
     pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let txt = std::fs::read_to_string(path)?.into_boxed_str();
         let linemap = LineOffsets::read(txt.char_indices());
-        Ok(Self {
-            txt,
-            linemap,
-        })
+        Ok(Self { txt, linemap })
     }
 }
 
@@ -54,11 +49,11 @@ impl Files {
     /// Create a new empty [Files] collection
     pub const fn new() -> Self {
         Self {
-            arena: Arena::new()
+            arena: Arena::new(),
         }
     }
-    
-    /// Open a file and ready all 
+
+    /// Open a file and ready all
     pub fn open_in_memory(&mut self, path: impl AsRef<Path>) -> FileId {
         unimplemented!()
     }

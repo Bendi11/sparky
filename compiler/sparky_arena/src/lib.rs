@@ -38,7 +38,7 @@ macro_rules! new_arena_key {
     };
 }
 
-/// A type implementing [ArenaKey] that only contains a basic index value with no type checking, 
+/// A type implementing [ArenaKey] that only contains a basic index value with no type checking,
 /// when possible use the [TypedKey] type
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,7 +46,7 @@ pub struct RawKey<T = usize>(T);
 
 impl<T: Into<usize> + From<usize> + Copy> ArenaKey for RawKey<T> {
     fn create(idx: usize) -> Self {
-        Self(T::from(idx))    
+        Self(T::from(idx))
     }
 
     fn index(&self) -> usize {
@@ -66,7 +66,10 @@ pub struct TypedKey<T, I = usize> {
 
 impl<T, I: Into<usize> + From<usize> + Copy> ArenaKey for TypedKey<T, I> {
     fn create(idx: usize) -> Self {
-        Self { idx: I::from(idx), _boo: PhantomData }
+        Self {
+            idx: I::from(idx),
+            _boo: PhantomData,
+        }
     }
 
     fn index(&self) -> usize {
