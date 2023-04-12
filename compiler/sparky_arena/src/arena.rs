@@ -5,6 +5,7 @@ use std::{
 
 use crate::{ArenaKey, TypedKey};
 
+/// An insert-only collection that maps unique IDs to values of type `T`
 #[derive(Clone, Debug,)]
 pub struct Arena<T, Id: ArenaKey = TypedKey<T> > {
     vec: Vec<T>,  

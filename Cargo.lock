@@ -192,6 +192,9 @@ version = "0.1.0"
 [[package]]
 name = "sparky_span"
 version = "0.1.0"
+dependencies = [
+ "sparky_arena",
+]
 
 [[package]]
 name = "sparkyc"
