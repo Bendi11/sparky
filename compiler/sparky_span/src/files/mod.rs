@@ -14,7 +14,7 @@ sparky_arena::new_arena_key! {
 
 /// A collection of text documents that can be read from files or created in memory for testing or
 /// macros
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Files {
     arena: Arena<OpenFile, FileId>,
 }
@@ -27,7 +27,6 @@ impl Files {
         }
     }
 
-    /// Open a file and ready all
     pub fn open_in_memory(&mut self, path: impl AsRef<Path>) -> std::io::Result<FileId> {
         let file = OpenFile::Memory(MemoryFile::open(path)?);
         Ok(self.arena.insert(file))
