@@ -4,9 +4,9 @@ use sparky_arena::Arena;
 
 use crate::Span;
 
-use self::file::CompilerFile;
-
 mod file;
+
+pub use self::file::CompilerFile;
 
 sparky_arena::new_arena_key! {
     /// Key used to access file data from a [Files] structure
@@ -53,9 +53,6 @@ impl Files {
     #[inline]
     pub fn get(&self, id: FileId) -> &CompilerFile { self.arena.get(id) }
 }
-
-impl CompilerFile {
-    }
 
 impl ops::Index<FileId> for Files {
     type Output = CompilerFile;

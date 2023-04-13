@@ -4,6 +4,8 @@ mod arena;
 
 pub use arena::Arena;
 
+/// Trait for all types that can be used to index into an [Arena]- allows for type checked and raw
+/// indices using the same arena type
 pub trait ArenaKey {
     /// Create a key value from a numerical index
     fn create(idx: usize) -> Self;

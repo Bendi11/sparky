@@ -3,7 +3,7 @@ use std::ops::{Index, Range};
 mod files;
 mod line;
 
-pub use files::Files;
+pub use files::{Files, CompilerFile};
 
 /// A span from a source file
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
