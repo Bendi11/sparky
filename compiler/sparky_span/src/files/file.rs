@@ -1,4 +1,4 @@
-use std::{path::Path, fs::File, io::{BufReader, BufRead}, ops::Range};
+use std::{path::Path, ops::Range};
 
 use crate::{line::LineOffsets, Span};
 
@@ -32,5 +32,12 @@ impl CompilerFile {
             .get(Range::<usize>::from(span))
             .ok_or(FileError::SpanOutOfRange { span, filename: self.name.clone() })
     }
-
+    
+    /// Get a string slice representing the text of this file
+    #[inline(always)]
+    pub fn text(&self) -> &str { &self.txt }
+    
+    /// Get an iterator over the characters of this string with their accompanying positions
+    #[inline]
+    pub fn char_indices<'a>(&'a self) -> std::str::CharIndices<'a> { self.txt.char_indices() }
 }
