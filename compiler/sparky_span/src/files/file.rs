@@ -1,33 +1,36 @@
-use std::{path::Path, fs::File, io::{BufReader, BufRead}};
+use std::{path::Path, fs::File, io::{BufReader, BufRead}, ops::Range};
 
 use crate::{line::LineOffsets, Span};
 
-/// An enumeration over all types of files that may be parsed by the compiler
-#[derive(Debug)]
-pub(crate) enum OpenFile {
-    Memory(MemoryFile),
-}
+use super::FileError;
 
-/// A read-only string stored in memory instead of on the file system
+/// A read-only string read from a file that exists on the disk
 #[derive(Debug)]
-pub(crate) struct MemoryFile {
-    txt: Box<str>,
+pub struct CompilerFile {
+    /// Read-only text of the file
+    pub(super) txt: Box<str>,
+    /// User-facing name of the file; can be a path or filename
+    pub(super) name: String,
     linemap: LineOffsets,
 }
 
-/// All errors that can occur when reading from an open file
-#[derive(Debug, thiserror::Error)]
-pub enum FileError {
-    #[error("Internal I/O error: {0}")]
-    IO(#[from] std::io::Error)
-}
-
-impl MemoryFile {
+impl CompilerFile {
     /// Open a file from the given path, reading all line indices and returning an instance of
     /// `Self` containing the file's text
-    pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, FileError> {
+        let name = path.as_ref().to_string_lossy().into_owned();
         let txt = std::fs::read_to_string(path)?.into_boxed_str();
         let linemap = LineOffsets::read(txt.char_indices());
-        Ok(Self { txt, linemap })
+        Ok(Self { txt, name, linemap })
     }
+
+    /// Read a span of text from this file, returns an error if reading failed or the span was out
+    /// of range
+    pub fn read_span(&self, span: Span) -> Result<&str, FileError> {
+        self
+            .txt
+            .get(Range::<usize>::from(span))
+            .ok_or(FileError::SpanOutOfRange { span, filename: self.name.clone() })
+    }
+
 }

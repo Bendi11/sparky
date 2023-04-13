@@ -72,7 +72,6 @@ mod tests {
     fn test_line_map() {
         let text = format!("{}\n{}\n{}", L1, L2, L3);
         let lines = LineOffsets::read(text.char_indices());
-        let first = lines.line_span(1);
 
         eprintln!("{:#?}", lines);
 

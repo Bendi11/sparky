@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::ops::{Index, Range};
 
 mod files;
 mod line;
@@ -46,9 +46,26 @@ impl Span {
     }
 }
 
+impl From<Span> for Range<u32> {
+    fn from(value: Span) -> Self {
+        Self { start: value.begin, end: value.end }
+    }
+}
+impl From<Span> for Range<usize> {
+    fn from(value: Span) -> Self {
+        Self { start: value.begin as usize, end: value.end as usize }
+    }
+}
+
 impl Index<Span> for str {
     type Output = str;
     fn index(&self, index: Span) -> &Self::Output {
         &self[(index.begin() as usize)..(index.end() as usize)]
+    }
+}
+
+impl std::fmt::Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}, {})", self.begin, self.end) 
     }
 }
