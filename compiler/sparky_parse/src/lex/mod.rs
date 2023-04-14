@@ -155,7 +155,9 @@ mod test {
 
     const SRC: &str = 
 r#"
-ident 0x10
+ident_1 0x10
+
+ { | }
 "#;
     
     #[test]
@@ -163,7 +165,7 @@ ident 0x10
         let lexer = Lexer::new(SRC.char_indices());
         let toks = lexer.collect::<Vec<_>>();
        
-        assert_eq!(&SRC[toks[0].span], "ident");
+        assert_eq!(&SRC[toks[0].span], "ident_1");
         assert!(matches!(toks[0].kind, TokenKind::Ident(_)), "First token must be an identifier");
 
         assert_eq!(&SRC[toks[1].span], "0x10");
@@ -174,5 +176,14 @@ ident 0x10
             ),
             "Second token must be a number literal with hex prefix"
         );
+        
+        assert_eq!(&SRC[toks[2].span], "{");
+        assert!(matches!(toks[2].kind, TokenKind::OpenBrace(BraceKind::Curly)));
+        
+        assert_eq!(&SRC[toks[3].span], "|");
+        assert!(matches!(toks[3].kind, TokenKind::Op(OperatorKind::BitOr)));
+        
+        assert_eq!(&SRC[toks[4].span], "}");
+        assert!(matches!(toks[4].kind, TokenKind::CloseBrace(BraceKind::Curly)));
     }
 }
