@@ -1,4 +1,3 @@
-use std::fmt;
 use sparky_span::Span;
 
 /// A token with additional data that is common to all tokens
@@ -16,11 +15,13 @@ pub enum TokenKind {
     Ident(Span),
     /// A number literal with prefix and span of numeral characters
     Number {
-        prefix: NumLitPrefix,
+        prefix: Option<NumLitPrefix>,
         numerals: Span,
     },
     /// '.' character
     Dot,
+    /// ',' character
+    Comma,
     /// '->' character
     Arrow,
     /// An opening brace of the three supported kinds
@@ -104,4 +105,15 @@ pub enum OperatorKind {
     GreaterEq,
     /// ==
     Equal,
+}
+
+impl NumLitPrefix {
+    /// Get the radix of the numbering system denoted by `self`
+    pub const fn radix(&self) -> u32 {
+        match self {
+            Self::Bin => 2,
+            Self::Oct => 8,
+            Self::Hex => 16,
+        }
+    }
 }
