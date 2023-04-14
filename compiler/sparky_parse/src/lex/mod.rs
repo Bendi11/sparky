@@ -20,8 +20,9 @@ impl<'src> Lexer<'src> {
             current_idx: 0,
         }
     }
-
-    fn next(&mut self) -> Option<(usize, char)> {
+    
+    /// Consume a character from the input stream
+    fn nextchar(&mut self) -> Option<(usize, char)> {
         match self.src.next() {
             Some(v) => {
                 self.current_idx += 1;
@@ -32,14 +33,14 @@ impl<'src> Lexer<'src> {
     }
     
     #[inline]
-    fn peek(&mut self) -> Option<(usize, char)> { self.src.peek().copied() }
+    fn peekchar(&mut self) -> Option<(usize, char)> { self.src.peek().copied() }
     
     /// Lex a single token from the character stream
     pub fn tok(&mut self) -> Option<Token> {
         self.take_while(|(_, c)| c.is_whitespace()); 
         
-        let (start, first) = self.next()?;
-        let peek = self.peek();
+        let (start, first) = self.nextchar()?;
+        let peek = self.peekchar();
 
         let tok = move |kind| Token {
             span: Span::new(start as u32, (start + 1) as u32),
@@ -47,7 +48,7 @@ impl<'src> Lexer<'src> {
         };
 
         let mut tok2 = |kind| {
-            let (pos, _) = self.next().unwrap();
+            let (pos, _) = self.nextchar().unwrap();
             Token {
                 span: Span::new(start as u32, (pos + 1) as u32),
                 kind,
@@ -64,10 +65,10 @@ impl<'src> Lexer<'src> {
             ('>', Some((_, '>'))) => tok2(TokenKind::Op(OperatorKind::ShRight)),
             ('<', Some((_, '<'))) => tok2(TokenKind::Op(OperatorKind::ShLeft)),
 
-            ('0', Some((_, 'b'))) => self.numerals(Some(NumLitPrefix::Bin), start), 
-            ('0', Some((_, 'x'))) => self.numerals(Some(NumLitPrefix::Hex), start),
-            ('0', Some((_, 'o'))) => self.numerals(Some(NumLitPrefix::Oct), start),
-            (c, _) if c.is_numeric() => self.numerals(None, start),
+            ('0', Some((_, 'b'))) => { self.next(); self.numerals(Some(NumLitPrefix::Bin), start) }, 
+            ('0', Some((_, 'x'))) => { self.next(); self.numerals(Some(NumLitPrefix::Hex), start) },
+            ('0', Some((_, 'o'))) => { self.next(); self.numerals(Some(NumLitPrefix::Oct), start) },
+            (c, _) if c.is_numeric() => { self.next(); self.numerals(None, start) },
 
             ('-', Some((_, '>'))) => tok2(TokenKind::Arrow),
 
@@ -104,8 +105,8 @@ impl<'src> Lexer<'src> {
     /// span that matching characters occupy
     fn take_while<F: Fn((usize, char)) -> bool>(&mut self, f: F) -> Span {
         let start = self.current_idx;
-        while self.peek().map(&f).unwrap_or(false) {
-            self.next();
+        while self.peekchar().map(&f).unwrap_or(false) {
+            self.nextchar();
         }
         
         Span::new(start as u32, self.current_idx as u32)
@@ -121,7 +122,7 @@ impl<'src> Lexer<'src> {
         let numerals = self.take_while(move |(_, c)| c.is_digit(radix));
 
         Token {
-            span: Span::new(start as u32, start_digits as u32),
+            span: Span::new(start as u32, numerals.end() as u32),
             kind: TokenKind::Number {
                 prefix,
                 numerals,
@@ -145,4 +146,33 @@ impl<'src> Iterator for Lexer<'src> {
     type Item = Token;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> { self.tok() }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const SRC: &str = 
+r#"
+ident 0x10
+"#;
+    
+    #[test]
+    fn test_lexer() {
+        let lexer = Lexer::new(SRC.char_indices());
+        let toks = lexer.collect::<Vec<_>>();
+       
+        assert_eq!(&SRC[toks[0].span], "ident");
+        assert!(matches!(toks[0].kind, TokenKind::Ident(_)), "First token must be an identifier");
+
+        assert_eq!(&SRC[toks[1].span], "0x10");
+        assert!(
+            matches!(
+                toks[1].kind,
+                TokenKind::Number { prefix: Some(NumLitPrefix::Hex), numerals: _ }
+            ),
+            "Second token must be a number literal with hex prefix"
+        );
+    }
 }
