@@ -9,6 +9,7 @@ use crate::tok::{Token, TokenKind, OperatorKind, BraceKind, NumLitPrefix};
 #[derive(Clone, Debug)]
 pub(crate) struct Lexer<'src> {
     src: Peekable<CharIndices<'src>>,
+    current_idx: usize,
 }
 
 impl<'src> Lexer<'src> {
@@ -16,17 +17,29 @@ impl<'src> Lexer<'src> {
     pub fn new(src: CharIndices<'src>) -> Self {
         Self {
             src: src.peekable(),
+            current_idx: 0,
+        }
+    }
+
+    fn next(&mut self) -> Option<(usize, char)> {
+        match self.src.next() {
+            Some(v) => {
+                self.current_idx += 1;
+                Some(v)
+            },
+            None => None,
         }
     }
     
+    #[inline]
+    fn peek(&mut self) -> Option<(usize, char)> { self.src.peek().copied() }
+    
     /// Lex a single token from the character stream
     pub fn tok(&mut self) -> Option<Token> {
-        while self.src.peek()?.1.is_whitespace() {
-            self.src.next();
-        }
+        self.take_while(|(_, c)| c.is_whitespace()); 
         
-        let (start, first) = self.src.next()?;
-        let peek = self.src.peek().copied();
+        let (start, first) = self.next()?;
+        let peek = self.peek();
 
         let tok = move |kind| Token {
             span: Span::new(start as u32, (start + 1) as u32),
@@ -34,7 +47,7 @@ impl<'src> Lexer<'src> {
         };
 
         let mut tok2 = |kind| {
-            let (pos, _) = self.src.next().unwrap();
+            let (pos, _) = self.next().unwrap();
             Token {
                 span: Span::new(start as u32, (pos + 1) as u32),
                 kind,
@@ -86,38 +99,39 @@ impl<'src> Lexer<'src> {
         })
     }
     
+    
+    /// Consume characters from the stream while the given condition is satisfied, returning the
+    /// span that matching characters occupy
+    fn take_while<F: Fn((usize, char)) -> bool>(&mut self, f: F) -> Span {
+        let start = self.current_idx;
+        while self.peek().map(&f).unwrap_or(false) {
+            self.next();
+        }
+        
+        Span::new(start as u32, self.current_idx as u32)
+    }
+    
     /// Get a number literal with optional prefix
     fn numerals(&mut self, prefix: Option<NumLitPrefix>, start: usize) -> Token {
-        let radix = prefix.map(|p| p.radix()).unwrap_or(10);
-        
-        let start_digits = self.src.peek().map(|(i,_)| *i).unwrap_or(start);
-        let mut end = start;
+        let radix = prefix
+            .map(|p| p.radix())
+            .unwrap_or(10);
 
-        while self.src.peek().map(move |(_,c)| c.is_digit(radix)).unwrap_or(false) {
-            end = self.src.next().unwrap().0;
-        }
+        let start_digits = self.current_idx;
+        let numerals = self.take_while(move |(_, c)| c.is_digit(radix));
 
         Token {
             span: Span::new(start as u32, start_digits as u32),
             kind: TokenKind::Number {
                 prefix,
-                numerals: Span::new(start_digits as u32, end as u32 + 1)
+                numerals,
             }
         }
     }
-
+    
+    /// Consume identifier characters from the stream
     fn identifier(&mut self, first: (usize, char)) -> Token {
-        let mut last = first.0;
-        while match self.src.peek() {
-            Some((idx, c)) if c.is_ascii_alphanumeric() || *c == '_' => {
-                last = *idx;
-                true
-            },
-            _ => false,
-        } {
-            self.src.next();
-        }
-
+        let last = self.take_while(|(_, c)| c.is_ascii_alphanumeric() || c == '_').end();
         let span = Span::new(first.0 as u32, last as u32);
 
         Token {
@@ -125,4 +139,10 @@ impl<'src> Lexer<'src> {
             kind: TokenKind::Ident(span)
         }
     }
-} 
+}
+
+impl<'src> Iterator for Lexer<'src> {
+    type Item = Token;
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> { self.tok() }
+}
