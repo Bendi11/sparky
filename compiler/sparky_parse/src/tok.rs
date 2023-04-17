@@ -28,7 +28,11 @@ pub enum TokenKind {
     OpenBrace(BraceKind),
     /// A closing brace
     CloseBrace(BraceKind),
-    
+    /// Character literal, span is the span of text inside the literal which may be two characters
+    /// if escaped
+    CharLiteral(Option<Span>),
+    /// String literal, span is the span of text inside the double quotes
+    StringLiteral(Option<Span>),
     /// Assignment '='
     Assign,
     /// All arithmetic and logical operators

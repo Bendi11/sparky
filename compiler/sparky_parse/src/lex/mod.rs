@@ -96,10 +96,25 @@ impl<'src> Lexer<'src> {
             (']', _) => tok(TokenKind::CloseBrace(BraceKind::Square)),
             (')', _) => tok(TokenKind::CloseBrace(BraceKind::Smooth)),
 
+            (c @ '"', _) => self.string((start, c)),
+            ('\'', _) => {
+                let ch = self.escaped_char();
+                let end = if self.peekchar().map(|(_, c)| c == '\'').unwrap_or(false) {
+                    self.nextchar();
+                    self.current_idx
+                } else {
+                    self.current_idx
+                };
+
+                Token {
+                    span: Span::new(start as u32, end as u32),
+                    kind: TokenKind::CharLiteral(ch),
+                }
+            }
+
             _ => unimplemented!("Do something with unexpected lexer characters"),
         })
     }
-    
     
     /// Consume characters from the stream while the given condition is satisfied, returning the
     /// span that matching characters occupy
@@ -112,6 +127,44 @@ impl<'src> Lexer<'src> {
         Span::new(start as u32, self.current_idx as u32)
     }
     
+    /// Consume a string with escaped characters from the character stream
+    fn string(&mut self, quotes: (usize, char)) -> Token {
+        let mut str_span = None;
+        loop {
+            match self.peekchar() {
+                Some((_, '"')) => break,
+                Some(_) => if let Some(span) = self.escaped_char() {
+                    str_span = Some(
+                        str_span.map_or(
+                            span,
+                            |s: Span| Span::new(s.begin(), span.end())
+                        )
+                    );
+                } else {
+                    break
+                },
+                None => break,
+            }
+        }
+
+        Token {
+            span: Span::new(quotes.0 as u32, self.current_idx as u32),
+            kind: TokenKind::StringLiteral(str_span),
+        }
+    }
+
+    /// Consume a single character, or an escape sequence beginning with a '\' character
+    fn escaped_char(&mut self) -> Option<Span> {
+        let (start, next) = self.nextchar()?;
+        let end = if next == '\\' {
+            self.nextchar().map(|(i,_)| i).unwrap_or(start)
+        } else {
+            start
+        };
+
+        Some(Span::new(start as u32, end as u32))
+    }
+
     /// Get a number literal with optional prefix
     fn numerals(&mut self, prefix: Option<NumLitPrefix>, start: usize) -> Token {
         let radix = prefix
@@ -147,7 +200,6 @@ impl<'src> Iterator for Lexer<'src> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> { self.tok() }
 }
-
 
 #[cfg(test)]
 mod test {
