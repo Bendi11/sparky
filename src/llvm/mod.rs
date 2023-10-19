@@ -78,7 +78,7 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
             )
             .unwrap();
         let target_data = target_machine.get_target_data();
-
+        
         let llvm_types = irctx.types.secondary(|(_, ty)| {
             if matches!(ty, IrType::Invalid) {
                 ctx.i8_type().into()
@@ -215,10 +215,10 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     }
 
     /// Generate LLVM IR for a single IR type
-    pub fn gen_type(
+    pub fn gen_type<'c>(
         ctx: &'llvm Context,
         target_data: &TargetData,
-        irctx: &'ctx IrContext,
+        irctx: &'c IrContext,
         ty: &IrType,
     ) -> BasicTypeEnum<'llvm> {
         match ty {
@@ -277,10 +277,10 @@ impl<'ctx, 'llvm> LLVMCodeGenerator<'ctx, 'llvm> {
     }
 
     /// Generate the LLVM IR signature for the given IR function signature
-    fn gen_funtype(
+    fn gen_funtype<'c>(
         ctx: &'llvm Context,
         target_data: &TargetData,
-        irctx: &'ctx IrContext,
+        irctx: &'c IrContext,
         ty: &FunType,
     ) -> FunctionType<'llvm> {
         let return_ty = Self::gen_type(ctx, target_data, irctx, &irctx[ty.return_ty]);

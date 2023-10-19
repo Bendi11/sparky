@@ -142,7 +142,6 @@ fn main() {
             let mut parser = Parser::new(src);
             let module = handle_parse_error(parser.parse(Symbol::from("root"), f), &files, f);
             drop(parser);
-            drop(src);
             module
         }
         InputItem::Dir(_name, items) => {
