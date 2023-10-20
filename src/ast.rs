@@ -20,147 +20,6 @@ bitflags! {
     }
 }
 
-/// Structure containing a list of symbols separated by the colon
-/// character, for example std:io:open
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SymbolPath {
-    internal: SymbolPathInternal,
-}
-
-/// Enumeration allowing both a heap-allocated list of parts for a path
-/// or a single stack-allocated [Symbol] for optimization, avoiding a
-/// heap allocation for every identifier
-///
-/// Kept private becase the [Multiple](UnresolvedPathInternal::Multiple) variant
-/// must always have at least one symbol and allowing public access risks allowing
-/// that invariant
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum SymbolPathInternal {
-    /// A path made of a single part
-    Single(Symbol),
-    /// A path made of multiple parts
-    /// **WARNING**
-    /// Must have at least one part
-    Multiple(Vec<Symbol>),
-}
-
-/// An iterator over the items in an [UnresolvedPath]
-pub enum PathIter<'a> {
-    /// A single element path
-    Single(std::iter::Once<Symbol>),
-    /// Multiple path parts to iterate over
-    Multiple(std::slice::Iter<'a, Symbol>),
-}
-
-impl PathIter<'_> {
-    /// Return `true` if a call to next() will consume the last element of the path
-    pub fn is_final(&self) -> bool {
-        match self {
-            Self::Single(s) if !s.len() == 1 => true,
-            Self::Multiple(iter) if iter.len() == 1 => true,
-            _ => false,
-        }
-    }
-}
-
-impl Iterator for PathIter<'_> {
-    type Item = Symbol;
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::Single(once) => once.next(),
-            Self::Multiple(parts) => parts.next().map(|x| *x),
-        }
-    }
-}
-
-impl ExactSizeIterator for PathIter<'_> {
-    fn len(&self) -> usize {
-        match self {
-            Self::Single(sym) => sym.len(),
-            Self::Multiple(iter) => iter.len(),
-        }
-    }
-}
-
-impl SymbolPath {
-    /// Create a new path with only one identifier
-    pub fn new(part: Symbol) -> Self {
-        Self {
-            internal: SymbolPathInternal::Single(part),
-        }
-    }
-
-    /// Create a new path from a list of parts
-    ///
-    /// **Note**
-    /// The `parts` argument must contain at least one Symbol
-    pub fn new_parts(parts: &[Symbol]) -> Self {
-        if parts.len() == 1 {
-            Self {
-                internal: SymbolPathInternal::Single(parts[0]),
-            }
-        } else {
-            Self {
-                internal: SymbolPathInternal::Multiple(parts.to_owned()),
-            }
-        }
-    }
-
-    /// Get the length of this path
-    pub fn len(&self) -> usize {
-        match self.internal {
-            SymbolPathInternal::Single(_) => 1,
-            SymbolPathInternal::Multiple(ref parts) => parts.len(),
-        }
-    }
-
-    /// Retrieve the last identifier in the path
-    pub fn last(&self) -> Symbol {
-        match self.internal {
-            SymbolPathInternal::Single(last) => last,
-            SymbolPathInternal::Multiple(ref parts) => *parts.last().unwrap(),
-        }
-    }
-
-    /// Return the first part of this path
-    pub fn first(&self) -> Symbol {
-        match self.internal {
-            SymbolPathInternal::Single(first) => first,
-            SymbolPathInternal::Multiple(ref parts) => *parts.first().unwrap(),
-        }
-    }
-
-    /// Return an iterator over all parts of this path from first to last
-    pub fn iter(&self) -> PathIter<'_> {
-        match &self.internal {
-            SymbolPathInternal::Single(single) => PathIter::Single(std::iter::once(*single)),
-            SymbolPathInternal::Multiple(parts) => PathIter::Multiple(parts.into_iter()),
-        }
-    }
-}
-
-impl fmt::Display for SymbolPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.internal {
-            SymbolPathInternal::Single(sym) => sym.fmt(f),
-            SymbolPathInternal::Multiple(parts) => {
-                let mut iter = parts.iter();
-                loop {
-                    if let Some(part) = iter.next() {
-                        part.fmt(f)?;
-                        if !(iter.len() == 0) {
-                            write!(f, ":")?;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
 /// Data structure storing a function prototype
 #[derive(Clone)]
 pub struct FunProto {
@@ -210,7 +69,7 @@ pub enum StmtNode {
     /// Matching an enum based on its type
     Match(Match),
     /// Calling a function by name
-    Call(SymbolPath, Vec<Expr>),
+    Call(Expr, Vec<Expr>),
     /// Break from something with a value
     Phi(Box<Expr>),
     /// Return a value from the currently defined function
@@ -229,7 +88,7 @@ pub enum StmtNode {
 #[derive(Clone, PartialEq, Eq)]
 pub enum ExprNode {
     /// Variable / function access by name or path
-    Access(SymbolPath),
+    Access(Symbol),
     /// Structure member access by field name
     Member(Box<Expr>, Symbol),
     /// Structure member access by field name with dereference
@@ -346,25 +205,17 @@ pub enum DefData {
         aliased: UnresolvedType,
     },
     /// An imported module definition
-    ImportDef { name: SymbolPath },
+    ImportDef { name: Expr },
     /// A global value
     Global {
-        name: SymbolPath,
+        name: Symbol,
         comptime: bool,
         val: Option<Expr>,
         ty: Option<UnresolvedType>,
     },
 }
 impl DefData {
-    /// Get the name of this definition
-    pub fn name(&self) -> Symbol {
-        match self {
-            Self::FunDef(FunDef { proto, .. }) | Self::FunDec(proto) => proto.name,
-            Self::AliasDef { name, .. } => *name,
-            Self::ImportDef { name } => name.last(),
-            Self::Global { name, .. } => name.last(),
-        }
-    }
+
 }
 
 /// A structure holding both [DefData] and metadata
@@ -448,7 +299,7 @@ pub enum NumberLiteralAnnotation {
 }
 
 /// Type representing a function's type in spark
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq,)]
 pub struct UnresolvedFunType {
     /// The return type of the function
     pub return_ty: UnresolvedType,
@@ -458,7 +309,7 @@ pub struct UnresolvedFunType {
 
 /// All types in the [AstNode] enumeration are represented by the `UnresolvedType` type, as
 /// user-defined types are resolved when lowering the AST to IR
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum UnresolvedType {
     Integer {
         /// How large in bits is the integer type
@@ -494,7 +345,7 @@ pub enum UnresolvedType {
     /// User-defined identifier
     UserDefined {
         /// The name of the user-defined type
-        name: SymbolPath,
+        name: Box<Expr>,
     },
 }
 

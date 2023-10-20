@@ -1,5 +1,5 @@
-imp up:util:strslice
-imp strslice:strslice_t
+imp up.util.strslice
+imp strslice.strslice_t
 
 type paren_side_left = ()
 type paren_side_right = ()
@@ -21,4 +21,4 @@ type tok_t = bracket_t
     | paren_t
     | strlit_t
     | numlit_t
-    | op:op_t
+    | op.op_t

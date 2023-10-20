@@ -1,6 +1,6 @@
-imp up:bytebuf:bytebuf_t
-imp up:bytebuf
-imp up:libc:cstr:cstr_t
+imp up.bytebuf.bytebuf_t
+imp up.bytebuf
+imp up.libc.cstr.cstr_t
 
 //A heap-allocated string that can grow its capacity to fit any amount of characters
 type str_t = {
@@ -9,7 +9,7 @@ type str_t = {
 
 fun new() -> str_t {
     return #str_t {
-        buf = bytebuf:new()
+        buf = bytebuf.new()
     }
 }
 

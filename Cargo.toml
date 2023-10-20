@@ -1,5 +1,5 @@
 [package]
-name = "spark"
+name = "sparky"
 version = "0.12.0"
 authors = ["Bendi11 <bkliebmann@gmail.com>"]
 edition = "2018"

@@ -1,5 +1,5 @@
 
-<path> ::= <ident> ( ":" <ident> )*
+<path> ::= <ident> ( "." <ident> )*
 <importdecl> ::= "imp" <path>
 
 <fundef> ::= <fundecl> <body>
@@ -13,7 +13,7 @@
     <typename> ( "|" <typename> )+
 )
 
-<stmt> ::= <callexpr> | <letstmt> | <retstmt> | <matchexpr> | <ifexpr> | "break" | "cont"
+<stmt> ::= <callexpr> | <letstmt> | <retstmt> | <matchexpr> | <ifexpr> | "break" | "continue"
 
 <matchcase> ::= <user-typename>  <ident>?
               | <literal>

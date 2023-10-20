@@ -1,8 +1,8 @@
-imp up:util:strslice
-imp strslice:strslice_t
+imp up.util.strslice
+imp strslice.strslice_t
 
-imp op:eq_t
-imp op:op_t
+imp op.eq_t
+imp op.op_t
 
 type lexer_t = {
     strslice_t src,

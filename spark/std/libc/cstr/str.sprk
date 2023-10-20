@@ -1,4 +1,4 @@
-imp root:std:alloc:null
+imp root.std.alloc.null
 
 
 type cstr_t = {

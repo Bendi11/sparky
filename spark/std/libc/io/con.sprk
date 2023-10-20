@@ -1,5 +1,5 @@
 
 
 
-fun ext puts(up:cstr:cstr_t)
-fun ext putc(up:cchar)
+fun ext puts(up.cstr.cstr_t)
+fun ext putc(up.cchar)

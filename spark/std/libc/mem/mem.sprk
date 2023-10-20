@@ -1,4 +1,4 @@
-imp up:cvoidptr
+imp up.cvoidptr
 
 
 fun ext malloc(usz) -> cvoidptr

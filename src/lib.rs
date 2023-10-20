@@ -6,7 +6,6 @@ pub mod arena;
 pub mod ast;
 pub mod error;
 pub mod ir;
-pub mod llvm;
 pub mod parse;
 pub mod util;
 

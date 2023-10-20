@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use crate::{
     ast::{
         Def, DefData, ElseExpr, Expr, ExprNode, FunFlags, FunProto, If, IntegerWidth,
-        NumberLiteral, NumberLiteralAnnotation, ParsedModule, Stmt, StmtNode, SymbolPath,
+        NumberLiteral, NumberLiteralAnnotation, ParsedModule, Stmt, StmtNode,
         UnresolvedFunType, UnresolvedType,
     },
     parse::token::Op,
@@ -151,40 +151,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Consume the next path from the input tokens, requiring at least one identifier
-    fn expect_next_path(
-        &mut self,
-        expected: &'static [TokenData<'static>],
-    ) -> ParseResult<'src, SymbolPath> {
-        let first = self.expect_next_ident(expected)?;
-        let first = self.symbol(first);
-        self.expect_next_path_with(expected, first)
-    }
-
-    /// Get the next path in the token stream using a first identifier
-    fn expect_next_path_with(
-        &mut self,
-        expected: &'static [TokenData<'static>],
-        first: Symbol,
-    ) -> ParseResult<'src, SymbolPath> {
-        let mut parts = vec![first];
-        while let Some(TokenData::Colon) = self.toks.peek().map(|tok| &tok.data) {
-            if let Some(TokenData::Ident(_)) = self.toks.peek2().map(|tok| &tok.data) {
-                self.toks.next(); //Consume the colon character
-                let part = self.expect_next_ident(expected)?;
-                parts.push(self.symbol(part));
-            } else {
-                break;
-            }
-        }
-
-        Ok(if parts.len() == 1 {
-            SymbolPath::new(parts[0])
-        } else {
-            SymbolPath::new_parts(&parts)
-        })
-    }
-
     /// Consume the next token and expect it to be the given type of token
     fn expect_next(&mut self, expecting: &'static [TokenData<'static>]) -> ParseResult<'src, ()> {
         let next = self.next_tok(expecting)?;
@@ -223,7 +189,7 @@ impl<'src> Parser<'src> {
         match next.data {
             TokenData::Ident("imp") => {
                 self.trace.push("import statement".into());
-                let imported = self.expect_next_path(&[TokenData::Ident("imported module")])?;
+                let imported = self.parse_expr()?;
                 self.trace.pop();
 
                 Ok(Def {
@@ -397,7 +363,7 @@ impl<'src> Parser<'src> {
                     false
                 };
 
-                let name = self.expect_next_path(&[TokenData::Ident("Global value name")])?;
+                let name = self.parse_prefix_expr()?;
                 self.trace.push("global value definition".into());
 
                 let (val, to) = if self
@@ -596,11 +562,11 @@ impl<'src> Parser<'src> {
                     node: StmtNode::Return(Box::new(returned)),
                 })
             }
-            TokenData::Ident(_) => {
+            _ => {
                 const EXPECTING_FOR_CALL: &[TokenData<'static>] =
                     &[TokenData::Ident("Function name")];
 
-                let name = self.expect_next_path(EXPECTING_FOR_CALL)?;
+                let name = self.parse_prefix_expr()?;
                 let args = self.parse_fun_args()?;
 
                 Ok(Stmt {
@@ -1081,10 +1047,10 @@ impl<'src> Parser<'src> {
         let member_of = match next.data {
             TokenData::Ident(_) => {
                 self.trace.push("variable or function name".into());
-                let name = self.expect_next_path(EXPECTING_NEXT)?;
+                let name = self.expect_next_ident(&[TokenData::Ident("Identifier")])?;
                 Expr {
                     span: next.span,
-                    node: ExprNode::Access(name),
+                    node: ExprNode::Access(Symbol::from(name)),
                 }
             }
             TokenData::OpenBracket(BracketType::Curly) => {

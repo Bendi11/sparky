@@ -1,46 +1,46 @@
-//Add: +
+//Add. +
 type add_t = ()
 //Subtract -
 type sub_t = ()
-//Star: *
+//Star. *
 type star_t = ()
-//Divide: /
+//Divide. /
 type div_t = ()
 //Modulo
 type mod_t = ()
 
 
-//Logical AND: &&
+//Logical AND. &&
 type land_t = ()
-//Logical OR: ||
+//Logical OR. ||
 type lor_t = ()
-//Logical NOT: !
+//Logical NOT. !
 type lnot_t = ()
-//Bitwise shift left: <<
+//Bitwise shift left. <<
 type shleft_t = ()
-//Bitwise shift right: >>
+//Bitwise shift right. >>
 type shright_t = ()
 
-//Bitwise AND: &
+//Bitwise AND. &
 type band_t = ()
-//Bitwise OR: |
+//Bitwise OR. |
 type bor_t = ()
-//Bitwise XOR: ^
+//Bitwise XOR. ^
 type bxor_t = ()
-//Bitwise NOT: ~
+//Bitwise NOT. ~
 type bnot_t = ()
 
-//Less than: <
+//Less than. <
 type less_t = ()
-//Greater than: >
+//Greater than. >
 type greater_t = ()
-//Less than or equal to: <=
+//Less than or equal to. <=
 type leq_t = ()
-//Greater than or equal to: >=
+//Greater than or equal to. >=
 type geq_t = ()
-//Equal to: ==
+//Equal to. ==
 type eq_t = ()
-//Not equal to: !=
+//Not equal to. !=
 type neq_t = ()
 
 type op_t = 

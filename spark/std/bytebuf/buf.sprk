@@ -1,6 +1,6 @@
-imp up:alloc
-imp alloc:allocator
-imp up:libc:mem:cvoidptr
+imp up.alloc
+imp alloc.allocator
+imp up.libc.mem.cvoidptr
 
 type bytebuf_t = {
     *u8 ptr,
@@ -10,7 +10,7 @@ type bytebuf_t = {
 
 fun new() -> bytebuf_t {
     return #bytebuf_t {
-        ptr = alloc:null,
+        ptr = alloc.null,
         len = 0usz,
         cap = 0usz,
     }

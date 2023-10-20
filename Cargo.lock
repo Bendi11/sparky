@@ -317,7 +317,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 
 [[package]]
-name = "spark"
+name = "sparky"
 version = "0.12.0"
 dependencies = [
  "bitflags",

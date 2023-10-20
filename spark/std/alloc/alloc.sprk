@@ -1,4 +1,4 @@
-imp root:std:libc:mem
+imp root.std.libc.mem
 
 type global_allocator_t = {
     fun(usz) -> *u8 alloc,
@@ -7,9 +7,9 @@ type global_allocator_t = {
 }
 
 glob allocator = #{
-    alloc = mem:malloc,
-    free = mem:free,
-    realloc = mem:realloc,
+    alloc = mem.malloc,
+    free = mem.free,
+    realloc = mem.realloc,
 }
 
 glob null = $*u8 0
