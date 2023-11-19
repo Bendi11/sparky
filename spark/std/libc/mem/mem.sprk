@@ -1,6 +1,0 @@
-imp up.cvoidptr
-
-
-fun ext malloc(usz) -> cvoidptr
-fun ext free(cvoidptr)
-fun ext realloc(cvoidptr, usz) -> cvoidptr
